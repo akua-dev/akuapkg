@@ -13,6 +13,85 @@ minor bump in the SDK.
 > single-file/total-package cap is incompatible with the bundled napi
 > addon (~129 MB compressed across the per-platform packages).
 
+## [0.8.6] — 2026-05-05
+
+Internal-only release: coverage uplifts, testability refactors, and a
+content-hash-based worker freshness guard for release builds. No
+public CLI or SDK behavior changes — the headline is supply-chain
+transport coverage rising from 9–20 % to 73–95 % on the OCI push /
+pull / fetch paths.
+
+### Added
+
+- New `crates/source-hash/` workspace member: a tiny pure-Rust lib +
+  binary used by `task build:render-worker` to record the content
+  hash of `akua-render-worker.wasm`'s source inputs alongside the
+  `.wasm` artifact.
+- `verbs::dev::run_loop`, `verbs::sign::run_with`, and
+  `verbs::publish::run_with` (all `pub(crate)`) — testability seams
+  that let unit tests drive the watch loop without `ctrlc` and the
+  signing flow with an explicit passphrase, without
+  `std::env::set_var` racing in nextest's process-per-test pool.
+- `oci_transport::registry_scheme(registry)`: `http` for loopback
+  hosts (`localhost`, `127.0.0.1`, `[::1]`), `https` otherwise.
+  Matches the convention `docker`, `oras`, `crane`, `skopeo` use
+  for self-hosted local registries; not a test-only seam.
+
+### Changed
+
+- **Default render-worker wall-clock budget bumped from 3 s to 6 s**
+  (`ResourceLimits::epoch_deadline` 30 → 60 ticks). The 3 s default
+  worked for hand-written Packages but tripped during cold-load of
+  the `kcl-lang/k8s` ecosystem bundle (~24 K lines of schemas) —
+  the kcl loader's allocation pattern inside the wasm sandbox runs
+  longer than the original budget on every cold render. SDK / future-
+  API callers needing a tighter security boundary can still override
+  via the public field.
+
+### Fixed
+
+- **Render-worker freshness guard for release profiles.** `cargo
+  build -p akua-cli --profile {release,ci-release}` now hard-fails
+  when the embedded `akua-render-worker.wasm` was built from
+  different source content than the akua-core code that's about to
+  embed it. Previously the build emitted a `cargo:warning=` and
+  shipped the binary anyway, which let host/worker drift slip past
+  CI. The check is content-hash-based via the new `source-hash`
+  crate; mtime-based fallback applies if the hash file is missing
+  (e.g. the worker was built outside the Taskfile flow).
+- **`Taskfile.yml` `build:render-worker`** previously listed only
+  `crates/akua-render-worker/**` as `sources:`. Adds
+  `crates/akua-core/**` to the dependency list so an akua-core edit
+  re-triggers the worker build instead of leaving Taskfile reporting
+  "up to date" while the akua-cli build.rs flags drift.
+- **`examples_kcl_ecosystem` integration test gated behind
+  `#[ignore]`.** It pulls live from `oci://ghcr.io/kcl-lang/k8s` and
+  occasionally trips the wasmtime epoch budget on cold caches. Now
+  excluded from `cargo test --workspace`; `task release:validate`
+  passes `-- --include-ignored` so the pre-tag smoke still exercises
+  it.
+
+### Test coverage
+
+  | File | Before | After |
+  | --- | ---: | ---: |
+  | `crates/akua-core/src/oci_pusher.rs` | 19.9 % | 95 % |
+  | `crates/akua-core/src/oci_puller.rs` |  9.2 % | 87 % |
+  | `crates/akua-core/src/oci_fetcher.rs` | 14.9 % | 80 % |
+  | `crates/engine-host-wasm/src/lib.rs` |   56 % | 76 % |
+  | `crates/akua-cli/src/verbs/publish.rs` |    0 % | 87 % |
+  | `crates/akua-cli/src/verbs/pull.rs` |    0 % | 85 % |
+  | `crates/akua-cli/src/verbs/dev.rs` |    0 % | 85 % |
+  | `crates/akua-cli/src/verbs/sign.rs` |   84 % | 87 % |
+  | `crates/akua-core/src/helm.rs` |   49 % | 68 % |
+  | `crates/akua-cli/src/observability.rs` |   31 % | 50 % |
+
+  ~80 new tests, all running through `cargo nextest` in seconds.
+  Branch coverage on the load-bearing security invariants:
+  digest-mismatch detection, layer rejection, lockfile pin
+  enforcement, bearer-auth retry, registry tampering, signing /
+  attestation round-trip, encrypted-key signing.
+
 ## [0.8.5] — 2026-05-05
 
 Republish of 0.8.4 — the npm publish step on `native-release` 401'd

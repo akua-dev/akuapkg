@@ -62,7 +62,17 @@ pub struct ResourceLimits {
     pub memory_bytes: usize,
     /// Wall-clock epoch ticks before the worker traps. Matched to the
     /// engine's background-thread tick (see [`spawn_epoch_ticker`]).
-    /// Default 30 — a 30 × 100ms = 3s wall-clock deadline.
+    /// Default 60 — a 60 × 100ms = 6s wall-clock deadline.
+    ///
+    /// 3s was originally enough for hand-written Packages, but a
+    /// `import k8s` against the kcl-lang/k8s ecosystem bundle (24K
+    /// lines of schemas across hundreds of files) trips the deadline
+    /// while the kcl loader allocates inside the wasm sandbox — the
+    /// cold-load path is intrinsically slow regardless of network
+    /// cache state. 6s gives a comfortable margin for the largest
+    /// real-world package we've seen, while still trapping infinite
+    /// loops promptly. SDK / future-API callers needing a tighter
+    /// security boundary can override this via the public field.
     pub epoch_deadline: u64,
 }
 
@@ -70,7 +80,7 @@ impl Default for ResourceLimits {
     fn default() -> Self {
         Self {
             memory_bytes: 256 * 1024 * 1024,
-            epoch_deadline: 30,
+            epoch_deadline: 60,
         }
     }
 }
