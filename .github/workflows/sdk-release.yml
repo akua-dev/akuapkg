@@ -1,19 +1,15 @@
 name: sdk-release
 
-# Publish `@akua-dev/sdk` to npm on a `sdk-v<semver>` tag push.
-#
-# The SDK ships compiled JS + .d.ts (no raw TS); end users get a
-# normal npm install. The matching `@akua-dev/native@<same-version>`
-# must be on npm before this workflow publishes; the wait step below
-# polls for up to 20 min so you can fire `native-v0.x.y` and
-# `sdk-v0.x.y` together — sdk-release blocks until native lands. SDK
-# version floats independently of the CLI's crate version: doc tweaks
-# or wrapper-layer fixes ship without rebuilding the binary.
+# Publish `@akua-dev/sdk` to npm on a `v<semver>` tag push. The same
+# tag triggers native-release.yml in parallel; the wait step below
+# polls npm for the matching `@akua-dev/native@<same-version>` (up to
+# 45 min) before publishing the SDK. One tag, two workflows, the SDK
+# blocks until native lands.
 
 on:
   push:
     tags:
-      - 'sdk-v*'
+      - 'v*'
   workflow_dispatch:
     inputs:
       dry-run:
@@ -58,12 +54,12 @@ jobs:
         run: mise exec -- task sdk:check
 
       - name: Bump package.json version from the tag
-        # Tag format: `sdk-v1.2.3` → npm version `1.2.3`. Strip the
-        # `sdk-v` prefix and rewrite both `version` and the pinned
-        # `@akua-dev/native` dep so the SDK pulls the matching native.
+        # Tag format: `v1.2.3` → npm version `1.2.3`. Rewrite both
+        # `version` and the pinned `@akua-dev/native` dep so the SDK
+        # pulls the matching native published by native-release.yml.
         run: |
           set -eu
-          version="${GITHUB_REF_NAME#sdk-v}"
+          version="${GITHUB_REF_NAME#v}"
           echo "Publishing @akua-dev/sdk@${version}"
           jq --arg v "$version" \
             '.version = $v | .dependencies["@akua-dev/native"] = $v' \
@@ -71,23 +67,23 @@ jobs:
           mv packages/sdk/package.json.tmp packages/sdk/package.json
 
       - name: Wait for matching @akua-dev/native on npm
-        # native-release.yml + sdk-release.yml are independent
-        # workflows — when both tags get pushed together, sdk-release
-        # may reach this step before native-release finishes its 7-
-        # platform matrix + publish. Poll the registry for up to
-        # 45 min — native-release's full chain (Windows build + cross-
-        # compile builds + 9 sequential npm publishes) can run ~35 min
-        # cold. v0.8.5's first sdk-release run timed out at the old
-        # 20-min budget while native finished 7 min later. Fast path
-        # on a sequenced release is one npm view call (~1 s).
+        # native-release.yml runs in parallel from the same `v<x.y.z>`
+        # tag. Its full chain (Windows build + cross-compile builds +
+        # 9 sequential npm publishes) takes ~35 min cold; sdk-release
+        # is much faster and would otherwise try to pin a version of
+        # `@akua-dev/native` that isn't on npm yet. Poll for up to 45
+        # min (incident-derived budget — v0.8.5's first sdk-release
+        # run timed out at the old 20-min while native finished 7 min
+        # later). Fast path on a sequenced release is one npm view
+        # call (~1 s).
         run: |
           set -eu
-          version="${GITHUB_REF_NAME#sdk-v}"
+          version="${GITHUB_REF_NAME#v}"
           deadline=$((SECONDS + 2700))
           while ! npm view "@akua-dev/native@${version}" version > /dev/null 2>&1; do
             if [ "$SECONDS" -ge "$deadline" ]; then
               echo "ERROR: @akua-dev/native@${version} did not appear on npm within 45 min."
-              echo "Either native-release.yml failed, or you forgot to push native-v${version}."
+              echo "native-release.yml likely failed; rerun it (workflow_dispatch) before retrying this job."
               exit 1
             fi
             echo "@akua-dev/native@${version} not on npm yet — retry in 30 s..."

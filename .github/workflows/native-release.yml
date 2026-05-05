@@ -1,7 +1,9 @@
 name: native-release
 
-# Cross-platform build + npm publish of the napi addon.
-# Triggered by `native-v<semver>` tag pushes.
+# Cross-platform build + npm publish of the napi addon. Triggered by
+# `v<semver>` tag pushes — same tag drives sdk-release.yml in parallel,
+# which polls for the matching `@akua-dev/native` to land on npm
+# before publishing the SDK.
 #
 # Layout:
 #   `@akua-dev/native`                       — meta package; declares
@@ -10,12 +12,14 @@ name: native-release
 #   `@akua-dev/native-{darwin,linux,win32}-*` — per-platform .node binary
 #
 # The SDK release workflow pins `@akua-dev/native@<same-version>` in
-# its dependencies, so this must publish first.
+# its dependencies; the version string therefore comes from the same
+# tag, eliminating the previous foot-gun of having to push two tags
+# (`native-v*` + `sdk-v*`) in lockstep.
 
 on:
   push:
     tags:
-      - 'native-v*'
+      - 'v*'
   workflow_dispatch:
     inputs:
       dry-run:
@@ -79,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -eu
-          version="${GITHUB_REF_NAME#native-v}"
+          version="${GITHUB_REF_NAME#v}"
           echo "Building @akua-dev/native@${version}"
           jq --arg v "$version" '.version = $v' \
             crates/akua-napi/package.json > crates/akua-napi/package.json.tmp
@@ -199,7 +203,7 @@ jobs:
       - name: Bump package.json version from the tag
         run: |
           set -eu
-          version="${GITHUB_REF_NAME#native-v}"
+          version="${GITHUB_REF_NAME#v}"
           jq --arg v "$version" '.version = $v' \
             crates/akua-napi/package.json > crates/akua-napi/package.json.tmp
           mv crates/akua-napi/package.json.tmp crates/akua-napi/package.json
@@ -230,7 +234,7 @@ jobs:
         # source layout so `npm publish` finds them.
         run: |
           set -eu
-          version="${GITHUB_REF_NAME#native-v}"
+          version="${GITHUB_REF_NAME#v}"
           cp crates/akua-napi/artifacts/native-engines-wasm/helm-engine-wasm/assets/helm-engine.wasm \
              crates/akua-native-engines-npm/helm-engine.wasm
           cp crates/akua-napi/artifacts/native-engines-wasm/kustomize-engine-wasm/assets/kustomize-engine.wasm \

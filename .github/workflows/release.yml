@@ -1,12 +1,19 @@
 name: Release
 
+# Binary-tarball release for the `akua` CLI. **Currently
+# workflow_dispatch-only**: `cli-release.yml` (triggered by `akua-v*`)
+# is the newer + comprehensive binary-release path (Docker, Homebrew,
+# multi-target). This workflow stays around for ad-hoc rebuilds via
+# the GitHub Actions UI but no longer fires on `v*` tag push — that
+# tag now drives `native-release.yml` + `sdk-release.yml` (npm
+# packages). Re-enable the tag trigger only when this workflow has
+# been verified end-to-end.
+#
 # Local debugging: `task release:target TARGET=<triple>` builds exactly
 # what this workflow uploads. Tools are pinned in .mise.toml; CI just
 # provisions them via mise.
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:

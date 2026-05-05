@@ -68,11 +68,11 @@ task sdk:publish:check   # npm pack --dry-run
 
 ## Release flow
 
-SDK versions float independently of the Rust crate version — a wrapper-layer fix ships without rebuilding the binary.
+SDK versions track the Rust workspace version: one `v<semver>` tag drives both `native-release.yml` (matrix CI publishes 9 npm native packages) and `sdk-release.yml` (regenerates types + schema, runs the drift guard, polls for the matching `@akua-dev/native` on npm, then publishes via npm OIDC trusted publishing — no token).
 
 1. Land changes on `main`; `task ci` must be green.
-2. Tag the matching `@akua-dev/native` first (`native-v<semver>`), let the matrix CI publish 8 native packages.
-3. Tag `sdk-v<semver>` — `.github/workflows/sdk-release.yml` regenerates types + schema, runs the drift guard, verifies the matching native is on npm, and publishes via npm OIDC trusted publishing (no token).
+2. Bump versions in `Cargo.toml`, `crates/akua-napi/package.json`, `packages/sdk/package.json`, all `crates/akua-napi/npm/<platform>/package.json`, `crates/akua-native-engines-npm/package.json`. Commit `release: vX.Y.Z`.
+3. Tag `v<semver>` and push. Both workflows fire from the same tag; sdk-release blocks until native-release lands `@akua-dev/native@<version>` on npm.
 
 See [`.github/workflows/sdk-release.yml`](../../.github/workflows/sdk-release.yml) and [`.github/workflows/native-release.yml`](../../.github/workflows/native-release.yml) for the matrix.
 

@@ -418,7 +418,7 @@ tasks:
         echo "  1. https://www.npmjs.com/settings/akua-dev/packages — verify all 10 packages appear"
         echo "  2. For each package: Settings → Trusted Publishers → add GitHub Actions"
         echo "     org=cnap-tech  repo=akua  workflow=native-release.yml (or sdk-release.yml for the SDK)"
-        echo "  3. Tag native-v0.6.0 then sdk-v0.6.0 — CI takes over."
+        echo "  3. Tag v0.6.0 — both native-release + sdk-release fire from the single tag."
 
   release:dry-run:
     desc: Run the full pre-release pipeline locally (gen + check + build + pack)
