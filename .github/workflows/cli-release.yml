@@ -2,8 +2,10 @@ name: cli-release
 
 # Build `akua` CLI binaries for common targets on tag push.
 #
-# Trigger: push a tag `akua-v<semver>` (e.g. `akua-v0.1.0`). Version
-# must match workspace.package.version in Cargo.toml.
+# Trigger: push a tag `v<semver>` (e.g. `v0.8.7`). Version must match
+# workspace.package.version in Cargo.toml. Same tag drives
+# native-release.yml + sdk-release.yml in parallel — single tag, three
+# pipelines.
 #
 # Outputs: one `.tar.gz` per target, uploaded as a GitHub Release
 # attachment. Shasum file included for checksum verification.
@@ -31,7 +33,7 @@ name: cli-release
 on:
   push:
     tags:
-      - 'akua-v*'
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -219,7 +221,7 @@ jobs:
         if: matrix.archive == 'tar.gz'
         shell: bash
         run: |
-          name="akua-${GITHUB_REF_NAME#akua-}-${{ matrix.target }}"
+          name="akua-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir -p dist
           cp target/${{ matrix.target }}/ci-release/akua dist/
           cp README.md SECURITY.md LICENSE dist/ 2>/dev/null || true
@@ -232,7 +234,7 @@ jobs:
         # `.zip` is idiomatic on Windows and what Scoop/winget expect.
         # 7-Zip is preinstalled on windows-latest runners.
         run: |
-          $name = "akua-$($env:GITHUB_REF_NAME -replace '^akua-','')-${{ matrix.target }}"
+          $name = "akua-${env:GITHUB_REF_NAME}-${{ matrix.target }}"
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item "target/${{ matrix.target }}/ci-release/akua.exe" -Destination dist/
           Copy-Item README.md,SECURITY.md,LICENSE -Destination dist/ -ErrorAction SilentlyContinue
@@ -251,7 +253,7 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/akua-v')
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
@@ -261,7 +263,7 @@ jobs:
       - name: Create release
         run: |
           gh release create "${GITHUB_REF_NAME}" \
-            --title "akua ${GITHUB_REF_NAME#akua-v}" \
+            --title "akua ${GITHUB_REF_NAME#v}" \
             --notes "See [CHANGELOG.md](https://github.com/cnap-tech/akua/blob/main/CHANGELOG.md) for details." \
             dist/*.tar.gz dist/*.zip dist/*.sha256
         env:
@@ -275,7 +277,7 @@ jobs:
   docker:
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/akua-v')
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
@@ -295,7 +297,7 @@ jobs:
         # keeps the image contents byte-identical to the GitHub Release.
         run: |
           mkdir -p image-context/amd64 image-context/arm64
-          version="${GITHUB_REF_NAME#akua-}"
+          version="${GITHUB_REF_NAME}"
           tar -xzf "dist/akua-${version}-x86_64-unknown-linux-gnu.tar.gz" -C image-context/amd64 akua
           tar -xzf "dist/akua-${version}-aarch64-unknown-linux-gnu.tar.gz" -C image-context/arm64 akua
       - name: Build + push multi-arch image
@@ -322,7 +324,7 @@ jobs:
   homebrew-tap:
     needs: release
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/akua-v')
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -352,7 +354,7 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: |
           set -eu
-          version="${REF_NAME#akua-v}"
+          version="${REF_NAME#v}"
 
           # Read each target's sha256 from the per-asset .sha256 file.
           get_sha() {
@@ -384,22 +386,22 @@ jobs:
 
             on_macos do
               on_arm do
-                url "https://github.com/cnap-tech/akua/releases/download/akua-v#{version}/akua-v#{version}-aarch64-apple-darwin.tar.gz"
+                url "https://github.com/cnap-tech/akua/releases/download/v#{version}/akua-v#{version}-aarch64-apple-darwin.tar.gz"
                 sha256 "${darwin_arm_sha}"
               end
               on_intel do
-                url "https://github.com/cnap-tech/akua/releases/download/akua-v#{version}/akua-v#{version}-x86_64-apple-darwin.tar.gz"
+                url "https://github.com/cnap-tech/akua/releases/download/v#{version}/akua-v#{version}-x86_64-apple-darwin.tar.gz"
                 sha256 "${darwin_x86_sha}"
               end
             end
 
             on_linux do
               on_arm do
-                url "https://github.com/cnap-tech/akua/releases/download/akua-v#{version}/akua-v#{version}-aarch64-unknown-linux-gnu.tar.gz"
+                url "https://github.com/cnap-tech/akua/releases/download/v#{version}/akua-v#{version}-aarch64-unknown-linux-gnu.tar.gz"
                 sha256 "${linux_arm_sha}"
               end
               on_intel do
-                url "https://github.com/cnap-tech/akua/releases/download/akua-v#{version}/akua-v#{version}-x86_64-unknown-linux-gnu.tar.gz"
+                url "https://github.com/cnap-tech/akua/releases/download/v#{version}/akua-v#{version}-x86_64-unknown-linux-gnu.tar.gz"
                 sha256 "${linux_x86_sha}"
               end
             end
