@@ -1,6 +1,6 @@
 {
   "name": "@akua-dev/native-linux-arm64-musl",
-  "version": "0.8.6",
+  "version": "0.8.7-rc1",
   "cpu": [
     "arm64"
   ],

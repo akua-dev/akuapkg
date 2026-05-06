@@ -68,13 +68,13 @@ task sdk:publish:check   # npm pack --dry-run
 
 ## Release flow
 
-SDK versions track the Rust workspace version: one `v<semver>` tag drives both `native-release.yml` (matrix CI publishes 9 npm native packages) and `sdk-release.yml` (regenerates types + schema, runs the drift guard, polls for the matching `@akua-dev/native` on npm, then publishes via npm OIDC trusted publishing — no token).
+SDK versions track the Rust workspace version: one `v<semver>` tag drives a single unified `release.yml` workflow that builds the wasm bundle once, fans out into the native + cli matrices in parallel, then chains npm publishes (engines → per-platform native → meta-native → SDK) via job-level `needs:` dependencies. No npm polling, no inter-workflow races.
 
 1. Land changes on `main`; `task ci` must be green.
 2. Bump versions in `Cargo.toml`, `crates/akua-napi/package.json`, `packages/sdk/package.json`, all `crates/akua-napi/npm/<platform>/package.json`, `crates/akua-native-engines-npm/package.json`. Commit `release: vX.Y.Z`.
-3. Tag `v<semver>` and push. Both workflows fire from the same tag; sdk-release blocks until native-release lands `@akua-dev/native@<version>` on npm.
+3. Tag `v<semver>` and push. The single `release.yml` workflow handles everything (npm + GitHub Release + Docker + Homebrew). Prerelease tags like `v<x.y.z>-rc1` publish to the npm `next` dist-tag and are marked as prereleases on GitHub.
 
-See [`.github/workflows/sdk-release.yml`](../../.github/workflows/sdk-release.yml) and [`.github/workflows/native-release.yml`](../../.github/workflows/native-release.yml) for the matrix.
+See [`.github/workflows/release.yml`](../../.github/workflows/release.yml) for the full job graph.
 
 ## Still coming
 

@@ -9,7 +9,7 @@ The SDK ships as a normal npm package with a per-platform native addon (`@akua-d
 | Runtime | Version | OCI fetch | Helm engine | Kustomize engine | cosign verify | Notes |
 |---|---|---|---|---|---|---|
 | **Node.js** | 22.x | ✅ | ✅ | ✅ | ✅ | Primary target. CI sweeps green per push. |
-| **Node.js** | 24.x | ✅ | ✅ | ✅ | ✅ | sdk-release.yml + native-release.yml both run on 24 (npm 11+ for OIDC trusted publishing). |
+| **Node.js** | 24.x | ✅ | ✅ | ✅ | ✅ | release.yml runs npm publish jobs on 24 (npm 11+ for OIDC trusted publishing). |
 | **Bun** | 1.3+ | ✅ | ✅ | ✅ | ✅ | `task sdk:test` runs entirely under bun. Bun's Node-API impl is compatible. |
 | **Deno** | 2.x | ✅ | ✅ | ✅ | ✅ | Loads `@akua-dev/native` via `npm:` specifier. Requires `--allow-read --allow-net --allow-env`. |
 
@@ -49,5 +49,4 @@ These are not part of CI today. When v0.7 lands the CI matrix follow-up, `.githu
 
 - `crates/akua-napi/` — the native crate.
 - `crates/akua-napi/index.js` — the auto-generated platform-loader (what picks the right `@akua-dev/native-*` per host).
-- `.github/workflows/native-release.yml` — matrix-build for the 7 per-platform packages.
-- `.github/workflows/sdk-release.yml` — SDK publish flow (depends on the native-release matching).
+- `.github/workflows/release.yml` — single unified pipeline. `wasm-bundle` → `native-build` (matrix) → `native-publish` → `sdk-publish` (with `sdk-build` running in parallel from tag time). Same workflow also drives the cli binary release + Docker + Homebrew bump.
