@@ -43,6 +43,14 @@ pub fn compute(roots: &[PathBuf], workspace_root: &Path) -> String {
 
     // Sort by relpath string so the order is stable across machines
     // (different absolute prefixes shouldn't perturb the hash).
+    //
+    // Path separator MUST be normalized to '/' before hashing — the
+    // producer typically runs on Linux (where Path::display() emits
+    // forward slashes) while consumers may run on Windows (where it
+    // emits backslashes). v0.8.7-rc1's release pipeline tripped on
+    // exactly this: same files, hashes differed because the relpath
+    // strings did. Normalizing to '/' makes the hash content-only,
+    // independent of host conventions.
     let mut entries: Vec<(String, PathBuf)> = files
         .into_iter()
         .map(|p| {
@@ -50,7 +58,8 @@ pub fn compute(roots: &[PathBuf], workspace_root: &Path) -> String {
                 .strip_prefix(workspace_root)
                 .map(|r| r.to_path_buf())
                 .unwrap_or_else(|_| p.clone());
-            (rel.to_string_lossy().into_owned(), p)
+            let relpath = rel.to_string_lossy().replace('\\', "/");
+            (relpath, p)
         })
         .collect();
     entries.sort_by(|a, b| a.0.cmp(&b.0));
@@ -209,6 +218,38 @@ mod tests {
             h1, h2,
             "out-of-workspace paths produce different hashes per workspace_root"
         );
+    }
+
+    /// Pin the exact wire format. Forward-slash relpaths regardless
+    /// of host OS — `replace('\\', '/')` fix from `v0.8.7-rc1`'s
+    /// Windows native-build failure (the producer hashed
+    /// `crates/akua-render-worker/...` on Linux; the consumer on
+    /// Windows would have hashed `crates\akua-render-worker\...`
+    /// without the fix, producing a different digest for identical
+    /// content).
+    #[test]
+    fn hash_format_uses_forward_slash_relpaths() {
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("a").join("b");
+        std::fs::create_dir_all(&nested).unwrap();
+        let body = b"fn main() {}\n";
+        std::fs::write(nested.join("c.rs"), body).unwrap();
+
+        let actual = compute(&[dir.path().to_path_buf()], dir.path());
+
+        // Recompute the expected digest by hand using the documented
+        // protocol: outer = sha256(inner_hex + "  " + relpath + "\n").
+        // The relpath MUST be forward-slash-separated.
+        let inner_hex: String = Sha256::digest(body)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let line = format!("{inner_hex}  a/b/c.rs\n");
+        let expected: String = Sha256::digest(line.as_bytes())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        assert_eq!(actual, expected, "hash format must use '/' relpaths");
     }
 
     /// Non-`.rs` / non-`.toml` files (markdown, golden YAML, dotfiles)
