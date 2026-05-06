@@ -1,0 +1,18 @@
+# Force LF line endings for every text file regardless of host OS.
+#
+# Without this, git's default `core.autocrlf=true` on Windows converts
+# LF → CRLF on checkout. The on-disk byte content then differs between
+# platforms, which broke `crates/source-hash/`'s freshness check on
+# v0.8.7-rc{1,2}: same logical sources hashed to different SHA-256 on
+# the Linux producer vs. the Windows consumer of the wasm bundle.
+# Forcing LF everywhere makes file bytes platform-invariant, which is
+# what every cross-platform reproducibility check assumes.
+#
+# Binary files are auto-detected by `text=auto` and not converted.
+* text=auto eol=lf
+
+# Renormalize on next `git add --renormalize .`; existing commits are
+# unaffected (the LF-on-disk → LF-in-objects identity holds since the
+# repo was committed from Linux/macOS contributors). Windows
+# contributors: re-checkout (`git checkout-index --force --all`) or
+# clone fresh after pulling this file.
