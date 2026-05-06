@@ -329,12 +329,19 @@ jobs:
         # Bump version + copy the wasm bytes (downloaded above as the
         # `wasm-bundle` artefact) into the engines package source layout
         # so `npm publish` finds them.
+        #
+        # `wasm-bundle` was uploaded with a `path:` listing files
+        # rooted at both `crates/` and `target/`; upload-artifact's
+        # common-ancestor calculation falls back to the workspace root,
+        # which means the artifact's internal layout preserves the full
+        # `crates/...` and `target/...` prefixes. Hence the
+        # `<dest>/wasm-bundle/crates/<engine-crate>/...` source path here.
         run: |
           set -eu
           version="${{ needs.detect-version.outputs.version }}"
-          cp crates/akua-napi/artifacts/wasm-bundle/helm-engine-wasm/assets/helm-engine.wasm \
+          cp crates/akua-napi/artifacts/wasm-bundle/crates/helm-engine-wasm/assets/helm-engine.wasm \
              crates/akua-native-engines-npm/helm-engine.wasm
-          cp crates/akua-napi/artifacts/wasm-bundle/kustomize-engine-wasm/assets/kustomize-engine.wasm \
+          cp crates/akua-napi/artifacts/wasm-bundle/crates/kustomize-engine-wasm/assets/kustomize-engine.wasm \
              crates/akua-native-engines-npm/kustomize-engine.wasm
           jq --arg v "$version" '.version = $v' \
             crates/akua-native-engines-npm/package.json \
