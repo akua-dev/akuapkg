@@ -213,14 +213,19 @@ jobs:
           node-version: '24'
 
       - name: Download release asset (sdk-staged)
+        # `gh release download` infers the repo from the cwd's git
+        # config — pass --repo explicitly so the job doesn't need a
+        # checkout (the sdk staging tree is fully reconstructed from
+        # the asset tarball).
         env:
           TAG: ${{ needs.detect-version.outputs.tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -eu
           mkdir sdk
           cd sdk
-          gh release download "$TAG" --pattern 'sdk-staged.tar.gz'
+          gh release download "$TAG" --pattern 'sdk-staged.tar.gz' --repo "$GH_REPO"
           tar -xzf sdk-staged.tar.gz
           rm sdk-staged.tar.gz
           ls -la
