@@ -12,7 +12,7 @@ bun add @akua-dev/sdk
 npm install @akua-dev/sdk
 ```
 
-Published to [npm](https://www.npmjs.com/package/-dev/sdk). ESM-only. Node 20+ or any modern browser.
+Published to [npm](https://www.npmjs.com/package/@akua-dev/sdk). ESM-only. Node 20+ or any modern browser.
 
 ---
 
