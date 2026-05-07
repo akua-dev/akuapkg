@@ -95,7 +95,7 @@ tasks:
       - task: test
 
   site:gen:
-    desc: Regenerate every site/* page from its source-of-truth (codes.rs / cli.md / docs/* / examples/*)
+    desc: Regenerate every site/* page from its source-of-truth (codes.rs / cli.md / docs/* / examples/*) and verify no internal links 404
     cmds:
       - bun scripts/gen-landing.ts
       - bun scripts/gen-start-page.ts
@@ -103,6 +103,12 @@ tasks:
       - bun scripts/gen-cli-pages.ts
       - bun scripts/gen-concept-pages.ts
       - bun scripts/gen-example-pages.ts
+      - bun scripts/check-site-links.ts
+
+  site:check-links:
+    desc: Walk site/**/*.html and fail if any internal href/src points to a missing file or anchor
+    cmds:
+      - bun scripts/check-site-links.ts
 
   site:errors:gen:
     desc: Regenerate site/errors/*.html from cli_contract::codes

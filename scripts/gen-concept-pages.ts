@@ -86,6 +86,15 @@ const SLUG_BY_NAME: Record<string, string> = Object.fromEntries(
 	CONCEPTS.map((c) => [c.mdFile.replace(/\.md$/, ''), c.slug]),
 );
 
+/** Examples that have on-site pages — populated lazily so concept docs
+ *  linking to `examples/<slug>/` rewrite to `/examples/<slug>` instead
+ *  of bouncing through GitHub. */
+import { readdirSync, statSync } from 'node:fs';
+const exampleSlugs = new Set(
+	readdirSync(join(root, 'examples'))
+		.filter((name) => /^\d{2}-/.test(name) && statSync(join(root, 'examples', name)).isDirectory()),
+);
+
 /** Rewrite cross-doc links to their on-site path when the target is a
  *  concept we render; fall back to GitHub blob otherwise. */
 function siteResolve(mdName: string): string | null {
@@ -93,7 +102,19 @@ function siteResolve(mdName: string): string | null {
 	return slug ? `/concepts/${slug}` : null;
 }
 
-const linkOpts: LinkResolverOpts = { siteResolve };
+/** Map repo paths the site mirrors onto deployed routes. Anything not
+ *  matched here falls through to a GitHub tree/blob URL. */
+function repoResolve(repoPath: string): string | null {
+	// `examples/<slug>` and `examples/<slug>/` → `/examples/<slug>`.
+	const exMatch = repoPath.match(/^examples\/([^/]+)\/?$/);
+	if (exMatch && exampleSlugs.has(exMatch[1])) return `/examples/${exMatch[1]}`;
+	if (repoPath === 'examples' || repoPath === 'examples/') return '/examples/';
+	return null;
+}
+
+function buildLinkOpts(mdFile: string): LinkResolverOpts {
+	return { siteResolve, repoResolve, sourceMd: `docs/${mdFile}` };
+}
 
 function buildSidebar(currentSlug: string | null): SidebarSpec {
 	return {
@@ -116,7 +137,7 @@ function renderConceptPage(concept: Concept, md: string, sidebar: SidebarSpec): 
 	// header already shows the title. Avoids "Security model" appearing
 	// twice on the page.
 	const stripped = md.replace(/^#\s+.+\n+/, '').trim();
-	const bodyHtml = renderMarkdown(stripped, linkOpts);
+	const bodyHtml = renderMarkdown(stripped, buildLinkOpts(concept.mdFile));
 
 	const inner = `
 <header>

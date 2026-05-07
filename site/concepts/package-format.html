@@ -347,7 +347,7 @@ _up = upstream.render(upstream.Input { appName = &quot;x&quot;, replicas = 3 })<
 <ul><li><code>akua.kustomize.build({path = &quot;./overlays&quot;})</code> — Kustomize base (sibling directory in the same Package; the path is bounded by the workspace preopen + path-escape guard)</li><li><code>akua.rgd.instantiate(rgd_def, instance_spec)</code> — kro RGD source</li><li><code>akua.oci.fetch_manifests(ref)</code> — pre-rendered OCI bundle</li><li><code>akua.helm.template(...)</code> — escape hatch for advanced Helm use (multi-chart dynamic dispatch, post-renderer variations the stub doesn't expose). New code should prefer <code>&lt;alias&gt;.template(...)</code>.</li></ul>
 <p>Every engine callable returns <code>[Resource]</code>, a typed list of Kubernetes-shaped resource dicts.</p>
 <hr />
-<h2 id="3-schema-the-public-input-contract">3. Schema — the public input contract</h2>
+<h2 id="3-schema--the-public-input-contract">3. Schema — the public input contract</h2>
 <p>The <code>Input</code> schema declares what customers (or App resources) must provide to render this Package.</p>
 <p>Rules:</p>
 <ul><li>Must be named <code>Input</code>. The binding line is canonically:</li></ul>
@@ -392,7 +392,7 @@ schema HostInput:
     hostname: str
     priority: int = 0</code></pre>
 <h3 id="ui-hints-optional">UI hints (optional) ✅</h3>
-<p>When a Package is consumed through a UI (merchant install form, Package Studio, generated Swagger form), renderers benefit from hints about field ordering, labels, placeholders, grouping. akua reads UI hints from two sources, both projected into the JSON Schema / OpenAPI output of <a href="cli.md#akua-export"><code>akua export</code></a>.</p>
+<p>When a Package is consumed through a UI (merchant install form, Package Studio, generated Swagger form), renderers benefit from hints about field ordering, labels, placeholders, grouping. akua reads UI hints from two sources, both projected into the JSON Schema / OpenAPI output of <a href="https://github.com/cnap-tech/akua/blob/main/docs/cli.md#akua-export"><code>akua export</code></a>.</p>
 <p><strong>KCL docstrings</strong> — the field's <code>&quot;&quot;&quot;…&quot;&quot;&quot;</code> docstring becomes the schema property's <code>description</code>:</p>
 <pre><code class="lang-python">schema Input:
     &quot;&quot;&quot;Public inputs for this package.&quot;&quot;&quot;
@@ -426,7 +426,7 @@ akua export --package package.k --format=openapi &gt; package.openapi.json</code
 <p><code>akua export</code> output is pure, spec-compliant JSON Schema 2020-12 / OpenAPI 3.1. Docstrings become <code>description</code>; <code>@ui(...)</code> decorators become <code>x-ui</code> metadata. Consumers that speak these standards — including every JSON Schema tool in the ecosystem — work unchanged.</p>
 <p><strong>No <code>x-user-input</code> or <code>x-input</code> markers.</strong> Previous versions of akua layered custom extensions on JSON Schema to mark user-configurable fields and embed transforms. With KCL as the authoring substrate, both are redundant: the <code>Input</code> schema IS the customer-configurable contract by definition, and transforms live as KCL code in the package body. The eventual exported JSON Schema is standards-pure; UI renderers in the broader ecosystem don't need to learn akua-specific vocabulary.</p>
 <hr />
-<h2 id="4-body-engine-calls-transforms">4. Body — engine calls + transforms</h2>
+<h2 id="4-body--engine-calls--transforms">4. Body — engine calls + transforms</h2>
 <p>The body composes resources by calling engine functions and optionally transforming their output.</p>
 <p>Engine calls return typed resource lists. Common patterns:</p>
 <pre><code class="lang-python"># Helm with per-source input mapping (no chart fork needed to rename values)
@@ -537,13 +537,13 @@ _nginx = helm.template(helm.Template {
 })
 
 resources = _nginx</code></pre>
-<p>See <a href="../examples/01-hello-webapp/">examples/01-hello-webapp</a> for the fully runnable version.</p>
+<p>See <a href="/examples/01-hello-webapp">examples/01-hello-webapp</a> for the fully runnable version.</p>
 <hr />
 <h2 id="10-testing-packages">10. Testing Packages</h2>
 <p>Packages ship with tests. The test runner is built into <code>akua test</code>; no separate framework required.</p>
 <h3 id="test-file-conventions">Test file conventions</h3>
 <ul><li><code>test_*.k</code> or <code>*_test.k</code> files anywhere under the package directory are discovered automatically.</li><li>A test file is a KCL program that uses <code>assert</code> or <code>check:</code> blocks to express expectations against the package's render output or schema.</li></ul>
-<h3 id="example-schema-defaults">Example — schema defaults</h3>
+<h3 id="example--schema-defaults">Example — schema defaults</h3>
 <pre><code class="lang-python"># test_schema.k
 import package as pkg
 
@@ -556,7 +556,7 @@ _default_sample = pkg.Input {
 # Assert default values
 assert _default_sample.replicas == 3, &quot;default replicas should be 3&quot;
 assert _default_sample.database.user == &quot;app&quot;, &quot;default db user should be 'app'&quot;</code></pre>
-<h3 id="example-render-output-test">Example — render-output test</h3>
+<h3 id="example--render-output-test">Example — render-output test</h3>
 <pre><code class="lang-python"># test_rendered.k
 import akua.test as test
 import package as pkg
@@ -590,11 +590,11 @@ akua test --coverage            # report per-schema / per-source coverage
 akua test --filter=default      # only tests matching 'default'</code></pre>
 <p>Tests run via the embedded KCL engine (see <a href="/concepts/embedded-engines">embedded-engines.md</a>) — fast, sandboxed, deterministic.</p>
 <h3 id="what-to-test">What to test</h3>
-<ul><li>Schema defaults and constraints — does <code>input.replicas = 0</code> correctly fail the <code>check:</code> block?</li><li>Rendered-output shape — does the Deployment have the right labels, the right replicaCount?</li><li>Policy compat — does rendering with a specific tier succeed? (Integration test; see <a href="policy-format.md#9-authoring-workflow">policy-format.md §9</a>)</li><li>Upgrade compatibility — golden tests catch &quot;dep bump accidentally changed the rendered manifest.&quot;</li></ul>
+<ul><li>Schema defaults and constraints — does <code>input.replicas = 0</code> correctly fail the <code>check:</code> block?</li><li>Rendered-output shape — does the Deployment have the right labels, the right replicaCount?</li><li>Policy compat — does rendering with a specific tier succeed? (Integration test; see <a href="https://github.com/cnap-tech/akua/blob/main/docs/policy-format.md#9-authoring-workflow">policy-format.md §9</a>)</li><li>Upgrade compatibility — golden tests catch &quot;dep bump accidentally changed the rendered manifest.&quot;</li></ul>
 <p>Packages without tests ship with a lint warning; platform teams can enforce a policy rule requiring tests for production-tier packages.</p>
 <hr />
 <h2 id="11-relationship-to-other-docs">11. Relationship to other docs</h2>
-<ul><li><strong><a href="https://github.com/cnap-tech/akua/blob/main/docs/cli.md">cli.md — <code>akua init</code> / <code>akua add</code> / <code>akua render</code> / <code>akua export</code> / <code>akua test</code> / <code>akua publish</code></a></strong> — the verbs that operate on packages. <code>render</code> runs the program; <code>export</code> converts the canonical form to a view.</li><li><strong><a href="/concepts/lockfile-format">lockfile-format.md</a></strong> — how <code>akua.toml</code> + <code>akua.lock</code> pin imports</li><li><strong><a href="https://github.com/cnap-tech/akua/blob/main/docs/policy-format.md">policy-format.md</a></strong> — how Rego policies evaluate against rendered resources (separate concern from <code>check:</code> blocks)</li><li><strong><a href="/concepts/embedded-engines">embedded-engines.md</a></strong> — which engines run your tests</li><li><strong><a href="../examples/">examples/</a></strong> — runnable Packages at increasing complexity</li></ul>
+<ul><li><strong><a href="https://github.com/cnap-tech/akua/blob/main/docs/cli.md">cli.md — <code>akua init</code> / <code>akua add</code> / <code>akua render</code> / <code>akua export</code> / <code>akua test</code> / <code>akua publish</code></a></strong> — the verbs that operate on packages. <code>render</code> runs the program; <code>export</code> converts the canonical form to a view.</li><li><strong><a href="/concepts/lockfile-format">lockfile-format.md</a></strong> — how <code>akua.toml</code> + <code>akua.lock</code> pin imports</li><li><strong><a href="https://github.com/cnap-tech/akua/blob/main/docs/policy-format.md">policy-format.md</a></strong> — how Rego policies evaluate against rendered resources (separate concern from <code>check:</code> blocks)</li><li><strong><a href="/concepts/embedded-engines">embedded-engines.md</a></strong> — which engines run your tests</li><li><strong><a href="/examples/">examples/</a></strong> — runnable Packages at increasing complexity</li></ul>
 
 <footer>
   <a href="/">akua.dev</a> ·

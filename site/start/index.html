@@ -297,7 +297,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
   <h1>Get started</h1>
   <p class="tagline">Install akua, render your first Package, and ship a signed artifact — in five minutes.</p>
 </header>
-<blockquote>Pre-alpha. The path below works end-to-end on macOS / Linux. If you hit a wall, the <a href="/errors/">error code reference</a> and the verb's <a href="/cli/">CLI page</a> are the next stops.</blockquote>
+<blockquote>Pre-alpha. The path below works end-to-end on macOS / Linux. If you hit a wall, the <a href="https://github.com/cnap-tech/akua/tree/main/errors">error code reference</a> and the verb's <a href="https://github.com/cnap-tech/akua/tree/main/cli">CLI page</a> are the next stops.</blockquote>
 <h2 id="1-install">1. Install</h2>
 <pre><code>$ curl -fsSL https://akua.dev/install | sh</code></pre>
 <p>Or grab a pinned binary from <a href="https://github.com/cnap-tech/akua/releases">Releases</a>. Windows: <code>irm https://akua.dev/install.ps1 | iex</code>.</p>
@@ -330,14 +330,14 @@ $ akua init</code></pre>
 <p>Then in <code>package.k</code>:</p>
 <pre><code class="lang-kcl">import charts.nginx as nginx</code></pre>
 <p>The resolver writes a <code>charts/&lt;alias&gt;/</code> mount so the engine plugin (helm.template, kustomize.build, …) gets a path it produced itself — no path strings in your KCL.</p>
-<h2 id="5-verify-sign-publish">5. Verify + sign + publish</h2>
+<h2 id="5-verify--sign--publish">5. Verify + sign + publish</h2>
 <p>When you're ready to ship:</p>
 <pre><code>$ akua verify         # akua.toml ↔ akua.lock integrity + cosign signatures
 $ akua sign           # cosign-sign the artifact
 $ akua publish        # push the signed OCI artifact + SLSA attestation</code></pre>
-<p>By default <code>publish</code> refuses unless the lockfile is clean and a cosign key is configured. See <a href="/concepts/security-model">Concepts → Security model</a> for the threat model and what <code>strict_signing</code> enforces.</p>
+<p>By default <code>publish</code> refuses unless the lockfile is clean and a cosign key is configured. See <a href="https://github.com/cnap-tech/akua/blob/main/concepts/security-model">Concepts → Security model</a> for the threat model and what <code>strict_signing</code> enforces.</p>
 <h2 id="whats-next">What's next</h2>
-<ul><li>Walk through the runnable <a href="/examples/">examples</a> — every one has <code>package.k</code>, <code>inputs</code>, and the rendered output side-by-side.</li><li>Read <a href="/concepts/package-format">Concepts → Package format</a> for the authoring shape.</li><li>Skim the <a href="/cli/">CLI reference</a> to see every verb at a glance — twenty-seven shipped, more in flight.</li><li>The <a href="/concepts/sdk">SDK</a> wraps the same surface for TypeScript / Bun / Deno consumers.</li></ul>
+<ul><li>Walk through the runnable <a href="https://github.com/cnap-tech/akua/tree/main/examples">examples</a> — every one has <code>package.k</code>, <code>inputs</code>, and the rendered output side-by-side.</li><li>Read <a href="https://github.com/cnap-tech/akua/blob/main/concepts/package-format">Concepts → Package format</a> for the authoring shape.</li><li>Skim the <a href="https://github.com/cnap-tech/akua/tree/main/cli">CLI reference</a> to see every verb at a glance — twenty-seven shipped, more in flight.</li><li>The <a href="https://github.com/cnap-tech/akua/blob/main/concepts/sdk">SDK</a> wraps the same surface for TypeScript / Bun / Deno consumers.</li></ul>
 
 <footer>
   <a href="/">akua.dev</a> ·

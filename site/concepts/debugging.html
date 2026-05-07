@@ -307,7 +307,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <p>Three knobs cover almost every case:</p>
 <table><thead><tr><th>knob</th><th>what it adds</th></tr></thead><tbody><tr><td><code>--log=json</code></td><td>structured stderr lines you can <code>jq</code> over</td></tr><tr><td><code>--log-level=debug</code></td><td>host + worker spans, every plugin-bridge call</td></tr><tr><td><code>RUST_LOG=...</code></td><td>full <code>EnvFilter</code> syntax, lights up transitive crates</td></tr></tbody></table>
 <h2 id="sources-of-truth">Sources of truth</h2>
-<ul><li><strong>CLI contract §9</strong> — <a href="cli-contract.md#9-logging">docs/cli-contract.md</a> — flag semantics, JSON line shape, target taxonomy.</li><li><strong>CLI contract §9.1</strong> — OpenTelemetry env-var surface.</li><li><strong><code>crates/akua-cli/src/observability.rs</code></strong> — host-side subscriber wiring.</li><li><strong><code>crates/akua-render-worker/src/observability.rs</code></strong> — worker-side subscriber.</li></ul>
+<ul><li><strong>CLI contract §9</strong> — <a href="/concepts/cli-contract#9-logging">docs/cli-contract.md</a> — flag semantics, JSON line shape, target taxonomy.</li><li><strong>CLI contract §9.1</strong> — OpenTelemetry env-var surface.</li><li><strong><code>crates/akua-cli/src/observability.rs</code></strong> — host-side subscriber wiring.</li><li><strong><code>crates/akua-render-worker/src/observability.rs</code></strong> — worker-side subscriber.</li></ul>
 <h2 id="what-youll-see">What you'll see</h2>
 <p>Successful render at <code>--log-level=debug</code>:</p>
 <pre><code class="lang-json">{&quot;level&quot;:&quot;DEBUG&quot;,&quot;fields&quot;:{&quot;message&quot;:&quot;worker.invoke.start&quot;},&quot;target&quot;:&quot;akua&quot;,&quot;span&quot;:{...,&quot;name&quot;:&quot;worker.invoke&quot;}}
@@ -350,7 +350,7 @@ cargo run -q -p akua-cli -- render \
 <pre><code class="lang-sh">task build:render-worker</code></pre>
 <p>Worker-side changes that need this:</p>
 <ul><li>Edits under <code>crates/akua-render-worker/</code></li><li>Edits under <code>crates/akua-core/</code> (the worker depends on it)</li><li>Edits to bundled stdlib files under <code>crates/akua-core/stdlib/akua/*.k</code> (they're <code>include_str!</code>-embedded at compile time)</li><li>Edits to <code>crates/akua-core/src/pkg_stub.rs</code> (the schema extractor for synthesized <code>pkgs.&lt;alias&gt;</code> stubs)</li></ul>
-<h2 id="adding-new-spans-events">Adding new spans + events</h2>
+<h2 id="adding-new-spans--events">Adding new spans + events</h2>
 <p>Convention used elsewhere in the codebase:</p>
 <ul><li>Top-level verb work: <code>tracing::info_span!(target: &quot;akua&quot;, &quot;verb.&lt;name&gt;&quot;, …)</code>.</li><li>Plugin / engine boundary: <code>tracing::debug!(target: &quot;akua::bridge&quot;, &quot;&lt;event&gt;&quot;, …)</code>.</li><li>Worker-internal: <code>target: &quot;akua::worker&quot;</code>. The host's stderr-replay path forwards them under the live <code>worker.invoke</code> span.</li></ul>
 <p>Field hygiene:</p>

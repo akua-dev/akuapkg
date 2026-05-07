@@ -309,14 +309,23 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 npm install @akua-dev/sdk</code></pre>
 <p>Published to <a href="https://www.npmjs.com/package/@akua-dev/sdk">npm</a>. ESM-only. Node 20+ or any modern browser.</p>
 <hr />
+<blockquote><strong>Status (pre-alpha).</strong> This page describes the SDK's eventual shape. What's actually shipped today is the lower-level surface in the <a href="#shipped-api">Shipped API</a> section below — fourteen verbs, all dispatched through the bundled native addon. The higher-level <code>Akua.package.<em></code> / <code>Akua.deploy.</em></code> / <code>Akua.secret.<em></code> / <code>Akua.policy.</em></code> / <code>Akua.audit.*</code> namespaces further down are design sketches for later versions and are NOT importable yet.</blockquote>
 <h2 id="single-entry-point">Single entry point</h2>
 <pre><code class="lang-ts">import { Akua } from '@akua-dev/sdk';</code></pre>
-<p>One import path for every runtime. The shipped artifact ships both a Node-loadable wasm bundle (via wasm-pack <code>--target nodejs</code>) and, once browser support lands, a browser-loadable bundle — the right one is picked automatically through <code>package.json</code> conditional exports (<code>&quot;node&quot;</code> / <code>&quot;browser&quot;</code> / <code>&quot;default&quot;</code>). Callers don't choose; the runtime does.</p>
-<p>Verbs split into two transport tiers. Pure-compute verbs run in-process via the bundled <code>akua-wasm</code> module — <strong>no <code>akua</code> binary required</strong>. Verbs that need network / OCI registry / cryptographic signing shell out to the CLI.</p>
-<p>Workspace-vendor verbs (<code>vendorAdd</code>, <code>vendorCheck</code>, <code>vendorList</code>) use the native addon path so they can read and mutate the workspace filesystem without spawning the CLI binary.</p>
-<h3 id="transport-table-v010">Transport table (v0.1.0)</h3>
-<table><thead><tr><th>Verb</th><th>Transport</th><th>Binary required?</th></tr></thead><tbody><tr><td><code>renderSource</code></td><td>WASM</td><td>no</td></tr><tr><td><code>check</code></td><td>WASM</td><td>no</td></tr><tr><td><code>lint</code></td><td>WASM</td><td>no</td></tr><tr><td><code>fmt</code></td><td>WASM</td><td>no</td></tr><tr><td><code>inspect</code> (package mode)</td><td>WASM</td><td>no</td></tr><tr><td><code>inspect</code> (tarball mode)</td><td>—</td><td>deferred to v0.2.0</td></tr><tr><td><code>tree</code></td><td>WASM</td><td>no</td></tr><tr><td><code>diff</code></td><td>WASM</td><td>no</td></tr><tr><td><code>render</code> (on-disk)</td><td>shell-out</td><td>yes</td></tr><tr><td><code>verify</code></td><td>shell-out</td><td>yes (cosign WASM deferred to v0.2.0)</td></tr><tr><td><code>version</code>, <code>whoami</code></td><td>shell-out</td><td>yes (describe the CLI binary)</td></tr><tr><td><code>add</code>, <code>publish</code>, <code>pull</code>, <code>push</code>, <code>pack</code>, <code>sign</code>, <code>lock</code>, <code>update</code>, <code>cache</code>, <code>auth</code>, <code>dev</code>, <code>repl</code></td><td>shell-out</td><td>yes (network / OCI / OS)</td></tr><tr><td><code>vendorAdd</code>, <code>vendorCheck</code>, <code>vendorList</code></td><td>native addon</td><td>no</td></tr></tbody></table>
-<p>See <a href="/concepts/security-model">security-model.md</a> for the sandbox-layers table and <a href="https://github.com/cnap-tech/akua/blob/main/docs/spikes/engines-on-wasm32-unknown-unknown.md">spikes/engines-on-wasm32-unknown-unknown.md</a> for why engine-using verbs + verify stay shell-out in v0.1.0.</p>
+<p>One import path. The package ships Node-only (<code>engines.node &gt;= 22</code>) and depends on <code>@akua-dev/native</code>, the per-platform NAPI addon published as <code>@akua-dev/native-{darwin,linux,win32}-{x64,arm64}-*</code> — the right one is picked at install time via npm <code>optionalDependencies</code>. The addon embeds the helm + kustomize WebAssembly engines plus the akua render-worker, so calling <code>render</code> from Node never spawns an <code>akua</code> binary and never reaches the network for engine code.</p>
+<h3 id="transport-v0x">Transport (v0.x)</h3>
+<p>Every verb dispatches through the native addon. No shell-out, no separate WASM path:</p>
+<pre><code>Akua.&lt;verb&gt;()  →  callNapi(...)  →  @akua-dev/native (NAPI)
+                                         │
+                                         ├─ akua-render-worker.wasm  (KCL render)
+                                         ├─ helm-engine.wasm         (helm.template)
+                                         └─ kustomize-engine.wasm    (kustomize.build)</code></pre>
+<p>A previous design split verbs across <code>akua-wasm</code> (browser-loadable) and shell-out paths; both were dropped. The wasm-pack wrapper baked <code>__dirname</code> as a build-time absolute path that broke at runtime, and shell-out demanded an <code>akua</code> binary on <code>$PATH</code> that the SDK couldn't guarantee. NAPI-only is the simplest deployment that works on every supported runtime; if browser support comes back later it'll ship as a separate <code>@akua-dev/sdk-wasm</code> package, not as a side channel here.</p>
+<h3 id="shipped-api">Shipped API</h3>
+<p>Fourteen verbs available on <code>new Akua()</code>:</p>
+<table><thead><tr><th>Method</th><th>Returns</th><th>Notes</th></tr></thead><tbody><tr><td><code>version()</code></td><td><code>VersionOutput</code></td><td>SDK + native addon version triple.</td></tr><tr><td><code>whoami()</code></td><td><code>WhoamiOutput</code></td><td>Mirrors <code>akua whoami</code>.</td></tr><tr><td><code>renderSource(opts)</code></td><td><code>string</code></td><td>Render a Package from in-memory KCL source — no filesystem write.</td></tr><tr><td><code>render(opts)</code></td><td><code>RenderSummary</code></td><td>Render an on-disk Package; writes to <code>out</code>.</td></tr><tr><td><code>check(opts)</code></td><td><code>CheckOutput</code></td><td>Type / dep / lockfile check.</td></tr><tr><td><code>lint(opts)</code></td><td><code>LintOutput</code></td><td>Regal + KCL lint.</td></tr><tr><td><code>fmt(opts)</code></td><td><code>FmtOutput</code></td><td>Formatter pass over .k files.</td></tr><tr><td><code>inspect(opts)</code></td><td><code>InspectOutput</code></td><td>Package metadata; tarball mode deferred.</td></tr><tr><td><code>tree(opts)</code></td><td><code>TreeOutput</code></td><td>Resolved dep tree.</td></tr><tr><td><code>diff(before, after)</code></td><td><code>DirDiff</code></td><td>Two on-disk directories, file-by-file.</td></tr><tr><td><code>export(opts)</code></td><td><code>Record&lt;string, unknown&gt;</code></td><td>Export a Package's emitted resources as a typed view.</td></tr><tr><td><code>vendorAdd(name, opts)</code></td><td><code>VendorAddOutput</code></td><td>Materialize a dep into <code>.akua/vendor/&lt;name&gt;/</code>.</td></tr><tr><td><code>vendorCheck(opts)</code></td><td><code>VendorCheckOutput</code></td><td>Drift-check the vendor tree against <code>akua.toml</code>.</td></tr><tr><td><code>vendorList(opts)</code></td><td><code>VendorListOutput</code></td><td>Inventory <code>.akua/vendor/</code>, including orphans.</td></tr><tr><td><code>verify(opts)</code></td><td><code>VerifyOutput</code></td><td>Lockfile + cosign verification.</td></tr></tbody></table>
+<p>Verbs that need network or OCI registry access (<code>add</code>, <code>publish</code>, <code>pull</code>, <code>push</code>, <code>pack</code>, <code>sign</code>, <code>lock</code>, <code>update</code>, <code>cache</code>, <code>auth</code>, <code>dev</code>, <code>repl</code>, <code>init</code>, …) are CLI-only for now — the SDK doesn't spawn the binary. Run them via <code>akua</code> directly until they get NAPI bindings.</p>
+<p>See <a href="/concepts/security-model">security-model.md</a> for the sandbox-layers table.</p>
 <hr />
 <h2 id="design-principles">Design principles</h2>
 <ol><li><strong>One class per primitive.</strong> <code>Akua</code> is the root; everything hangs off it.</li><li><strong>Async everywhere.</strong> Every operation returns a Promise. No sync I/O.</li><li><strong>Typed end-to-end.</strong> Full TypeScript types for every input and output.</li><li><strong>Thin wrapper, not a framework.</strong> The SDK runs the same Rust core via WASM for pure-KCL verbs and shells out to the <code>akua</code> binary for verbs that need filesystem state the bundle doesn't hold. It doesn't reimplement either side.</li><li><strong>Results mirror <code>--json</code> output.</strong> If you know the CLI, you know the SDK's return shapes.</li><li><strong>Idempotent writes.</strong> Every write method accepts <code>idempotencyKey</code>; if omitted, one is generated.</li><li><strong>Streaming where the CLI streams.</strong> <code>dev()</code> and long-running operations return AsyncIterables.</li></ol>
@@ -349,7 +358,7 @@ console.log(pub.digest);
 const handle = await akua.deploy({ app: 'checkout', to: 'argo' });
 const status = await handle.waitReady({ timeout: '5m' });</code></pre>
 <hr />
-<h2 id="root-akua">Root — <code>Akua</code></h2>
+<h2 id="root--akua">Root — <code>Akua</code></h2>
 <pre><code class="lang-ts">class Akua {
   constructor(opts?: AkuaOptions);
 
@@ -410,10 +419,10 @@ const status = await handle.waitReady({ timeout: '5m' });</code></pre>
   engine?: 'auto' | 'embedded';  // engine selection default
   signal?: AbortSignal;        // cancel long-running ops
 }</code></pre>
-<h3 id="universal-option-engine">Universal option — <code>engine</code></h3>
-<p>Methods that invoke an engine (render, test, lint, bench, policy.check, etc.) accept an <code>engine?: 'auto' | 'embedded'</code> override — today <code>auto</code> and <code>embedded</code> behave identically because akua only ships embedded engines. The field exists for forward-compatibility; future engines that admit a separate fast-path implementation (e.g. a native-code CEL interpreter alongside the WASM build) will read the option. No shell-out path is exposed by the SDK — see <a href="https://github.com/cnap-tech/akua/blob/main/docs/CLAUDE.md">CLAUDE.md</a>'s &quot;No shell-out, ever&quot; invariant and <a href="/concepts/embedded-engines">embedded-engines.md</a>.</p>
-<h3 id="universal-option-idempotencykey">Universal option — <code>idempotencyKey</code></h3>
-<p>Write methods (<code>publish</code>, <code>deploy.apply</code>, <code>secret.rotate</code>, etc.) accept <code>idempotencyKey?: string</code>. If the same key is presented twice, the second call is a no-op that returns the original result. See <a href="cli-contract.md#3-writes-are-idempotent">cli-contract.md §3</a>.</p>
+<h3 id="universal-option--engine">Universal option — <code>engine</code></h3>
+<p>Methods that invoke an engine (render, test, lint, bench, policy.check, etc.) accept an <code>engine?: 'auto' | 'embedded'</code> override — today <code>auto</code> and <code>embedded</code> behave identically because akua only ships embedded engines. The field exists for forward-compatibility; future engines that admit a separate fast-path implementation (e.g. a native-code CEL interpreter alongside the WASM build) will read the option. No shell-out path is exposed by the SDK — see <a href="https://github.com/cnap-tech/akua/blob/main/CLAUDE.md">CLAUDE.md</a>'s &quot;No shell-out, ever&quot; invariant and <a href="/concepts/embedded-engines">embedded-engines.md</a>.</p>
+<h3 id="universal-option--idempotencykey">Universal option — <code>idempotencyKey</code></h3>
+<p>Write methods (<code>publish</code>, <code>deploy.apply</code>, <code>secret.rotate</code>, etc.) accept <code>idempotencyKey?: string</code>. If the same key is presented twice, the second call is a no-op that returns the original result. See <a href="/concepts/cli-contract#3-writes-are-idempotent">cli-contract.md §3</a>.</p>
 <hr />
 <h2 id="package-api">Package API</h2>
 <pre><code class="lang-ts">interface PackageAPI {
@@ -949,7 +958,7 @@ interface VerifyResult {
     details: string;
   }&gt;;
 }</code></pre>
-<h2 id="identity-agent-context">Identity — agent context</h2>
+<h2 id="identity--agent-context">Identity — agent context</h2>
 <p><code>whoami()</code> returns the current identity including any detected agent context:</p>
 <pre><code class="lang-ts">interface Identity {
   identity: string;
@@ -961,7 +970,7 @@ interface VerifyResult {
     sourceEnv?: string;         // the env var that triggered detection
   };
 }</code></pre>
-<p>When an agent runs <code>akua whoami --json</code>, the <code>agentContext</code> field is populated from the env-var-based auto-detection (see <a href="cli-contract.md#15-agent-context-auto-detection">cli-contract.md §1.5</a>). Useful for agents verifying they're operating inside the expected runtime.</p>
+<p>When an agent runs <code>akua whoami --json</code>, the <code>agentContext</code> field is populated from the env-var-based auto-detection (see <a href="/concepts/cli-contract#15-agent-context-auto-detection">cli-contract.md §1.5</a>). Useful for agents verifying they're operating inside the expected runtime.</p>
 <h2 id="error-handling">Error handling</h2>
 <p>Every SDK method throws a typed <code>AkuaError</code> on failure:</p>
 <pre><code class="lang-ts">class AkuaError extends Error {
@@ -991,7 +1000,7 @@ interface VerifyResult {
 }</code></pre>
 <hr />
 <h2 id="browser">Browser</h2>
-<p>Same <code>Akua</code> class, same single <code>@akua-dev/sdk</code> import. When the browser build + engine bundling (see <a href="roadmap.md#phase-4b--akua-wasm-for-jsr-delivery-blocks-v010">docs/roadmap.md § Phase 4B</a>) land, the <code>&quot;browser&quot;</code> conditional export resolves to a bundler-target WASM build that loads the Rust core once, lazily, and runs render / diff / verify / inspect entirely in-page. No CLI shell-out — <code>execFile</code> isn't available in the browser, and SDK methods that would need it throw <code>E_WRITE_UNSUPPORTED_IN_BROWSER</code>.</p>
+<p>Same <code>Akua</code> class, same single <code>@akua-dev/sdk</code> import. When the browser build + engine bundling (see <a href="https://github.com/cnap-tech/akua/blob/main/docs/roadmap.md#phase-4b--akua-wasm-for-jsr-delivery-blocks-v010">docs/roadmap.md § Phase 4B</a>) land, the <code>&quot;browser&quot;</code> conditional export resolves to a bundler-target WASM build that loads the Rust core once, lazily, and runs render / diff / verify / inspect entirely in-page. No CLI shell-out — <code>execFile</code> isn't available in the browser, and SDK methods that would need it throw <code>E_WRITE_UNSUPPORTED_IN_BROWSER</code>.</p>
 <p>Expected availability in-browser once shipped:</p>
 <ul><li><code>akua.inspect</code>, <code>akua.diff</code>, <code>akua.renderSource</code>, <code>akua.render</code> (public OCI/HTTP sources only — CORS permitting), <code>akua.verify</code>, <code>akua.help</code></li></ul>
 <p>Expected to throw in-browser (no filesystem, no credential store, no cluster access):</p>

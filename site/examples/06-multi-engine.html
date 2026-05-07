@@ -344,7 +344,7 @@ akua render --inputs inputs.yaml --out ./deploy</code></pre>
 ├── 005-networkpolicy-webapp.yaml       # from inline KCL
 └── 006-resourcegraphdefinition-glue.yaml  # from kro.rgd — kro reconciles it</code></pre>
 <h2 id="see-also">See also</h2>
-<ul><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/../docs/package-format.md">package-format.md</a> — the Package spec</li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/../docs/embedded-engines.md">embedded-engines.md</a> — which engines are embedded; escape-hatch via <code>--engine=shell</code></li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/../docs/architecture.md">architecture.md#what-akua-is-not</a> — why we compose reconcilers instead of replacing them</li></ul>
+<ul><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/package-format.md">package-format.md</a> — the Package spec</li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/embedded-engines.md">embedded-engines.md</a> — which engines are embedded; escape-hatch via <code>--engine=shell</code></li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/architecture.md">architecture.md#what-akua-is-not</a> — why we compose reconcilers instead of replacing them</li></ul>
 <h2>package.k</h2><pre><code class="lang-kcl"># Example 06 — multi-engine
 #
 # One Package, four sources, one render output (raw YAML):

@@ -301,7 +301,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
   <h1>Security model</h1>
   <p class="tagline">Wasmtime sandbox, capability-model preopens, replace-rejection in production, and the cosign + SLSA chain.</p>
 </header>
-<p>akua is a <strong>sandboxed-by-default</strong> render substrate. Every render runs inside a wasmtime WASI sandbox with memory / CPU / wall-clock caps and capability-model filesystem preopens. The invariant lives in <a href="https://github.com/cnap-tech/akua/blob/main/docs/CLAUDE.md">CLAUDE.md</a>; this document records what that actually means, what's guaranteed, and what's not.</p>
+<p>akua is a <strong>sandboxed-by-default</strong> render substrate. Every render runs inside a wasmtime WASI sandbox with memory / CPU / wall-clock caps and capability-model filesystem preopens. The invariant lives in <a href="https://github.com/cnap-tech/akua/blob/main/CLAUDE.md">CLAUDE.md</a>; this document records what that actually means, what's guaranteed, and what's not.</p>
 <hr />
 <h2 id="threat-model">Threat model</h2>
 <p><strong>Who is the adversary?</strong> The Package itself — author of the KCL program + the charts, overlays, policies it depends on.</p>
@@ -314,7 +314,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <h2 id="execution-model">Execution model</h2>
 <p><strong>The render path runs in a wasmtime WASI sandbox.</strong> Concretely:</p>
 <ul><li><strong><code>akua-render-worker</code></strong> — akua's render pipeline compiled to <code>wasm32-wasip1</code>, AOT-compiled to <code>.cwasm</code> at akua's build time.</li><li><strong>wasmtime host</strong> — akua's native binary loads the <code>.cwasm</code> once per process and instantiates per-render.</li><li><strong>Per-render <code>Store</code></strong> — fresh <code>WasiCtx</code> with the tenant's preopens, fresh <code>StoreLimits</code> with a hard memory cap, fresh epoch deadline. Dropped on render completion.</li></ul>
-<h3 id="one-engine-many-stores-with-a-plugin-bridge">One Engine, many Stores — with a plugin bridge</h3>
+<h3 id="one-engine-many-stores--with-a-plugin-bridge">One Engine, many Stores — with a plugin bridge</h3>
 <p>akua follows wasmtime's documented pattern: <strong>one process-global <code>Engine</code>, one <code>Linker</code> of host imports, many per-invocation <code>Store</code>s</strong>. The render worker and every engine plugin (helm, kustomize, future kro/CEL) share the same Engine so that:</p>
 <ul><li>JIT-compiled code is compiled once and reused across all Stores.</li><li>Type interning, compat-hash checks, and trap dispatch live in one place — no duplication, no inter-Engine TLS races.</li><li>Per-invocation isolation still holds: each render gets its own <code>Store</code>, and plugin calls execute in their own separate <code>Store</code> too.</li></ul>
 <p>When a Package calls <code>helm.template(...)</code> or <code>kustomize.build(...)</code> from inside the render worker:</p>
@@ -348,7 +348,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <p>The alternative — keep shell-out with lots of warnings — would ship a sandbox that has a hole in it. That's worse than shipping no sandbox; users would assume protection that doesn't exist.</p>
 <hr />
 <h2 id="related-docs">Related docs</h2>
-<ul><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/CLAUDE.md">CLAUDE.md — invariants</a> — the &quot;Sandboxed by default. No shell-out, ever.&quot; rule</li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/roadmap.md">docs/roadmap.md</a> — phased plan to the end-state</li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/performance.md">docs/performance.md</a> — benchmarks demonstrating WASM viability</li><li><a href="/concepts/embedded-engines">docs/embedded-engines.md</a> — what ships inside the akua binary</li></ul>
+<ul><li><a href="https://github.com/cnap-tech/akua/blob/main/CLAUDE.md">CLAUDE.md — invariants</a> — the &quot;Sandboxed by default. No shell-out, ever.&quot; rule</li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/roadmap.md">docs/roadmap.md</a> — phased plan to the end-state</li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/performance.md">docs/performance.md</a> — benchmarks demonstrating WASM viability</li><li><a href="/concepts/embedded-engines">docs/embedded-engines.md</a> — what ships inside the akua binary</li></ul>
 
 <footer>
   <a href="/">akua.dev</a> ·

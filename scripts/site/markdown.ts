@@ -10,40 +10,118 @@ import { escape } from './layout.ts';
 
 /** Github-blob base for rewriting `../foo.md` links found in `docs/`. */
 const GITHUB_BLOB = 'https://github.com/cnap-tech/akua/blob/main';
+const GITHUB_TREE = 'https://github.com/cnap-tech/akua/tree/main';
 
 /**
- * Rewrite relative markdown links to absolute GitHub URLs. Source
- * markdown lives under `docs/` where `../foo.md` resolves correctly,
- * but the published site doesn't serve `docs/` so those links would
- * 404 without rewriting.
+ * Rewrite source-tree links to URLs that resolve on the deployed
+ * site. Source markdown lives under `docs/` / `examples/` / `skills/`
+ * where relative paths resolve correctly inside the repo, but the
+ * published site only mirrors a subset of those trees onto routes
+ * like `/concepts/<slug>` and `/examples/<slug>`. Without rewriting
+ * those links would 404.
  *
- * Override `siteResolve` to redirect specific docs links into the
- * deployed-site equivalent (e.g. `package-format.md` → `/concepts/package-format`).
+ * The renderer doesn't know the site layout itself; callers wire the
+ * mappings via this options bag.
  */
 export interface LinkResolverOpts {
+	/** Repo-relative path of the markdown source being rendered (e.g.
+	 *  `docs/cli-contract.md`, `examples/01-hello-webapp/README.md`).
+	 *  Used to resolve `../foo` style relative links to a repo path. */
+	sourceMd?: string;
 	/** Map a `<name>.md` (without the `.md`) to a site URL, or return
 	 *  null to fall back to the GitHub blob URL. */
 	siteResolve?: (mdName: string) => string | null;
+	/** Map a repo-relative non-md path (e.g. `examples/01-hello-webapp/`,
+	 *  `skills/new-package/`) to a site URL. Return null to fall back
+	 *  to the GitHub tree/blob URL. */
+	repoResolve?: (repoPath: string) => string | null;
+	/** Rewrite a bare in-page anchor (e.g. `#akua-render`) to a
+	 *  full URL — used when the source markdown is one big doc that
+	 *  the renderer split into per-page files. Return null to leave
+	 *  the anchor untouched. */
+	anchorResolve?: (anchor: string) => string | null;
+}
+
+/** Normalize a repo-relative path: collapse `./` and `..` segments. */
+function normalizeRepoPath(p: string): string | null {
+	const parts: string[] = [];
+	for (const seg of p.split('/')) {
+		if (seg === '' || seg === '.') continue;
+		if (seg === '..') {
+			if (parts.length === 0) return null;
+			parts.pop();
+		} else {
+			parts.push(seg);
+		}
+	}
+	return parts.join('/') + (p.endsWith('/') && parts.length > 0 ? '/' : '');
+}
+
+/** Resolve a relative href against the source markdown's directory,
+ *  yielding a repo-rooted path. Returns null if the link escapes the
+ *  repo root (which shouldn't happen for well-formed docs). */
+function resolveAgainstSource(href: string, sourceMd: string | undefined): string | null {
+	if (!sourceMd) return null;
+	const sourceDir = sourceMd.includes('/') ? sourceMd.replace(/\/[^/]+$/, '') : '';
+	const joined = sourceDir ? `${sourceDir}/${href}` : href;
+	return normalizeRepoPath(joined);
 }
 
 export function rewriteUrl(url: string, opts: LinkResolverOpts = {}): string {
-	const mdMatch = url.match(/^(?:\.\.\/|\.\/|\/?docs\/)?(.+)\.md$/);
-	if (mdMatch && !url.startsWith('http') && !url.startsWith('#')) {
+	if (url.startsWith('http') || url.startsWith('mailto:') || url.startsWith('tel:')) return url;
+
+	// Bare in-page anchor.
+	if (url.startsWith('#')) {
+		if (opts.anchorResolve) {
+			const resolved = opts.anchorResolve(url.slice(1));
+			if (resolved) return resolved;
+		}
+		return url;
+	}
+
+	// Split off any fragment / query so path matching works on the
+	// bare path.
+	const hashIdx = url.indexOf('#');
+	const queryIdx = url.indexOf('?');
+	const cutAt = [hashIdx, queryIdx].filter((i) => i >= 0).sort((a, b) => a - b)[0];
+	const path = cutAt !== undefined ? url.slice(0, cutAt) : url;
+	const suffix = cutAt !== undefined ? url.slice(cutAt) : '';
+
+	// Resolve to a repo-rooted path. Absolute `/x` is treated as
+	// already repo-rooted; relative paths resolve against sourceMd's
+	// directory.
+	let repoPath: string | null;
+	if (path.startsWith('/')) {
+		repoPath = normalizeRepoPath(path.slice(1));
+	} else {
+		repoPath = resolveAgainstSource(path, opts.sourceMd);
+	}
+
+	// `.md` link — defer to siteResolve, fall back to GitHub blob.
+	const mdMatch = (repoPath ?? path).match(/^(?:docs\/)?(.+)\.md$/);
+	if (mdMatch) {
 		const name = mdMatch[1].replace(/^errors\//, '');
 		if (opts.siteResolve) {
 			const resolved = opts.siteResolve(name);
-			if (resolved) return resolved;
+			if (resolved) return `${resolved}${suffix}`;
 		}
-		// Fallback: link to the markdown source on GitHub.
-		const path = url.startsWith('../')
-			? `/docs/${url.slice(3)}`
-			: url.startsWith('./')
-				? `/docs/errors/${url.slice(2)}`
-				: url.startsWith('/docs/')
-					? url
-					: `/docs/${url}`;
-		return `${GITHUB_BLOB}${path}`;
+		const target = repoPath ?? `docs/${path}`;
+		return `${GITHUB_BLOB}/${target}${suffix}`;
 	}
+
+	// Non-md link inside the repo — defer to repoResolve, fall back
+	// to GitHub tree (for directories) or blob (for files).
+	if (repoPath) {
+		if (opts.repoResolve) {
+			const resolved = opts.repoResolve(repoPath);
+			if (resolved) return `${resolved}${suffix}`;
+		}
+		// Heuristic: trailing slash → directory → tree URL.
+		const base = path.endsWith('/') ? GITHUB_TREE : GITHUB_BLOB;
+		const cleaned = repoPath.replace(/\/$/, '');
+		return `${base}/${cleaned}${suffix}`;
+	}
+
 	return url;
 }
 
@@ -109,11 +187,16 @@ export function renderMarkdown(md: string, opts: LinkResolverOpts = {}): string 
 		if (heading) {
 			const level = heading[1].length;
 			const text = heading[2].replace(/\s*\{[^}]*\}\s*$/, ''); // strip {#anchor}
+			// Slug rules match GitHub's: lowercase, strip
+			// non-[a-z0-9 -], trim, then replace each space with a
+			// single dash. Note `\s+` is wrong — it would collapse
+			// consecutive spaces into one dash, but GitHub preserves
+			// them (so `Foo — Bar` becomes `foo--bar`, not `foo-bar`).
 			const slug = text
 				.toLowerCase()
 				.replace(/[^a-z0-9 -]/g, '')
 				.trim()
-				.replace(/\s+/g, '-');
+				.replace(/ /g, '-');
 			html.push(
 				`<h${level} id="${escape(slug)}">${renderInline(text, opts)}</h${level}>`,
 			);

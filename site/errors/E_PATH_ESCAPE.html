@@ -313,7 +313,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
   <h1>E_PATH_ESCAPE</h1>
 </header>
 <p class="section-tag">Render</p>
-<h1 id="epathescape-plugin-path-escapes-the-package-directory"><code>E_PATH_ESCAPE</code> — plugin path escapes the Package directory</h1>
+<h1 id="epathescape--plugin-path-escapes-the-package-directory"><code>E_PATH_ESCAPE</code> — plugin path escapes the Package directory</h1>
 <h2 id="what-happened">What happened</h2>
 <p>A KCL plugin (<code>helm.template</code>, <code>kustomize.build</code>, <code>pkg.render</code>, …) was called with a path argument that resolved to a location <strong>outside</strong> the Package's own directory. Akua's render sandbox refuses these by design: the Package directory is the only filesystem region a render can read from, and <code>..</code> traversal / symlink escape is the most common way an untrusted Package can try to break out.</p>
 <p>Typical message:</p>
@@ -321,7 +321,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 which escapes the Package directory `/private/tmp/spike1/install`</code></pre>
 <h2 id="why-akua-refuses">Why akua refuses</h2>
 <p><code>akua render</code> runs each Package inside a wasmtime sandbox with read-only filesystem preopens scoped to the Package directory. A path that resolves outside that root is — by construction — unreachable through the sandbox's capabilities. We surface the error early instead of letting it manifest as a confusing wasmtime open-file failure deeper in the render.</p>
-<p>See <a href="https://github.com/cnap-tech/akua/blob/main/docs/security-model.md"><code>docs/security-model.md</code></a> for the full threat model.</p>
+<p>See <a href="https://github.com/cnap-tech/akua/blob/main/docs/../security-model.md"><code>docs/security-model.md</code></a> for the full threat model.</p>
 <h2 id="how-to-fix-it">How to fix it</h2>
 <p>Two correct paths, in order of preference:</p>
 <h3 id="1-vendor-the-dependency-as-a-subdirectory">1. Vendor the dependency as a subdirectory</h3>
@@ -359,7 +359,7 @@ resources = upstream.resources + extras</code></pre>
 <h2 id="what-not-to-do">What NOT to do</h2>
 <ul><li><strong>Don't pass absolute paths to plugins</strong> (<code>/var/cache/...</code>). The sandbox refuses anything outside its preopened roots, even if you <code>chmod</code> your way to readability.</li><li><strong>Don't symlink your way around it.</strong> Akua canonicalizes plugin paths before the under-Package check; a <code>./link → ../upstream</code> symlink resolves the same as <code>../upstream</code> and gets rejected the same way.</li></ul>
 <h2 id="see-also">See also</h2>
-<ul><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/lockfile-format.md"><code>docs/lockfile-format.md</code></a> — <code>akua.toml</code> <code>[dependencies]</code> syntax.</li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/package-format.md"><code>docs/package-format.md</code></a> — Package authoring shape.</li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/security-model.md"><code>docs/security-model.md</code></a> — sandbox invariants.</li></ul>
+<ul><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/../lockfile-format.md"><code>docs/lockfile-format.md</code></a> — <code>akua.toml</code> <code>[dependencies]</code> syntax.</li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/../package-format.md"><code>docs/package-format.md</code></a> — Package authoring shape.</li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/../security-model.md"><code>docs/security-model.md</code></a> — sandbox invariants.</li></ul>
 
 <footer>
   <a href="/">akua.dev</a> ·

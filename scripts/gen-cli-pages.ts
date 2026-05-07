@@ -11,7 +11,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { escape, pageShell, stripTags, type SidebarSpec } from './site/layout.ts';
-import { renderMarkdown } from './site/markdown.ts';
+import { renderMarkdown, type LinkResolverOpts } from './site/markdown.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -92,15 +92,26 @@ function buildSidebar(verbs: Verb[], currentVerb: string | null): SidebarSpec {
 	};
 }
 
-function renderVerbPage(verb: Verb, sidebar: SidebarSpec): string {
+function renderVerbPage(verb: Verb, allVerbs: Set<string>, sidebar: SidebarSpec): string {
 	const status = verb.status === 'shipped' ? 'Shipped' : 'Planned';
+	const linkOpts: LinkResolverOpts = {
+		sourceMd: 'docs/cli.md',
+		// `cli.md` cross-references like `#akua-render` were anchors
+		// inside the monolithic doc; on the per-verb-page layout each
+		// verb is its own page, so they need to retarget.
+		anchorResolve: (anchor) => {
+			const m = anchor.match(/^akua-(\S+?)(?:-.*)?$/);
+			if (m && allVerbs.has(m[1])) return `/cli/${m[1]}`;
+			return null;
+		},
+	};
 	const inner = `
 <header>
   <p class="crumbs"><a href="/">akua</a> / <a href="/cli/">cli</a> / ${escape(verb.name)}</p>
   <h1>akua ${escape(verb.name)}</h1>
 </header>
 <p class="section-tag">${status}</p>
-${renderMarkdown(verb.body)}
+${renderMarkdown(verb.body, linkOpts)}
 `;
 	return pageShell({
 		title: `akua ${verb.name}`,
@@ -156,9 +167,11 @@ console.log(`parsed ${verbs.length} verbs from cli.md`);
 
 mkdirSync(outDir, { recursive: true });
 
+const allVerbs = new Set(verbs.map((v) => v.name));
+
 let written = 0;
 for (const verb of verbs) {
-	const html = renderVerbPage(verb, buildSidebar(verbs, verb.name));
+	const html = renderVerbPage(verb, allVerbs, buildSidebar(verbs, verb.name));
 	writeFileSync(join(outDir, `${verb.name}.html`), html);
 	written++;
 }

@@ -23,6 +23,7 @@ on:
       - 'scripts/install.sh'
       - 'scripts/install.ps1'
       - 'scripts/gen-*.ts'
+      - 'scripts/check-site-links.ts'
       - 'scripts/site/**'
       - 'crates/akua-core/src/cli_contract/codes.rs'
       - 'docs/**'

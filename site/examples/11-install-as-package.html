@@ -321,7 +321,7 @@ _filtered = [r for r in _patched if r.kind != &quot;PodDisruptionBudget&quot;]
 _extras = [{apiVersion = &quot;v1&quot;, kind = &quot;ConfigMap&quot;, ...}]
 
 resources = _filtered + _extras</code></pre>
-<p>The import lands a synthesized stub that owns a <code>render</code> lambda and re-exports upstream's schemas — KCL type-checks <code>upstream.Input{...}</code> at the call site (typos surface as compile errors, not as runtime worker traps). The mechanism mirrors <code>import charts.&lt;name&gt;</code> for Helm charts; see <a href="https://github.com/cnap-tech/akua/blob/main/docs/../docs/package-format.md">docs/package-format.md</a> for the full shape.</p>
+<p>The import lands a synthesized stub that owns a <code>render</code> lambda and re-exports upstream's schemas — KCL type-checks <code>upstream.Input{...}</code> at the call site (typos surface as compile errors, not as runtime worker traps). The mechanism mirrors <code>import charts.&lt;name&gt;</code> for Helm charts; see <a href="https://github.com/cnap-tech/akua/blob/main/docs/package-format.md">docs/package-format.md</a> for the full shape.</p>
 <h2>package.k</h2><pre><code class="lang-kcl">import akua.ctx
 import pkgs.upstream as upstream
 

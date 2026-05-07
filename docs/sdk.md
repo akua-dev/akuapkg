@@ -16,37 +16,80 @@ Published to [npm](https://www.npmjs.com/package/@akua-dev/sdk). ESM-only. Node 
 
 ---
 
+> **Status (pre-alpha).** This page describes the SDK's eventual shape.
+> What's actually shipped today is the lower-level surface in the
+> [Shipped API](#shipped-api) section below — fourteen verbs, all
+> dispatched through the bundled native addon. The higher-level
+> `Akua.package.*` / `Akua.deploy.*` / `Akua.secret.*` / `Akua.policy.*` /
+> `Akua.audit.*` namespaces further down are design sketches for
+> later versions and are NOT importable yet.
+
 ## Single entry point
 
 ```ts
 import { Akua } from '@akua-dev/sdk';
 ```
 
-One import path for every runtime. The shipped artifact ships both a Node-loadable wasm bundle (via wasm-pack `--target nodejs`) and, once browser support lands, a browser-loadable bundle — the right one is picked automatically through `package.json` conditional exports (`"node"` / `"browser"` / `"default"`). Callers don't choose; the runtime does.
+One import path. The package ships Node-only (`engines.node >= 22`)
+and depends on `@akua-dev/native`, the per-platform NAPI addon
+published as `@akua-dev/native-{darwin,linux,win32}-{x64,arm64}-*` —
+the right one is picked at install time via npm
+`optionalDependencies`. The addon embeds the helm + kustomize
+WebAssembly engines plus the akua render-worker, so calling `render`
+from Node never spawns an `akua` binary and never reaches the
+network for engine code.
 
-Verbs split into two transport tiers. Pure-compute verbs run in-process via the bundled `akua-wasm` module — **no `akua` binary required**. Verbs that need network / OCI registry / cryptographic signing shell out to the CLI.
+### Transport (v0.x)
 
-Workspace-vendor verbs (`vendorAdd`, `vendorCheck`, `vendorList`) use the native addon path so they can read and mutate the workspace filesystem without spawning the CLI binary.
+Every verb dispatches through the native addon. No shell-out, no
+separate WASM path:
 
-### Transport table (v0.1.0)
+```
+Akua.<verb>()  →  callNapi(...)  →  @akua-dev/native (NAPI)
+                                         │
+                                         ├─ akua-render-worker.wasm  (KCL render)
+                                         ├─ helm-engine.wasm         (helm.template)
+                                         └─ kustomize-engine.wasm    (kustomize.build)
+```
 
-| Verb | Transport | Binary required? |
+A previous design split verbs across `akua-wasm` (browser-loadable)
+and shell-out paths; both were dropped. The wasm-pack wrapper baked
+`__dirname` as a build-time absolute path that broke at runtime, and
+shell-out demanded an `akua` binary on `$PATH` that the SDK couldn't
+guarantee. NAPI-only is the simplest deployment that works on every
+supported runtime; if browser support comes back later it'll ship as
+a separate `@akua-dev/sdk-wasm` package, not as a side channel here.
+
+### Shipped API
+
+Fourteen verbs available on `new Akua()`:
+
+| Method | Returns | Notes |
 |---|---|---|
-| `renderSource` | WASM | no |
-| `check` | WASM | no |
-| `lint` | WASM | no |
-| `fmt` | WASM | no |
-| `inspect` (package mode) | WASM | no |
-| `inspect` (tarball mode) | — | deferred to v0.2.0 |
-| `tree` | WASM | no |
-| `diff` | WASM | no |
-| `render` (on-disk) | shell-out | yes |
-| `verify` | shell-out | yes (cosign WASM deferred to v0.2.0) |
-| `version`, `whoami` | shell-out | yes (describe the CLI binary) |
-| `add`, `publish`, `pull`, `push`, `pack`, `sign`, `lock`, `update`, `cache`, `auth`, `dev`, `repl` | shell-out | yes (network / OCI / OS) |
-| `vendorAdd`, `vendorCheck`, `vendorList` | native addon | no |
+| `version()` | `VersionOutput` | SDK + native addon version triple. |
+| `whoami()` | `WhoamiOutput` | Mirrors `akua whoami`. |
+| `renderSource(opts)` | `string` | Render a Package from in-memory KCL source — no filesystem write. |
+| `render(opts)` | `RenderSummary` | Render an on-disk Package; writes to `out`. |
+| `check(opts)` | `CheckOutput` | Type / dep / lockfile check. |
+| `lint(opts)` | `LintOutput` | Regal + KCL lint. |
+| `fmt(opts)` | `FmtOutput` | Formatter pass over .k files. |
+| `inspect(opts)` | `InspectOutput` | Package metadata; tarball mode deferred. |
+| `tree(opts)` | `TreeOutput` | Resolved dep tree. |
+| `diff(before, after)` | `DirDiff` | Two on-disk directories, file-by-file. |
+| `export(opts)` | `Record<string, unknown>` | Export a Package's emitted resources as a typed view. |
+| `vendorAdd(name, opts)` | `VendorAddOutput` | Materialize a dep into `.akua/vendor/<name>/`. |
+| `vendorCheck(opts)` | `VendorCheckOutput` | Drift-check the vendor tree against `akua.toml`. |
+| `vendorList(opts)` | `VendorListOutput` | Inventory `.akua/vendor/`, including orphans. |
+| `verify(opts)` | `VerifyOutput` | Lockfile + cosign verification. |
 
-See [security-model.md](security-model.md) for the sandbox-layers table and [spikes/engines-on-wasm32-unknown-unknown.md](spikes/engines-on-wasm32-unknown-unknown.md) for why engine-using verbs + verify stay shell-out in v0.1.0.
+Verbs that need network or OCI registry access (`add`, `publish`,
+`pull`, `push`, `pack`, `sign`, `lock`, `update`, `cache`, `auth`,
+`dev`, `repl`, `init`, …) are CLI-only for now — the SDK doesn't
+spawn the binary. Run them via `akua` directly until they get NAPI
+bindings.
+
+See [security-model.md](security-model.md) for the sandbox-layers
+table.
 
 ---
 

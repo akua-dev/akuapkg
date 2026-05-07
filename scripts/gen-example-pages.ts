@@ -8,7 +8,7 @@ import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSy
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { escape, pageShell, stripTags, type SidebarSpec } from './site/layout.ts';
-import { renderMarkdown } from './site/markdown.ts';
+import { renderMarkdown, type LinkResolverOpts } from './site/markdown.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -75,9 +75,18 @@ function buildSidebar(examples: Example[], currentSlug: string | null): SidebarS
 	};
 }
 
-function renderExamplePage(example: Example, sidebar: SidebarSpec): string {
+function renderExamplePage(example: Example, allSlugs: Set<string>, sidebar: SidebarSpec): string {
 	const stripped = example.readmeMd.replace(/^#\s+.+\n+/, '').trim();
-	const readmeHtml = renderMarkdown(stripped);
+	const linkOpts: LinkResolverOpts = {
+		sourceMd: `examples/${example.slug}/README.md`,
+		repoResolve: (repoPath) => {
+			// Sibling-example link `../<slug>/` → `/examples/<slug>`.
+			const m = repoPath.match(/^examples\/([^/]+)\/?$/);
+			if (m && allSlugs.has(m[1])) return `/examples/${m[1]}`;
+			return null;
+		},
+	};
+	const readmeHtml = renderMarkdown(stripped, linkOpts);
 
 	const packageKBlock = example.packageK
 		? `<h2>package.k</h2><pre><code class="lang-kcl">${escape(example.packageK)}</code></pre>`
@@ -152,9 +161,11 @@ console.log(`loaded ${examples.length} examples from examples/`);
 
 mkdirSync(outDir, { recursive: true });
 
+const allSlugs = new Set(examples.map((e) => e.slug));
+
 let written = 0;
 for (const example of examples) {
-	const html = renderExamplePage(example, buildSidebar(examples, example.slug));
+	const html = renderExamplePage(example, allSlugs, buildSidebar(examples, example.slug));
 	writeFileSync(join(outDir, `${example.slug}.html`), html);
 	written++;
 }
