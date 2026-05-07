@@ -161,11 +161,11 @@ impl VendorError {
             }
             #[cfg(feature = "oci-fetch")]
             VendorError::OciFetch { .. } => {
-                StructuredError::new(codes::E_CHART_RESOLVE, self.to_string()).with_default_docs()
+                StructuredError::new(codes::E_DEP_RESOLVE, self.to_string()).with_default_docs()
             }
             #[cfg(feature = "git-fetch")]
             VendorError::GitFetch { .. } => {
-                StructuredError::new(codes::E_CHART_RESOLVE, self.to_string()).with_default_docs()
+                StructuredError::new(codes::E_DEP_RESOLVE, self.to_string()).with_default_docs()
             }
             VendorError::Drift { .. } => {
                 StructuredError::new(codes::E_VENDOR_DRIFT, self.to_string()).with_default_docs()

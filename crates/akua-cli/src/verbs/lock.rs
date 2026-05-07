@@ -90,7 +90,7 @@ impl LockError {
                 StructuredError::new(codes::E_LOCK_PARSE, e.to_string()).with_default_docs()
             }
             LockError::Resolve(e) => {
-                StructuredError::new(codes::E_CHART_RESOLVE, e.to_string()).with_default_docs()
+                StructuredError::new(codes::E_DEP_RESOLVE, e.to_string()).with_default_docs()
             }
             LockError::Drift => {
                 StructuredError::new(codes::E_LOCK_DRIFT, self.to_string()).with_default_docs()

@@ -31,6 +31,10 @@ surface and updates the shipped verb counts accordingly.
 
 - Shipped verb counts in the CLI reference, architecture overview, and
   roadmap were bumped from 26 to 27.
+- `E_CHART_RESOLVE` renamed to `E_DEP_RESOLVE`. The code is emitted by
+  `add` / `update` / `render` / `lock` / `vendor` for any dep-resolution
+  failure (path / oci / git / vendor) — not only Helm charts. Pre-alpha
+  rename; consumers grepping for the old code should update.
 
 ## [0.8.6] — 2026-05-05
 
@@ -167,7 +171,7 @@ Two-headline release. Critical SDK bug fix + main-CI green again.
 - **CI on main — two pre-existing failures cleared.**
   - `lock_rejects_helm_dep_referenced_via_import` was written before
     the path-escape guard landed; its `path = "../nginx-chart"` now
-    correctly trips `E_CHART_RESOLVE` before the kind-mismatch check.
+    correctly trips `E_DEP_RESOLVE` before the kind-mismatch check.
     Test relocated so the chart sits inside the install workspace.
   - `crates/helm-engine-wasm/fork/apply.sh` exited 128 in CI when
     `actions/cache` restored a partial `.git` directory, then exited

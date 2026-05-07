@@ -59,9 +59,11 @@ pub const E_RENDER_BUDGET_DEPTH: &str = "E_RENDER_BUDGET_DEPTH";
 /// outer caller installed for the render had already expired.
 pub const E_RENDER_BUDGET_DEADLINE: &str = "E_RENDER_BUDGET_DEADLINE";
 
-/// `charts.*` dep in `akua.toml` failed to resolve (missing path,
-/// not-a-directory, OCI/git Phase-2b gate). See chart_resolver.
-pub const E_CHART_RESOLVE: &str = "E_CHART_RESOLVE";
+/// A dep in `akua.toml` failed to resolve (missing path, not-a-directory,
+/// OCI/git fetch failure, lockfile mismatch). Covers all dep kinds —
+/// path / oci / git / vendor — not chart-specific. See chart_resolver
+/// and vendor.
+pub const E_DEP_RESOLVE: &str = "E_DEP_RESOLVE";
 /// `akua render --strict`: a plugin was handed a raw-string chart
 /// path instead of a typed `charts.*` import. Surfaces the Package
 /// authoring site that needs to migrate.

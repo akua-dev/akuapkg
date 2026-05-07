@@ -77,7 +77,7 @@ impl UpdateError {
                 StructuredError::new(codes::E_LOCK_PARSE, e.to_string()).with_default_docs()
             }
             UpdateError::Resolve(e) => {
-                StructuredError::new(codes::E_CHART_RESOLVE, e.to_string()).with_default_docs()
+                StructuredError::new(codes::E_DEP_RESOLVE, e.to_string()).with_default_docs()
             }
             UpdateError::UnknownDep { .. } => {
                 StructuredError::new(codes::E_ADD_INVALID_DEP, self.to_string()).with_default_docs()
