@@ -17,15 +17,24 @@ minor bump in the SDK.
 
 Workspace-vendor surfacing: the CLI now exposes `akua vendor add`,
 `akua vendor check`, and `akua vendor list`; the SDK mirrors those
-entry points. This release is documentation-forward from a user point
-of view — it turns the existing vendoring path into a first-class
-surface and updates the shipped verb counts accordingly.
+entry points. This release turns the existing vendoring path into a
+first-class surface, makes vendor-first lookup universal across dep
+kinds, and tightens lockfile metadata semantics.
 
 ### Added
 
 - `akua vendor` with `add`, `check`, and `list` subcommands.
 - `@akua-dev/sdk` vendor methods: `vendorAdd`, `vendorCheck`, and
   `vendorList`.
+- `vendor add` now writes a `LockedPackage` pin into `akua.lock`
+  alongside materializing the tree, so `vendor check` and `akua verify`
+  have a stable digest to compare against — required for the offline-
+  render contract once the canonical source is GC'd.
+- `examples/12-vendor-offline/` — end-to-end demonstration of the
+  offline-render contract: `.akua/vendor/upstream/` + `akua.lock` are
+  committed, the canonical `upstream-chart/` source is intentionally
+  absent, and render still succeeds. Wired into the workspace with
+  `examples_vendor_offline.rs` integration test.
 
 ### Changed
 
@@ -35,6 +44,34 @@ surface and updates the shipped verb counts accordingly.
   `add` / `update` / `render` / `lock` / `vendor` for any dep-resolution
   failure (path / oci / git / vendor) — not only Helm charts. Pre-alpha
   rename; consumers grepping for the old code should update.
+- Vendor-first resolver lookup is now universal across dep kinds. The
+  resolver previously only checked `.akua/vendor/<name>/` for OCI and
+  git deps; path deps fell straight through to the canonical source.
+  After this release, `.akua/vendor/<name>/` wins for `path` deps too
+  — making `vendor add` semantics symmetric across all three kinds and
+  unblocking install-pipeline patterns that GC the canonical source
+  after vendoring.
+- Bytes-tied lockfile metadata (cosign signature, SLSA attestation,
+  transitive dependency list, `yanked`, Kyverno-converter fields) now
+  drops when the digest changes during a lockfile upsert. Preserving
+  these across a digest change would write `(digest=B, sig=sig(A))`
+  entries that no consumer can verify. The `source` / `version` /
+  `digest` triple is always rewritten; everything else is conditional
+  on `prior.digest == new.digest`.
+
+### Internal
+
+- New `Dependency::spec()` returns a typed `DependencySpec<'_>` enum
+  carrying the source-form data (path / oci+version / git+tag/rev),
+  replacing the `Option`-triple pattern matching that scattered
+  `.expect("path dep has path")` calls across the resolver and vendor
+  modules.
+- New `AkuaLock::find_slot` / `upsert_at` lockfile primitives —
+  single-scan lockfile upserts. `merge_into_lock` is now O(n) over
+  the workspace's deps, was O(n²).
+- Shared `lock_file::VENDORED_LOCK_FALLBACK` constant for the
+  sentinel `version` / `tag_or_rev` value (was a bare `"vendored"`
+  string literal at four call sites).
 
 ## [0.8.6] — 2026-05-05
 

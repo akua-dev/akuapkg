@@ -202,11 +202,13 @@ akua vendor <subcommand> [flags]
 ```
 
 Subcommands:
-- `add <name>` — copy the declared dependency into `.akua/vendor/<name>/`. The dependency must already exist in `[dependencies]`; otherwise the command fails with a suggestion to declare `path = ".akua/vendor/<name>"` in `akua.toml`.
+- `add <name>` — copy the declared dependency into `.akua/vendor/<name>/` and pin its digest in `akua.lock`. The dependency must already exist in `[dependencies]`; otherwise the command fails with a suggestion to declare it in `akua.toml`. Works for `path`, `oci`, and `git` deps alike — the resolver's vendor-first lookup is universal across kinds, so once added, the canonical source can be deleted and `akua render` still succeeds via the vendored bytes.
 - `check` — compare the on-disk vendor trees against `akua.toml` + `akua.lock`. Drift exits with code `1`.
 - `list` — enumerate on-disk vendor trees, including orphaned entries.
 
 `add` honors the universal write-contract flags: `--plan`, `--timeout`, and `--idempotency-key`. `check` and `list` are read-only.
+
+See `examples/12-vendor-offline/` for the end-to-end offline-render contract demonstrated against a path dep with the canonical source deleted.
 
 ---
 
