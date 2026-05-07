@@ -209,10 +209,6 @@ fn clone_bare(
         url: url.to_string(),
         detail: e.to_string(),
     })?;
-    // Inject Authorization header via gix's in-memory config override.
-    // Only sent when a credential matches the URL prefix; absent
-    // matches mean an anonymous fetch attempt (which 401s on private
-    // repos with a clear error rather than silently leaking creds).
     let overrides = build_http_overrides(url, auth);
     if !overrides.is_empty() {
         prep = prep.with_in_memory_config_overrides(overrides);

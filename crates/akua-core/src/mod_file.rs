@@ -379,7 +379,9 @@ impl Dependency {
                 })
             }
             DependencySource::Git
-                if git_url_has_userinfo(self.git.as_deref().expect("git source set")) =>
+                if crate::host_auth::url_has_userinfo(
+                    self.git.as_deref().expect("git source set"),
+                ) =>
             {
                 Err(ManifestError::GitUrlHasUserInfo {
                     name: name.to_string(),
@@ -395,23 +397,6 @@ impl Dependency {
             _ => Ok(()),
         }
     }
-}
-
-/// True when the URL's authority (everything between `scheme://` and
-/// the first `/`) contains a `@` — meaning embedded `user[:pass]@`
-/// credentials. Akua rejects such URLs in `akua.toml` because the
-/// lockfile would otherwise persist the credential into version
-/// control.
-fn git_url_has_userinfo(url: &str) -> bool {
-    let after_scheme = match url.split_once("://") {
-        Some((_, rest)) => rest,
-        None => url,
-    };
-    let authority = match after_scheme.split_once('/') {
-        Some((auth, _)) => auth,
-        None => after_scheme,
-    };
-    authority.contains('@')
 }
 
 /// Package name rules (aligned with Cargo / npm / poetry conventions):

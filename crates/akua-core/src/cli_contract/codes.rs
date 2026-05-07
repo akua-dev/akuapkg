@@ -31,6 +31,11 @@ pub const E_DEP_KIND_MISMATCH: &str = "E_DEP_KIND_MISMATCH";
 /// `--auth` flag instead.
 pub const E_MANIFEST_GIT_USERINFO: &str = "E_MANIFEST_GIT_USERINFO";
 
+/// CLI `--auth <prefix>=<user>:<password>` value (or `--auth-file`
+/// TOML payload) didn't parse. Distinct from `E_INVALID_FLAG` so
+/// agents can branch on credential-input shape errors specifically.
+pub const E_AUTH_PARSE: &str = "E_AUTH_PARSE";
+
 // ----- Render --------------------------------------------------------------
 
 pub const E_PACKAGE_MISSING: &str = "E_PACKAGE_MISSING";

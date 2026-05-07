@@ -1067,7 +1067,7 @@ fn run_vendor_add(
             return emit_structured(
                 &ctx,
                 &akua_core::cli_contract::StructuredError::new(
-                    akua_core::cli_contract::codes::E_INVALID_FLAG,
+                    akua_core::cli_contract::codes::E_AUTH_PARSE,
                     e.to_string(),
                 )
                 .with_default_docs(),

@@ -106,6 +106,17 @@ fn match_key(url: &str) -> Option<String> {
     Some(trimmed.to_string())
 }
 
+/// True when `url`'s authority (`scheme://[user:pass@]host[:port]`)
+/// contains a `@` — meaning embedded basic-auth credentials. Path-
+/// portion `@`s (e.g. `/path/with@symbol`) are *not* counted. Public
+/// so `mod_file` can reuse it for the `akua.toml` `git = "..."`
+/// validation.
+pub fn url_has_userinfo(url: &str) -> bool {
+    let after_scheme = strip_scheme(url);
+    let path_start = after_scheme.find('/').unwrap_or(after_scheme.len());
+    after_scheme[..path_start].contains('@')
+}
+
 fn strip_scheme(url: &str) -> &str {
     if let Some((_, rest)) = url.split_once("://") {
         rest
