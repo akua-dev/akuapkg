@@ -1,0 +1,18 @@
+[package]
+name    = "10-vendor-offline"
+version = "0.1.0"
+edition = "akua.dev/v1alpha1"
+
+[dependencies]
+# A path dep that points at a sibling chart in this workspace.
+#
+# `akua vendor add upstream` copies the resolved tree into
+# `.akua/vendor/upstream/` and pins its digest in `akua.lock`.
+# The resolver then prefers the vendored copy, so subsequent
+# renders work without re-reading the original source.
+#
+# In a real install pipeline this dep would point at an OCI ref
+# or a private git URL. Vendoring once at bootstrap means the
+# install repo can render in air-gapped or offline contexts —
+# no registry, no SSH agent, no PAT at render time.
+upstream = { path = "./upstream-chart" }
