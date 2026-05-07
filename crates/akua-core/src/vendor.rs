@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use crate::chart_resolver::{hash_dir, validate_workspace_path, WorkspacePathError, VENDOR_DIR};
 use crate::cli_contract::{codes, ExitCode, StructuredError};
-use crate::lock_file::{AkuaLock, LockLoadError, LockedPackage};
+use crate::lock_file::{AkuaLock, LockLoadError, LockedPackage, GIT_DIGEST_PREFIX};
 use crate::mod_file::{AkuaManifest, Dependency, DependencySource, ManifestLoadError};
 #[cfg(feature = "oci-fetch")]
 use crate::{cache_inventory, oci_auth, oci_fetcher};
@@ -298,6 +298,15 @@ fn add_impl(workspace: &Path, name: &str, write: bool) -> Result<VendorAddOutput
         (true, target_existed)
     };
 
+    // Pin the vendored tree in `akua.lock` (write mode only — plan mode
+    // is read-only by contract). Render's vendor-first lookup hashes the
+    // tree at resolve time, but the lockfile is what `vendor check`
+    // compares against to detect drift; without this pin a vendored dep
+    // would always re-hash the source (or fail if the source was GC'd).
+    if write {
+        upsert_vendor_lock_entry(workspace, name, dep, &digest)?;
+    }
+
     Ok(VendorAddOutput {
         name: name.to_string(),
         source_kind: source.kind.to_string(),
@@ -308,6 +317,87 @@ fn add_impl(workspace: &Path, name: &str, write: bool) -> Result<VendorAddOutput
         wrote,
         replaced,
     })
+}
+
+/// Upsert a `LockedPackage` for the vendored dep. Mirrors what
+/// `chart_resolver::merge_into_lock` writes for the same dep when
+/// resolved via vendor-first — same `source` / `version` / `digest`
+/// shape so `vendor check` and `akua verify` produce consistent
+/// results regardless of which path produced the lockfile.
+fn upsert_vendor_lock_entry(
+    workspace: &Path,
+    name: &str,
+    dep: &Dependency,
+    tree_digest: &str,
+) -> Result<(), VendorError> {
+    let mut lock = match AkuaLock::load(workspace) {
+        Ok(l) => l,
+        Err(LockLoadError::Missing { .. }) => AkuaLock::empty(),
+        Err(e) => return Err(VendorError::Lock(e)),
+    };
+    let prior = lock.find(name).cloned();
+    let kind = dep
+        .source()
+        .expect("manifest validation guarantees exactly one source");
+    let (source, version, digest) = match kind {
+        DependencySource::Path => {
+            let declared = dep.path.as_ref().expect("path dep has path").clone();
+            (
+                format!("path+file://{declared}"),
+                "local".to_string(),
+                tree_digest.to_string(),
+            )
+        }
+        DependencySource::Oci => {
+            let oci = dep.oci.as_ref().expect("oci dep has oci ref").clone();
+            let version = dep
+                .version
+                .clone()
+                .unwrap_or_else(|| "vendored".to_string());
+            (oci, version, tree_digest.to_string())
+        }
+        DependencySource::Git => {
+            let git = dep.git.as_ref().expect("git dep has git ref").clone();
+            let tag_or_rev = dep
+                .tag
+                .clone()
+                .or_else(|| dep.rev.clone())
+                .unwrap_or_else(|| "vendored".to_string());
+            // Git lockfile digest is `git:<tree-hex>` per the resolver's
+            // existing convention (see `chart_resolver::resolve_from_vendor`
+            // and `vendored_git_dep_resolves_locally` test).
+            let raw = tree_digest
+                .strip_prefix("sha256:")
+                .unwrap_or(tree_digest)
+                .to_string();
+            (
+                format!("git+{git}@{tag_or_rev}"),
+                tag_or_rev,
+                format!("{GIT_DIGEST_PREFIX}{raw}"),
+            )
+        }
+    };
+    lock.upsert(LockedPackage {
+        name: name.to_string(),
+        version,
+        source,
+        digest,
+        // Cosign / SLSA / replace metadata is owned by `akua publish` and
+        // resolver-side replace handling; preserve whatever the prior
+        // entry recorded so re-vendoring doesn't lose them.
+        signature: prior.as_ref().and_then(|p| p.signature.clone()),
+        attestation: prior.as_ref().and_then(|p| p.attestation.clone()),
+        dependencies: prior
+            .as_ref()
+            .map(|p| p.dependencies.clone())
+            .unwrap_or_default(),
+        replaced: prior.as_ref().and_then(|p| p.replaced.clone()),
+        yanked: prior.as_ref().and_then(|p| p.yanked),
+        kyverno_source_digest: prior.as_ref().and_then(|p| p.kyverno_source_digest.clone()),
+        converter_version: prior.as_ref().and_then(|p| p.converter_version.clone()),
+    });
+    lock.save(workspace).map_err(VendorError::Lock)?;
+    Ok(())
 }
 
 pub fn list(workspace: &Path) -> Result<VendorListOutput, VendorError> {
@@ -857,6 +947,45 @@ local = { path = "./charts/local" }
             .suggestion
             .unwrap_or_default()
             .contains("path = \".akua/vendor/nope\""));
+    }
+
+    /// `vendor add` writes the dep's digest into `akua.lock` so render's
+    /// vendor-first lookup + `vendor check` drift detection have a stable
+    /// pin to compare against. Without this, dropping the canonical
+    /// source after vendoring would break `vendor check`.
+    #[test]
+    fn add_pins_vendored_tree_in_akua_lock() {
+        let ws = workspace(minimal_manifest());
+        make_source_tree(&ws.path().join("charts/local"));
+
+        let out = add(ws.path(), "local").expect("add");
+        assert!(out.wrote);
+
+        let lock_path = ws.path().join("akua.lock");
+        assert!(lock_path.is_file(), "akua.lock should be written");
+
+        let lock = AkuaLock::load(ws.path()).expect("load lock");
+        let entry = lock.find("local").expect("local entry pinned");
+        assert_eq!(entry.name, "local");
+        assert_eq!(entry.version, "local");
+        assert_eq!(entry.source, "path+file://./charts/local");
+        assert_eq!(entry.digest, out.digest);
+    }
+
+    /// Re-running `vendor add` against an unchanged source produces a
+    /// byte-identical lockfile — the lock-write must be idempotent.
+    #[test]
+    fn add_lockfile_write_is_idempotent_on_repeat() {
+        let ws = workspace(minimal_manifest());
+        make_source_tree(&ws.path().join("charts/local"));
+
+        add(ws.path(), "local").expect("add 1");
+        let lock_v1 = std::fs::read_to_string(ws.path().join("akua.lock")).expect("read 1");
+
+        add(ws.path(), "local").expect("add 2");
+        let lock_v2 = std::fs::read_to_string(ws.path().join("akua.lock")).expect("read 2");
+
+        assert_eq!(lock_v1, lock_v2, "repeat add must produce identical lock");
     }
 
     /// Path deps must stay under the workspace root. Absolute paths

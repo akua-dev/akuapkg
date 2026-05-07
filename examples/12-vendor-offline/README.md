@@ -6,19 +6,24 @@
 > firewall once `akua vendor add` has staged the bytes.
 
 A Package whose dep is materialized into `.akua/vendor/<name>/` so
-render works without re-fetching from the canonical source.
+render works without re-fetching from the canonical source. This
+example takes the offline guarantee literally — the canonical
+`upstream-chart/` source **is not present in the checkout**. Render
+succeeds because the resolver finds the bytes under
+`.akua/vendor/upstream/`.
 
 ## Why vendor
 
-The resolver already prefers `.akua/vendor/<name>/` when it exists
-(see `chart_resolver::resolve_from_vendor`). `akua vendor add` is the
-public CLI verb that populates that path from a declared dep. The
-contract:
+The resolver prefers `.akua/vendor/<name>/` when it exists for *every*
+dep kind — path, OCI, and git alike (see
+`chart_resolver::resolve_with_options`). `akua vendor add` is the
+public CLI verb that populates that path from a declared dep and pins
+the digest in `akua.lock`. The contract:
 
 - The dep declaration in `akua.toml` stays canonical (`path` / `oci`
   / `git`). It records *what* the dep is.
 - `.akua/vendor/<name>/` records *the bytes you want render to use.*
-  Always preferred when present.
+  Always preferred when present — across all dep kinds.
 - `akua.lock` pins the vendored-tree digest so a re-checkout of the
   workspace produces a byte-identical render.
 
@@ -30,32 +35,27 @@ deps so your build is reproducible without a network round-trip."
 | file | purpose |
 |---|---|
 | `package.k` | KCL Package; renders the chart at `.akua/vendor/upstream`. |
-| `akua.toml` | Manifest — declares `upstream` as a path dep. |
+| `akua.toml` | Manifest — declares `upstream` as a path dep pointing at `./upstream-chart`. |
+| `akua.lock` | Pins the vendor tree's digest. Committed. |
 | `inputs.example.yaml` | Auto-discovered when `--inputs` is omitted. |
-| `upstream-chart/` | The "canonical" chart source. In a production install pipeline this would be an OCI ref or a private git repo. |
-| `.akua/vendor/upstream/` | Created by `akua vendor add` (NOT checked in by default in this example, so you see the verb populate it). |
+| `.akua/vendor/upstream/` | The vendored chart bytes. Committed — this is the offline-render guarantee. |
+| `rendered/` | Golden-rendered output the integration test diffs against. |
+| ~~`upstream-chart/`~~ | **Intentionally absent.** In a production install pipeline this would be the OCI ref / private git repo / inaccessible-at-render-time canonical source. The point of this example is that render works without it. |
 
 ## Try it
 
 ```sh
-# 1. From a fresh checkout, no vendor tree exists yet:
-ls .akua/vendor/  # → no such file or directory
+# 1. Confirm the canonical source is gone:
+ls upstream-chart/  # → No such file or directory
 
-# 2. Materialize the vendor tree from the declared source:
-akua vendor add upstream
-# → vendor upstream
-#     source  path ./upstream-chart
-#     path    .akua/vendor/upstream
-#     digest  sha256:...
-#     wrote   true
+# 2. Confirm the vendor tree is committed:
+ls .akua/vendor/upstream/  # → Chart.yaml  templates/
 
-# 3. Confirm the resolver prefers the vendored copy. Even if the
-#    original `./upstream-chart/` were deleted, render would still
-#    succeed because the resolver finds .akua/vendor/upstream first:
+# 3. Render — succeeds without network, auth, or canonical source:
 akua render --out ./rendered
 
-# 4. Verify integrity later — `akua vendor check` re-hashes the
-#    vendor tree and compares against akua.lock:
+# 4. Verify integrity — `akua vendor check` re-hashes the vendor tree
+#    and compares against akua.lock:
 akua vendor check
 # → ok
 
@@ -63,6 +63,10 @@ akua vendor check
 #    correspond to a dep in akua.toml:
 akua vendor list
 ```
+
+To regenerate the vendor tree from a canonical source (e.g., during
+development before committing), restore `upstream-chart/` and run
+`akua vendor add upstream`.
 
 ## When vendoring matters
 
@@ -95,10 +99,6 @@ It earns its keep when:
   drift with `akua vendor check`.
 - **Workspace-wide `vendor add` (no name).** Currently `add` takes
   exactly one dep name. Looping is the caller's job.
-- **Vendor-from-`oci`/`git`.** This example uses a path dep so it
-  has zero runtime requirements. The same `vendor add` flow works
-  for OCI and git deps once you have the appropriate credentials
-  configured for the one-shot fetch.
 
 ## Path-escape safety
 

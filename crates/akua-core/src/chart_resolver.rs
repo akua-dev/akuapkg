@@ -424,12 +424,9 @@ pub fn resolve_with_options(
                 // absent (e.g. cnap install pipelines GC the cloned
                 // source tree after vendoring). When the vendor dir is
                 // absent we fall through to the path source as before.
-                if let Some(chart) = resolve_from_vendor(
-                    name,
-                    workspace_root,
-                    dep,
-                    vendor_kind_path(path),
-                )? {
+                if let Some(chart) =
+                    resolve_from_vendor(name, workspace_root, dep, vendor_kind_path(path))?
+                {
                     entries.insert(name.clone(), chart);
                 } else {
                     let src = ResolvedSource::Path {
