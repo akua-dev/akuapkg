@@ -459,8 +459,21 @@ ${bodyHtml}
 	return pageShell(entry.name, description, inner, sidebar);
 }
 
+/**
+ * Strip HTML tags and unescape entities. Returns plain text suitable
+ * for going through `escape()` again in a different HTML context (a
+ * `<meta>` content attribute, a `<div>` text child) without ending up
+ * double-escaped (`&lt;` → `&amp;lt;`).
+ */
 function stripTags(html: string): string {
-	return html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+	return html
+		.replace(/<[^>]+>/g, '')
+		.replace(/&lt;/g, '<')
+		.replace(/&gt;/g, '>')
+		.replace(/&quot;/g, '"')
+		.replace(/&#39;/g, "'")
+		.replace(/&amp;/g, '&') // last — undo the original `&` escape
+		.replace(/\s+/g, ' ');
 }
 
 function renderIndexPage(entries: CodeEntry[], sidebar: string): string {
