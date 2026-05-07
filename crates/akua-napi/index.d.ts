@@ -12,6 +12,15 @@ export declare function inspect(args: NapiInspectArgs): any
 
 export declare function lint(args: NapiPackageArgs): any
 
+/**
+ * HTTP basic-auth credential (mirrors
+ * [`akua_core::host_auth::BasicAuth`]).
+ */
+export interface NapiBasicAuth {
+  username: string
+  password: string
+}
+
 export interface NapiCheckArgs {
   workspace: string
   package?: string
@@ -83,6 +92,12 @@ export interface NapiVendorAddArgs {
   workspace: string
   name: string
   plan?: boolean
+  /**
+   * Credentials for private git remotes, keyed by URL prefix
+   * (longest match wins). Akua never reads ambient credential
+   * files; this is the only way to authenticate from the SDK.
+   */
+  auth?: Record<string, NapiBasicAuth>
 }
 
 export interface NapiWorkspaceArgs {

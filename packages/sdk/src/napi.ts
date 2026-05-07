@@ -59,7 +59,12 @@ export interface NapiAddon {
 	verify(args: { workspace: string }): unknown;
 	whoami(): unknown;
 	inspect(args: { package?: string; tarball?: string }): unknown;
-	vendorAdd(args: { workspace: string; name: string; plan?: boolean }): unknown;
+	vendorAdd(args: {
+		workspace: string;
+		name: string;
+		plan?: boolean;
+		auth?: Record<string, { username: string; password: string }>;
+	}): unknown;
 	vendorCheck(args: { workspace: string }): unknown;
 	vendorList(args: { workspace: string }): unknown;
 }
