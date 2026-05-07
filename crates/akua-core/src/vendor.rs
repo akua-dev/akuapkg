@@ -132,11 +132,11 @@ impl VendorError {
             VendorError::AuthConfig(detail) => {
                 StructuredError::new(codes::E_IO, detail.clone()).with_default_docs()
             }
-            VendorError::MissingDependency { .. } => {
+            VendorError::MissingDependency { name } => {
                 StructuredError::new(codes::E_VENDOR_DEP_MISSING, self.to_string())
-                    .with_suggestion(
-                        "declare `path = \".akua/vendor/<name>\"` in `akua.toml` first",
-                    )
+                    .with_suggestion(format!(
+                        "declare `path = \".akua/vendor/{name}\"` in `akua.toml` first"
+                    ))
                     .with_default_docs()
             }
             VendorError::SourceMissing { path } => {
@@ -183,6 +183,14 @@ impl VendorError {
 }
 
 pub fn add(workspace: &Path, name: &str) -> Result<VendorAddOutput, VendorError> {
+    add_impl(workspace, name, true)
+}
+
+pub fn plan_add(workspace: &Path, name: &str) -> Result<VendorAddOutput, VendorError> {
+    add_impl(workspace, name, false)
+}
+
+fn add_impl(workspace: &Path, name: &str, write: bool) -> Result<VendorAddOutput, VendorError> {
     let manifest = AkuaManifest::load(workspace)?;
     let dep = manifest
         .dependencies
@@ -193,7 +201,39 @@ pub fn add(workspace: &Path, name: &str) -> Result<VendorAddOutput, VendorError>
     let source = resolve_source(workspace, name, dep)?;
     let vendor_root = vendor_root(workspace);
     let target = vendor_root.join(name);
-    let SyncOutcome { wrote, replaced } = sync_tree(&source.root, &target)?;
+    let (wrote, replaced) = if write {
+        let SyncOutcome { wrote, replaced } = sync_tree(&source.root, &target)?;
+        (wrote, replaced)
+    } else {
+        let (source_digest, size_bytes) =
+            hash_tree(&source.root).map_err(|err| VendorError::Io {
+                path: source.root.clone(),
+                source: err,
+            })?;
+        let (wrote, replaced) = if target.exists() {
+            let (target_digest, _) = hash_tree(&target).map_err(|err| VendorError::Io {
+                path: target.clone(),
+                source: err,
+            })?;
+            if target_digest == source_digest {
+                (false, false)
+            } else {
+                (true, true)
+            }
+        } else {
+            (true, false)
+        };
+        return Ok(VendorAddOutput {
+            name: name.to_string(),
+            source_kind: source.kind.to_string(),
+            source_ref: source.source_ref,
+            path: target,
+            digest: source_digest,
+            size_bytes,
+            wrote,
+            replaced,
+        });
+    };
     let (digest, size_bytes) = hash_tree(&target).map_err(|err| VendorError::Io {
         path: target.clone(),
         source: err,
@@ -827,6 +867,6 @@ local = { path = "./charts/local" }
         assert!(structured
             .suggestion
             .unwrap_or_default()
-            .contains("path = \".akua/vendor/<name>\""));
+            .contains("path = \".akua/vendor/nope\""));
     }
 }

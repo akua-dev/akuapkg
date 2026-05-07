@@ -17,7 +17,8 @@ use akua_cli::verbs::{
     inspect as inspect_verb, lint as lint_verb, lock as lock_verb, pack as pack_verb,
     publish as publish_verb, pull as pull_verb, push as push_verb, remove as remove_verb,
     render as render_verb, repl as repl_verb, test as test_verb, tree as tree_verb,
-    update as update_verb, verify as verify_verb, version as version_verb, whoami as whoami_verb,
+    update as update_verb, vendor as vendor_verb, verify as verify_verb, version as version_verb,
+    whoami as whoami_verb,
 };
 #[cfg(feature = "cosign-verify")]
 use akua_cli::verbs::{sign as sign_verb, verify_tarball as verify_tarball_verb};
@@ -155,6 +156,12 @@ enum Commands {
         /// Workspace root containing akua.toml.
         #[arg(long, default_value = ".")]
         workspace: PathBuf,
+    },
+
+    /// Materialize and inspect the vendor tree at `.akua/vendor/`.
+    Vendor {
+        #[command(subcommand)]
+        sub: VendorSub,
     },
 
     /// Watch the workspace and re-render on save.
@@ -604,6 +611,42 @@ enum AuthSub {
 }
 
 #[derive(Subcommand, Clone, Debug)]
+enum VendorSub {
+    /// Copy the declared dep into `.akua/vendor/<name>/`.
+    Add {
+        #[command(flatten)]
+        args: UniversalArgs,
+
+        /// Local alias declared in `[dependencies]`.
+        name: String,
+
+        /// Workspace root containing akua.toml.
+        #[arg(long, default_value = ".")]
+        workspace: PathBuf,
+    },
+
+    /// Compare the vendor tree against manifest + lock.
+    Check {
+        #[command(flatten)]
+        args: UniversalArgs,
+
+        /// Workspace root containing akua.toml.
+        #[arg(long, default_value = ".")]
+        workspace: PathBuf,
+    },
+
+    /// List on-disk vendor trees, including orphans.
+    List {
+        #[command(flatten)]
+        args: UniversalArgs,
+
+        /// Workspace root containing akua.toml.
+        #[arg(long, default_value = ".")]
+        workspace: PathBuf,
+    },
+}
+
+#[derive(Subcommand, Clone, Debug)]
 enum CacheSub {
     /// Enumerate every OCI blob + git repo/checkout with size.
     List {
@@ -710,6 +753,15 @@ fn universal_args(cmd: &Commands) -> &UniversalArgs {
         | Commands::Verify { args, .. }
         | Commands::Render { args, .. }
         | Commands::Add { args, .. }
+        | Commands::Vendor {
+            sub: VendorSub::Add { args, .. },
+        }
+        | Commands::Vendor {
+            sub: VendorSub::Check { args, .. },
+        }
+        | Commands::Vendor {
+            sub: VendorSub::List { args, .. },
+        }
         | Commands::Dev { args, .. }
         | Commands::Test { args, .. }
         | Commands::Tree { args, .. }
@@ -877,6 +929,20 @@ fn dispatch(command: Commands) -> ExitCode {
             force,
             &workspace,
         ),
+        Commands::Vendor {
+            sub:
+                VendorSub::Add {
+                    args,
+                    name,
+                    workspace,
+                },
+        } => run_vendor_add(&args, &name, &workspace),
+        Commands::Vendor {
+            sub: VendorSub::Check { args, workspace },
+        } => run_vendor_check(&args, &workspace),
+        Commands::Vendor {
+            sub: VendorSub::List { args, workspace },
+        } => run_vendor_list(&args, &workspace),
         Commands::Cache { sub } => run_cache(sub),
         Commands::Auth { sub } => run_auth(sub),
         Commands::Pack {
@@ -946,6 +1012,42 @@ fn run_pack(
     };
     let mut stdout = io::stdout().lock();
     match pack_verb::run(&ctx, &verb_args, &mut stdout) {
+        Ok(code) => code,
+        Err(e) => emit_structured(&ctx, &e.to_structured(), e.exit_code()),
+    }
+}
+
+fn run_vendor_add(args: &UniversalArgs, name: &str, workspace: &std::path::Path) -> ExitCode {
+    let ctx = resolve_ctx(args);
+    let verb_args = vendor_verb::VendorArgs {
+        action: vendor_verb::VendorAction::Add { workspace, name },
+    };
+    let mut stdout = io::stdout().lock();
+    match vendor_verb::run(&ctx, &verb_args, &mut stdout) {
+        Ok(code) => code,
+        Err(e) => emit_structured(&ctx, &e.to_structured(), e.exit_code()),
+    }
+}
+
+fn run_vendor_check(args: &UniversalArgs, workspace: &std::path::Path) -> ExitCode {
+    let ctx = resolve_ctx(args);
+    let verb_args = vendor_verb::VendorArgs {
+        action: vendor_verb::VendorAction::Check { workspace },
+    };
+    let mut stdout = io::stdout().lock();
+    match vendor_verb::run(&ctx, &verb_args, &mut stdout) {
+        Ok(code) => code,
+        Err(e) => emit_structured(&ctx, &e.to_structured(), e.exit_code()),
+    }
+}
+
+fn run_vendor_list(args: &UniversalArgs, workspace: &std::path::Path) -> ExitCode {
+    let ctx = resolve_ctx(args);
+    let verb_args = vendor_verb::VendorArgs {
+        action: vendor_verb::VendorAction::List { workspace },
+    };
+    let mut stdout = io::stdout().lock();
+    match vendor_verb::run(&ctx, &verb_args, &mut stdout) {
         Ok(code) => code,
         Err(e) => emit_structured(&ctx, &e.to_structured(), e.exit_code()),
     }
@@ -1902,6 +2004,45 @@ mod tests {
                 assert!(!no_vendor);
             }
             _ => panic!("expected pack"),
+        }
+    }
+
+    #[test]
+    fn parses_vendor_add_with_workspace_and_name() {
+        let cli = Cli::parse_from(["akua", "vendor", "add", "nginx", "--workspace", "./ws"]);
+        match cli.command {
+            Commands::Vendor {
+                sub: VendorSub::Add {
+                    name, workspace, ..
+                },
+            } => {
+                assert_eq!(name, "nginx");
+                assert_eq!(workspace, PathBuf::from("./ws"));
+            }
+            _ => panic!("expected vendor add"),
+        }
+    }
+
+    #[test]
+    fn parses_vendor_check_and_list_with_default_workspace() {
+        let check = Cli::parse_from(["akua", "vendor", "check"]);
+        match check.command {
+            Commands::Vendor {
+                sub: VendorSub::Check { workspace, .. },
+            } => {
+                assert_eq!(workspace, PathBuf::from("."));
+            }
+            _ => panic!("expected vendor check"),
+        }
+
+        let list = Cli::parse_from(["akua", "vendor", "list"]);
+        match list.command {
+            Commands::Vendor {
+                sub: VendorSub::List { workspace, .. },
+            } => {
+                assert_eq!(workspace, PathBuf::from("."));
+            }
+            _ => panic!("expected vendor list"),
         }
     }
 

@@ -692,6 +692,125 @@ fn add_remove_tree_verify_lifecycle() {
 }
 
 #[test]
+fn vendor_add_plan_does_not_write_to_workspace() {
+    let dir = tempdir();
+    run(dir.path(), &["init", "ws"]);
+    let ws = dir.path().join("ws");
+
+    std::fs::write(
+        ws.join("akua.toml"),
+        r#"
+[package]
+name    = "ws"
+version = "0.1.0"
+edition = "akua.dev/v1alpha1"
+
+[dependencies]
+local = { path = "./charts/local" }
+"#,
+    )
+    .unwrap();
+    let chart = ws.join("charts/local");
+    std::fs::create_dir_all(chart.join("templates")).unwrap();
+    std::fs::write(
+        chart.join("Chart.yaml"),
+        "apiVersion: v2\nname: local\nversion: 0.1.0\n",
+    )
+    .unwrap();
+    std::fs::write(chart.join("templates/cm.yaml"), "kind: ConfigMap\n").unwrap();
+
+    let out = run(&ws, &["vendor", "add", "local", "--plan", "--json"]);
+    assert_exit(&out, 0);
+    let parsed = stdout_json(&out);
+    assert_eq!(parsed["name"], "local");
+    assert!(
+        !ws.join(".akua/vendor/local").exists(),
+        "plan mode must not create the vendor tree"
+    );
+}
+
+#[test]
+fn vendor_add_missing_dependency_suggests_vendor_path_declaration() {
+    let dir = tempdir();
+    run(dir.path(), &["init", "ws"]);
+    let ws = dir.path().join("ws");
+
+    let out = run(&ws, &["vendor", "add", "ghost", "--json"]);
+    assert_exit(&out, 1);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let structured: serde_json::Value = serde_json::from_str(stderr.trim()).expect("stderr json");
+    assert_eq!(structured["code"], "E_VENDOR_DEP_MISSING");
+    assert!(
+        structured["suggestion"]
+            .as_str()
+            .unwrap()
+            .contains("path = \".akua/vendor/ghost\""),
+        "missing-dep suggestion should point at the vendor path declaration"
+    );
+}
+
+#[test]
+fn vendor_list_marks_orphan_trees_and_vendor_check_reports_drift() {
+    let dir = tempdir();
+    run(dir.path(), &["init", "ws"]);
+    let ws = dir.path().join("ws");
+
+    std::fs::write(
+        ws.join("akua.toml"),
+        r#"
+[package]
+name    = "ws"
+version = "0.1.0"
+edition = "akua.dev/v1alpha1"
+
+[dependencies]
+local = { path = "./charts/local" }
+"#,
+    )
+    .unwrap();
+    let chart = ws.join("charts/local");
+    std::fs::create_dir_all(chart.join("templates")).unwrap();
+    std::fs::write(
+        chart.join("Chart.yaml"),
+        "apiVersion: v2\nname: local\nversion: 0.1.0\n",
+    )
+    .unwrap();
+    std::fs::write(chart.join("templates/cm.yaml"), "kind: ConfigMap\n").unwrap();
+
+    assert_exit(&run(&ws, &["vendor", "add", "local"]), 0);
+
+    let orphan = ws.join(".akua/vendor/orphan");
+    std::fs::create_dir_all(orphan.join("templates")).unwrap();
+    std::fs::write(
+        orphan.join("Chart.yaml"),
+        "apiVersion: v2\nname: orphan\nversion: 0.1.0\n",
+    )
+    .unwrap();
+    std::fs::write(orphan.join("templates/cm.yaml"), "kind: ConfigMap\n").unwrap();
+
+    let listed = stdout_json(&run(&ws, &["vendor", "list", "--json"]));
+    let entries = listed["entries"].as_array().unwrap();
+    let orphan_entry = entries
+        .iter()
+        .find(|entry| entry["name"] == "orphan")
+        .expect("orphan entry present");
+    assert_eq!(orphan_entry["orphan"], true);
+
+    std::fs::write(
+        ws.join(".akua/vendor/local/templates/cm.yaml"),
+        "kind: Secret\n",
+    )
+    .unwrap();
+    let drift = run(&ws, &["vendor", "check", "--json"]);
+    assert_exit(&drift, 1);
+    let parsed = stdout_json(&drift);
+    assert_eq!(parsed["drift"], true);
+    let stderr = String::from_utf8_lossy(&drift.stderr);
+    let structured: serde_json::Value = serde_json::from_str(stderr.trim()).expect("stderr json");
+    assert_eq!(structured["code"], "E_VENDOR_DRIFT");
+}
+
+#[test]
 fn remove_missing_dep_errors_without_ignore_missing() {
     let dir = tempdir();
     run(dir.path(), &["init", "ws"]);
@@ -747,14 +866,14 @@ fn agent_env_flips_output_mode_to_json_automatically() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn help_lists_all_twelve_verbs() {
+fn help_lists_all_expected_verbs() {
     let dir = tempdir();
     let out = run(dir.path(), &["--help"]);
     assert_exit(&out, 0);
     let stdout = String::from_utf8_lossy(&out.stdout);
     for verb in [
         "init", "whoami", "version", "verify", "render", "fmt", "lint", "check", "diff", "add",
-        "remove", "tree", "inspect",
+        "remove", "tree", "inspect", "vendor",
     ] {
         assert!(
             stdout.contains(verb),

@@ -1,25 +1,117 @@
-//! Shared vendor-pair collection used by `akua publish` + `akua pack`
-//! to embed resolved OCI/git deps under `.akua/vendor/<name>/` in the
-//! output tarball.
+//! `akua vendor` — materialize, inspect, and drift-check the workspace
+//! vendor tree at `.akua/vendor/<name>/`.
 //!
-//! Why not in akua-core? The function emits a `stderr` warning on
-//! resolver failure — that's CLI-layer, not library-layer behavior.
-//! Keeping it here lets core stay quiet + pure.
+//! Subcommands:
+//! - `akua vendor add <name>` — copy the declared dep into the vendor tree.
+//! - `akua vendor check` — compare the vendor tree against the manifest/lock.
+//! - `akua vendor list` — inventory the on-disk vendor trees, including orphans.
+//!
+//! This module also keeps the shared `collect_vendor_pairs` helper used by
+//! `akua pack` and `akua publish`. The helper lives here because it emits a
+//! stderr warning on resolver failure, which is CLI-layer behavior.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use akua_core::cli_contract::{codes, ExitCode, StructuredError};
+use akua_core::vendor as core_vendor;
 use akua_core::AkuaManifest;
 
-/// Resolve non-path deps so their chart content can be vendored into
-/// the output tarball. Path deps already live in the workspace tree
-/// (typically `vendor/`) and are packed via the workspace walk —
-/// don't re-vendor them or they'll appear twice in the tarball.
+use crate::contract::{emit_output, Context};
+
+pub use core_vendor::{
+    VendorAddOutput, VendorCheckEntry, VendorCheckOutput, VendorError, VendorListEntry,
+    VendorListOutput,
+};
+
+#[derive(Debug, Clone)]
+pub enum VendorAction<'a> {
+    Add { workspace: &'a Path, name: &'a str },
+    Check { workspace: &'a Path },
+    List { workspace: &'a Path },
+}
+
+#[derive(Debug, Clone)]
+pub struct VendorArgs<'a> {
+    pub action: VendorAction<'a>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum VendorVerbError {
+    #[error(transparent)]
+    Vendor(#[from] VendorError),
+
+    #[error("write to stdout failed: {0}")]
+    StdoutWrite(#[source] std::io::Error),
+}
+
+impl VendorVerbError {
+    pub fn to_structured(&self) -> StructuredError {
+        match self {
+            VendorVerbError::Vendor(err) => err.to_structured(),
+            VendorVerbError::StdoutWrite(err) => {
+                StructuredError::new(codes::E_IO, err.to_string()).with_default_docs()
+            }
+        }
+    }
+
+    pub fn exit_code(&self) -> ExitCode {
+        match self {
+            VendorVerbError::Vendor(err) => err.exit_code(),
+            VendorVerbError::StdoutWrite(_) => ExitCode::SystemError,
+        }
+    }
+}
+
+pub fn run<W: Write>(
+    ctx: &Context,
+    args: &VendorArgs<'_>,
+    stdout: &mut W,
+) -> Result<ExitCode, VendorVerbError> {
+    match &args.action {
+        VendorAction::Add { workspace, name } => {
+            let output = if ctx.plan {
+                core_vendor::plan_add(workspace, name)?
+            } else {
+                core_vendor::add(workspace, name)?
+            };
+            emit_output(stdout, ctx, &output, |w| {
+                write_add_text(w, &output, ctx.plan)
+            })
+            .map_err(VendorVerbError::StdoutWrite)?;
+            Ok(ExitCode::Success)
+        }
+        VendorAction::Check { workspace } => match core_vendor::check(workspace) {
+            Ok(output) => {
+                emit_output(stdout, ctx, &output, |w| write_check_text(w, &output))
+                    .map_err(VendorVerbError::StdoutWrite)?;
+                Ok(ExitCode::Success)
+            }
+            Err(VendorError::Drift { output }) => {
+                emit_output(stdout, ctx, &output, |w| write_check_text(w, &output))
+                    .map_err(VendorVerbError::StdoutWrite)?;
+                Err(VendorVerbError::Vendor(VendorError::Drift { output }))
+            }
+            Err(err) => Err(VendorVerbError::Vendor(err)),
+        },
+        VendorAction::List { workspace } => {
+            let output = core_vendor::list(workspace)?;
+            emit_output(stdout, ctx, &output, |w| write_list_text(w, &output))
+                .map_err(VendorVerbError::StdoutWrite)?;
+            Ok(ExitCode::Success)
+        }
+    }
+}
+
+/// Resolve non-path deps so their chart content can be vendored into the
+/// output tarball. Path deps already live in the workspace tree (typically
+/// `vendor/`) and are packed via the workspace walk — don't re-vendor them or
+/// they'll appear twice in the tarball.
 ///
-/// A resolver failure here is *loud*: we emit a stderr warning so
-/// the publisher doesn't ship an un-vendored artifact by accident.
-/// Returns the pairs the resolver *did* produce — a partial-vendor
-/// result is still better than nothing when one dep out of many is
-/// broken.
+/// A resolver failure here is loud: we emit a stderr warning so the publisher
+/// doesn't ship an un-vendored artifact by accident. Returns the pairs the
+/// resolver did produce — a partial-vendor result is still better than nothing
+/// when one dep out of many is broken.
 pub fn collect_vendor_pairs(workspace: &Path, manifest: &AkuaManifest) -> Vec<(String, PathBuf)> {
     use akua_core::chart_resolver::{self, ResolvedSource, ResolverOptions};
     use akua_core::AkuaLock;
@@ -52,8 +144,7 @@ pub fn collect_vendor_pairs(workspace: &Path, manifest: &AkuaManifest) -> Vec<(S
 
     let mut pairs = Vec::new();
     for chart in resolved.entries.values() {
-        // Path / replace → already in the workspace walk; don't
-        // double-vendor.
+        // Path / replace -> already in the workspace walk; don't double-vendor.
         let include = matches!(
             chart.source,
             ResolvedSource::Oci { .. } | ResolvedSource::Git { .. }
@@ -63,6 +154,82 @@ pub fn collect_vendor_pairs(workspace: &Path, manifest: &AkuaManifest) -> Vec<(S
         }
     }
     pairs
+}
+
+fn write_add_text<W: Write>(
+    w: &mut W,
+    out: &VendorAddOutput,
+    planned: bool,
+) -> std::io::Result<()> {
+    if planned {
+        writeln!(w, "plan: vendor add {}", out.name)?;
+    }
+    writeln!(w, "vendor {}", out.name)?;
+    writeln!(w, "  source  {} {}", out.source_kind, out.source_ref)?;
+    writeln!(w, "  path    {}", out.path.display())?;
+    writeln!(w, "  digest  {}", out.digest)?;
+    writeln!(w, "  size    {} bytes", out.size_bytes)?;
+    writeln!(w, "  wrote   {}", out.wrote)?;
+    writeln!(w, "  replaced {}", out.replaced)?;
+    Ok(())
+}
+
+fn write_list_text<W: Write>(w: &mut W, out: &VendorListOutput) -> std::io::Result<()> {
+    if out.entries.is_empty() {
+        writeln!(w, "no vendored trees")?;
+        return Ok(());
+    }
+    for entry in &out.entries {
+        let orphan = if entry.orphan { " (orphan)" } else { "" };
+        writeln!(
+            w,
+            "  {}{}  {}  {} bytes  {}",
+            entry.name,
+            orphan,
+            entry.digest,
+            entry.size_bytes,
+            entry.path.display()
+        )?;
+    }
+    Ok(())
+}
+
+fn write_check_text<W: Write>(w: &mut W, out: &VendorCheckOutput) -> std::io::Result<()> {
+    for entry in &out.entries {
+        let marker = if entry.orphan {
+            "(orphan)"
+        } else if entry.missing_vendor {
+            "(missing vendor)"
+        } else if entry.missing_source {
+            "(missing source)"
+        } else if entry.expected_digest != entry.actual_digest {
+            "(drift)"
+        } else {
+            "(ok)"
+        };
+        writeln!(w, "  {} {}", entry.name, marker)?;
+        if let Some(kind) = &entry.source_kind {
+            if let Some(source_ref) = &entry.source_ref {
+                writeln!(w, "    source  {} {}", kind, source_ref)?;
+            } else {
+                writeln!(w, "    source  {}", kind)?;
+            }
+        }
+        if let Some(expected) = &entry.expected_digest {
+            writeln!(w, "    expected {}", expected)?;
+        }
+        if let Some(actual) = &entry.actual_digest {
+            writeln!(w, "    actual   {}", actual)?;
+        }
+    }
+    if !out.orphaned.is_empty() {
+        writeln!(w, "  orphaned: {}", out.orphaned.join(", "))?;
+    }
+    if !out.missing.is_empty() {
+        writeln!(w, "  missing: {}", out.missing.join(", "))?;
+    }
+    writeln!(w, "{}", if out.drift { "drift" } else { "ok" })?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -82,14 +249,11 @@ edition = "akua.dev/v1alpha1"
         let ws = workspace_with(NO_DEPS);
         let manifest = AkuaManifest::load(ws.path()).unwrap();
         let pairs = collect_vendor_pairs(ws.path(), &manifest);
-        assert!(pairs.is_empty(), "no deps → no vendor pairs");
+        assert!(pairs.is_empty(), "no deps -> no vendor pairs");
     }
 
     #[test]
     fn path_dep_is_excluded_from_vendor_pairs() {
-        // Path deps live inside the workspace tree and are picked up
-        // by the workspace walk in `akua publish` / `akua pack`.
-        // Re-vendoring would duplicate them in the output tarball.
         let ws = workspace_with(&format!(
             "{NO_DEPS}\n[dependencies]\nlocal = {{ path = \"./local-chart\" }}\n"
         ));
@@ -105,25 +269,16 @@ edition = "akua.dev/v1alpha1"
 
         let manifest = AkuaManifest::load(ws.path()).unwrap();
         let pairs = collect_vendor_pairs(ws.path(), &manifest);
-        assert!(
-            pairs.is_empty(),
-            "path dep must NOT appear in vendor pairs, got: {pairs:?}"
-        );
+        assert!(pairs.is_empty(), "path dep must NOT appear in vendor pairs");
     }
 
     #[test]
     fn resolver_failure_returns_empty_vec_after_warning() {
-        // Path that doesn't exist → resolver fails. The function emits
-        // a stderr warning and returns Vec::new() so packing can
-        // proceed with whatever it has, rather than aborting.
         let ws = workspace_with(&format!(
             "{NO_DEPS}\n[dependencies]\nbroken = {{ path = \"./does-not-exist\" }}\n"
         ));
         let manifest = AkuaManifest::load(ws.path()).unwrap();
         let pairs = collect_vendor_pairs(ws.path(), &manifest);
-        assert!(
-            pairs.is_empty(),
-            "resolver-failure path returns empty Vec, got: {pairs:?}"
-        );
+        assert!(pairs.is_empty(), "resolver-failure path returns empty Vec");
     }
 }
