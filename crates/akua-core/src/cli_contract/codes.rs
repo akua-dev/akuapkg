@@ -24,6 +24,13 @@ pub const E_LOCK_DRIFT: &str = "E_LOCK_DRIFT";
 /// `akua check` later fails with the opaque `CannotFindModule` from KCL.
 pub const E_DEP_KIND_MISMATCH: &str = "E_DEP_KIND_MISMATCH";
 
+/// `akua.toml` declares a `git = "..."` dep whose URL contains
+/// embedded credentials (`https://user:pass@host/...`). Rejected at
+/// parse time so the credential never reaches the lockfile or git
+/// history. Pass credentials via the SDK `auth` parameter or the CLI
+/// `--auth` flag instead.
+pub const E_MANIFEST_GIT_USERINFO: &str = "E_MANIFEST_GIT_USERINFO";
+
 // ----- Render --------------------------------------------------------------
 
 pub const E_PACKAGE_MISSING: &str = "E_PACKAGE_MISSING";

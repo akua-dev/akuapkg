@@ -188,6 +188,25 @@ pub enum ManifestError {
 
     #[error("[package].name must be a valid KCL identifier, got `{0}`")]
     BadPackageName(String),
+
+    #[error(
+        "dependency `{name}`: git URL must not embed credentials (`user:pass@`). \
+         Pass credentials via the SDK `auth` parameter or the CLI `--auth` flag."
+    )]
+    GitUrlHasUserInfo { name: String },
+}
+
+impl ManifestError {
+    /// Stable error-code constant for this variant. Defaults to
+    /// `E_MANIFEST_PARSE`; specific variants that have their own
+    /// documented code override here so agents can branch precisely.
+    pub fn structured_code(&self) -> &'static str {
+        use crate::cli_contract::codes;
+        match self {
+            ManifestError::GitUrlHasUserInfo { .. } => codes::E_MANIFEST_GIT_USERINFO,
+            _ => codes::E_MANIFEST_PARSE,
+        }
+    }
 }
 
 /// Result of loading an `akua.toml` from disk. Distinguishes the file
@@ -231,7 +250,7 @@ impl ManifestLoadError {
                     .with_default_docs()
             }
             ManifestLoadError::Parse { path, source } => {
-                StructuredError::new(codes::E_MANIFEST_PARSE, source.to_string())
+                StructuredError::new(source.structured_code(), source.to_string())
                     .with_path(path.display().to_string())
                     .with_default_docs()
             }
@@ -359,6 +378,13 @@ impl Dependency {
                     name: name.to_string(),
                 })
             }
+            DependencySource::Git
+                if git_url_has_userinfo(self.git.as_deref().expect("git source set")) =>
+            {
+                Err(ManifestError::GitUrlHasUserInfo {
+                    name: name.to_string(),
+                })
+            }
             DependencySource::Path
                 if self.version.is_some() || self.tag.is_some() || self.rev.is_some() =>
             {
@@ -369,6 +395,23 @@ impl Dependency {
             _ => Ok(()),
         }
     }
+}
+
+/// True when the URL's authority (everything between `scheme://` and
+/// the first `/`) contains a `@` — meaning embedded `user[:pass]@`
+/// credentials. Akua rejects such URLs in `akua.toml` because the
+/// lockfile would otherwise persist the credential into version
+/// control.
+fn git_url_has_userinfo(url: &str) -> bool {
+    let after_scheme = match url.split_once("://") {
+        Some((_, rest)) => rest,
+        None => url,
+    };
+    let authority = match after_scheme.split_once('/') {
+        Some((auth, _)) => auth,
+        None => after_scheme,
+    };
+    authority.contains('@')
 }
 
 /// Package name rules (aligned with Cargo / npm / poetry conventions):
@@ -534,6 +577,44 @@ bare-git = { git = "https://github.com/foo/bar" }
             matches!(err, ManifestError::GitMissingTagOrRev { ref name } if name == "bare-git"),
             "expected GitMissingTagOrRev, got {err:?}"
         );
+    }
+
+    #[test]
+    fn rejects_git_url_with_userinfo() {
+        let bad = r#"
+[package]
+name    = "fine"
+version = "0.1.0"
+edition = "akua.dev/v1alpha1"
+
+[dependencies]
+upstream = { git = "https://alice:secret@example.com/foo/bar", tag = "v1" }
+"#;
+        let err = AkuaManifest::parse(bad).unwrap_err();
+        assert!(
+            matches!(err, ManifestError::GitUrlHasUserInfo { ref name } if name == "upstream"),
+            "expected GitUrlHasUserInfo, got {err:?}"
+        );
+        assert_eq!(
+            err.structured_code(),
+            crate::cli_contract::codes::E_MANIFEST_GIT_USERINFO
+        );
+    }
+
+    #[test]
+    fn accepts_git_url_with_at_in_path() {
+        // `@` outside the authority is fine — only authority `@` is
+        // userinfo. Paths can legally contain `@` though it's unusual.
+        let ok = r#"
+[package]
+name    = "fine"
+version = "0.1.0"
+edition = "akua.dev/v1alpha1"
+
+[dependencies]
+upstream = { git = "https://example.com/foo/bar@v1.git", tag = "v1" }
+"#;
+        AkuaManifest::parse(ok).unwrap();
     }
 
     #[test]
