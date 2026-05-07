@@ -56,7 +56,7 @@ oci-fetch = ["dep:reqwest", "dep:flate2", "dep:tar", "dep:base64"]
 # and the feature is opt-in for ops who actually use git charts.
 # Public HTTPS + file:// URLs supported; ssh:// + private-repo auth
 # are follow-ups.
-git-fetch = ["dep:gix"]
+git-fetch = ["dep:gix", "dep:base64"]
 # Cosign keyed signature verification. Pairs with oci-fetch: when a
 # public key is configured, the pull path also pulls the chart's
 # cosign `.sig` sidecar and verifies the signature before handing
