@@ -13,23 +13,28 @@ minor bump in the SDK.
 > single-file/total-package cap is incompatible with the bundled napi
 > addon (~129 MB compressed across the per-platform packages).
 
-## [0.8.7-rc4] — 2026-05-07
+## [0.8.7] — 2026-05-07
 
 Workspace-vendor surfacing: the CLI now exposes `akua vendor add`,
 `akua vendor check`, and `akua vendor list`; the SDK mirrors those
-entry points. This release turns the existing vendoring path into a
-first-class surface, makes vendor-first lookup universal across dep
-kinds, and tightens lockfile metadata semantics.
+entry points. `vendor add` writes the lockfile pin alongside
+materializing the tree, vendor-first resolver lookup is universal
+across all dep kinds, and lockfile metadata clears on digest change
+so cosign signatures can't outlive the bytes they were produced over.
+
+The 0.8.7-rc1 through rc4 tags exist but their release workflows were
+cancelled before publish; this is the first 0.8.7 release on npm /
+GitHub Releases / Homebrew.
 
 ### Added
 
 - `akua vendor` with `add`, `check`, and `list` subcommands.
 - `@akua-dev/sdk` vendor methods: `vendorAdd`, `vendorCheck`, and
   `vendorList`.
-- `vendor add` now writes a `LockedPackage` pin into `akua.lock`
-  alongside materializing the tree, so `vendor check` and `akua verify`
-  have a stable digest to compare against — required for the offline-
-  render contract once the canonical source is GC'd.
+- `vendor add` writes a `LockedPackage` pin into `akua.lock` alongside
+  materializing the tree, so `vendor check` and `akua verify` have a
+  stable digest to compare against — required for the offline-render
+  contract once the canonical source is GC'd.
 - `examples/12-vendor-offline/` — end-to-end demonstration of the
   offline-render contract: `.akua/vendor/upstream/` + `akua.lock` are
   committed, the canonical `upstream-chart/` source is intentionally
@@ -65,13 +70,19 @@ kinds, and tightens lockfile metadata semantics.
   carrying the source-form data (path / oci+version / git+tag/rev),
   replacing the `Option`-triple pattern matching that scattered
   `.expect("path dep has path")` calls across the resolver and vendor
-  modules.
+  modules. `DependencySpec::Oci::version` is `&str` (not `Option`) —
+  manifest validation already enforces presence, so the type now
+  encodes the invariant.
 - New `AkuaLock::find_slot` / `upsert_at` lockfile primitives —
   single-scan lockfile upserts. `merge_into_lock` is now O(n) over
   the workspace's deps, was O(n²).
 - Shared `lock_file::VENDORED_LOCK_FALLBACK` constant for the
   sentinel `version` / `tag_or_rev` value (was a bare `"vendored"`
   string literal at four call sites).
+- Shared `chart_resolver::upsert_locked_from_source` helper used by
+  both `merge_into_lock` (resolver-driven) and `vendor::add_impl`
+  (vendor-add-driven), so the lockfile shape stays identical regardless
+  of which codepath produced the entry.
 
 ## [0.8.6] — 2026-05-05
 
