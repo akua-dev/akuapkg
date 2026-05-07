@@ -984,6 +984,73 @@ enum PathOrigin {
     Internal,
 }
 
+/// Outcome of [`validate_workspace_path`]. Each variant maps to a
+/// caller-domain error variant + the `E_PATH_ESCAPE` structured code.
+#[derive(Debug)]
+pub(crate) enum WorkspacePathError {
+    AbsoluteRejected {
+        path: PathBuf,
+    },
+    NotFound {
+        path: PathBuf,
+    },
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    Escape {
+        resolved: PathBuf,
+        workspace_root: PathBuf,
+    },
+}
+
+/// Validate a user-authored relative path against the workspace-local
+/// invariant. Used by `chart_resolver::resolve_path` (path-dep
+/// resolution) and `vendor::resolve_path_dep` (vendoring path deps)
+/// — both must canonicalize the joined target and reject anything
+/// that escapes the workspace root.
+///
+/// Returns the canonical target on success. Caller is responsible
+/// for the kind-specific check (`is_dir` for vendor, full chart
+/// validation for the resolver).
+///
+/// `workspace_canon` should be the **already-canonicalized** workspace
+/// root — caller canonicalizes once and threads it through, so we
+/// don't pay the syscall on every dep in a multi-dep manifest. If
+/// the workspace root itself can't be canonicalized that's a fatal
+/// caller-side condition (broken workspace), not something this
+/// helper should silently paper over.
+pub(crate) fn validate_workspace_path(
+    workspace_canon: &Path,
+    workspace_root: &Path,
+    requested: &str,
+) -> Result<PathBuf, WorkspacePathError> {
+    let rel = PathBuf::from(requested);
+    if rel.is_absolute() {
+        return Err(WorkspacePathError::AbsoluteRejected { path: rel });
+    }
+    let joined = workspace_root.join(&rel);
+    let canon = match joined.canonicalize() {
+        Ok(p) => p,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(WorkspacePathError::NotFound { path: joined });
+        }
+        Err(e) => {
+            return Err(WorkspacePathError::Io {
+                path: joined,
+                source: e,
+            });
+        }
+    };
+    if !canon.starts_with(workspace_canon) {
+        return Err(WorkspacePathError::Escape {
+            resolved: canon,
+            workspace_root: workspace_canon.to_path_buf(),
+        });
+    }
+    Ok(canon)
+}
+
 fn resolve_path(
     name: &str,
     requested: &str,
@@ -991,53 +1058,81 @@ fn resolve_path(
     source: ResolvedSource,
     origin: PathOrigin,
 ) -> Result<ResolvedChart, ChartResolveError> {
-    let rel = PathBuf::from(requested);
-    if origin == PathOrigin::UserManifest && rel.is_absolute() {
-        return Err(ChartResolveError::AbsolutePathRejected {
-            name: name.to_string(),
-            path: rel,
-        });
-    }
-    let joined = if rel.is_absolute() {
-        rel.clone()
-    } else {
-        workspace_root.join(&rel)
+    let canon = match origin {
+        PathOrigin::UserManifest => {
+            // Canonicalize the workspace once. If this fails the
+            // workspace itself is broken; surface it.
+            let workspace_canon =
+                workspace_root
+                    .canonicalize()
+                    .map_err(|e| ChartResolveError::Io {
+                        name: name.to_string(),
+                        path: workspace_root.to_path_buf(),
+                        source: e,
+                    })?;
+            match validate_workspace_path(&workspace_canon, workspace_root, requested) {
+                Ok(canon) => canon,
+                Err(WorkspacePathError::AbsoluteRejected { path }) => {
+                    return Err(ChartResolveError::AbsolutePathRejected {
+                        name: name.to_string(),
+                        path,
+                    });
+                }
+                Err(WorkspacePathError::NotFound { path }) => {
+                    return Err(ChartResolveError::NotFound {
+                        name: name.to_string(),
+                        path,
+                    });
+                }
+                Err(WorkspacePathError::Io { path, source }) => {
+                    return Err(ChartResolveError::Io {
+                        name: name.to_string(),
+                        path,
+                        source,
+                    });
+                }
+                Err(WorkspacePathError::Escape {
+                    resolved,
+                    workspace_root: ws,
+                }) => {
+                    return Err(ChartResolveError::PathEscape {
+                        name: name.to_string(),
+                        requested: PathBuf::from(requested),
+                        resolved,
+                        workspace_root: ws,
+                    });
+                }
+            }
+        }
+        PathOrigin::Internal => {
+            // Internal akua-managed paths (vendor materialization,
+            // OCI cache extraction) are absolute by construction and
+            // legitimately live outside the workspace. Skip the
+            // escape guard; just canonicalize.
+            let rel = PathBuf::from(requested);
+            let joined = if rel.is_absolute() {
+                rel
+            } else {
+                workspace_root.join(&rel)
+            };
+            match joined.canonicalize() {
+                Ok(p) => p,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    return Err(ChartResolveError::NotFound {
+                        name: name.to_string(),
+                        path: joined,
+                    });
+                }
+                Err(e) => {
+                    return Err(ChartResolveError::Io {
+                        name: name.to_string(),
+                        path: joined,
+                        source: e,
+                    });
+                }
+            }
+        }
     };
-
-    let canon = match joined.canonicalize() {
-        Ok(p) => p,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Err(ChartResolveError::NotFound {
-                name: name.to_string(),
-                path: joined,
-            });
-        }
-        Err(e) => {
-            return Err(ChartResolveError::Io {
-                name: name.to_string(),
-                path: joined,
-                source: e,
-            });
-        }
-    };
-
-    // Workspace-escape guard for user-authored paths only. Internal
-    // callers (vendor, OCI cache) hand us absolute paths that
-    // legitimately live outside the workspace at canonicalize time
-    // (e.g. `$XDG_CACHE_HOME/akua/oci/...`).
-    if origin == PathOrigin::UserManifest {
-        let workspace_canon = workspace_root
-            .canonicalize()
-            .unwrap_or_else(|_| workspace_root.to_path_buf());
-        if !canon.starts_with(&workspace_canon) {
-            return Err(ChartResolveError::PathEscape {
-                name: name.to_string(),
-                requested: rel,
-                resolved: canon,
-                workspace_root: workspace_canon,
-            });
-        }
-    }
 
     let meta = canon.metadata().map_err(|e| ChartResolveError::Io {
         name: name.to_string(),

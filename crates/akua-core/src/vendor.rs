@@ -17,7 +17,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use crate::chart_resolver::{hash_dir, VENDOR_DIR};
+use crate::chart_resolver::{hash_dir, validate_workspace_path, WorkspacePathError, VENDOR_DIR};
 use crate::cli_contract::{codes, ExitCode, StructuredError};
 use crate::lock_file::{AkuaLock, LockLoadError, LockedPackage};
 use crate::mod_file::{AkuaManifest, Dependency, DependencySource, ManifestLoadError};
@@ -107,11 +107,10 @@ pub enum VendorError {
     #[error("source path `{path}` does not exist")]
     SourceMissing { path: PathBuf },
 
-    /// Absolute path in `akua.toml` `path = "..."`. Rejected for the
-    /// same reason `chart_resolver` does — see CLAUDE.md "`replace`
-    /// and `path` deps are workspace-local; never cross Package
-    /// boundaries". Without this, a malicious manifest could vendor
-    /// host-fs bytes into the workspace where they'd be committed.
+    /// Absolute path in `akua.toml` `path = "..."`. Path deps must
+    /// stay under the workspace root — see CLAUDE.md "`replace` and
+    /// `path` deps are workspace-local; never cross Package
+    /// boundaries". Same invariant `chart_resolver` enforces.
     #[error(
         "dep `{name}`: absolute path `{}` is rejected — \
          path deps must stay under the workspace root",
@@ -484,44 +483,41 @@ fn expected_entries(workspace: &Path) -> Result<ExpectedSet, VendorError> {
     Ok(ExpectedSet { names, entries })
 }
 
-/// Validate a `path = "..."` dep target against the workspace-local
-/// invariant. Mirrors `chart_resolver::resolve_path` — absolute paths
-/// rejected, the canonicalized target must live under the canonical
-/// workspace root. Without this guard, `akua vendor add` would happily
-/// copy bytes from an arbitrary host directory into `.akua/vendor/`
-/// where they'd land in the install repo.
+/// Validate + canonicalize a `path = "..."` dep target. Path deps must
+/// canonicalize under the workspace root; otherwise vendor would be a
+/// side-channel for copying arbitrary host bytes (or anything the
+/// calling user can read) into `.akua/vendor/<name>/` where the
+/// install pipeline would commit them. Same workspace-local invariant
+/// `chart_resolver::resolve_path` enforces, via the shared helper.
 fn resolve_path_dep(workspace: &Path, name: &str, requested: &str) -> Result<PathBuf, VendorError> {
-    let rel = PathBuf::from(requested);
-    if rel.is_absolute() {
-        return Err(VendorError::AbsolutePathRejected {
-            name: name.to_string(),
-            path: rel,
-        });
-    }
-    let joined = workspace.join(&rel);
-    let canon = match joined.canonicalize() {
-        Ok(p) => p,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            return Err(VendorError::SourceMissing { path: joined });
-        }
-        Err(err) => {
-            return Err(VendorError::Io {
-                path: joined,
-                source: err,
-            });
-        }
-    };
-    let workspace_canon = workspace
-        .canonicalize()
-        .unwrap_or_else(|_| workspace.to_path_buf());
-    if !canon.starts_with(&workspace_canon) {
-        return Err(VendorError::PathEscape {
-            name: name.to_string(),
-            requested: rel,
-            resolved: canon,
-            workspace_root: workspace_canon,
-        });
-    }
+    let workspace_canon = workspace.canonicalize().map_err(|err| VendorError::Io {
+        path: workspace.to_path_buf(),
+        source: err,
+    })?;
+    let canon =
+        validate_workspace_path(&workspace_canon, workspace, requested).map_err(
+            |err| match err {
+                WorkspacePathError::AbsoluteRejected { path } => {
+                    VendorError::AbsolutePathRejected {
+                        name: name.to_string(),
+                        path,
+                    }
+                }
+                WorkspacePathError::NotFound { path } => VendorError::SourceMissing { path },
+                WorkspacePathError::Io { path, source } => VendorError::Io { path, source },
+                WorkspacePathError::Escape {
+                    resolved,
+                    workspace_root,
+                } => VendorError::PathEscape {
+                    name: name.to_string(),
+                    requested: PathBuf::from(requested),
+                    resolved,
+                    workspace_root,
+                },
+            },
+        )?;
+    // canonicalize already required existence; one extra stat to confirm
+    // the target is a directory (vendor only mounts directories).
     if !canon.is_dir() {
         return Err(VendorError::SourceMissing { path: canon });
     }
@@ -863,10 +859,10 @@ local = { path = "./charts/local" }
             .contains("path = \".akua/vendor/nope\""));
     }
 
-    /// A malicious manifest that points a `path` dep at an absolute
-    /// host directory must NOT cause `vendor add` to copy host bytes
-    /// into the workspace. Same workspace-local invariant the
-    /// chart_resolver enforces — see CLAUDE.md.
+    /// Path deps must stay under the workspace root. Absolute paths
+    /// in `path = "..."` are rejected with `E_PATH_ESCAPE` — same
+    /// workspace-local invariant the chart_resolver enforces (see
+    /// CLAUDE.md).
     #[test]
     fn absolute_path_dep_is_rejected_with_e_path_escape() {
         let ws = workspace(
@@ -886,18 +882,19 @@ bad = { path = "/etc" }
         assert!(matches!(err, VendorError::AbsolutePathRejected { .. }));
     }
 
-    /// `..` segments that resolve outside the workspace are rejected
-    /// even when relative. Without this, a `path = "../sibling"`
-    /// would let `vendor add` exfiltrate host bytes through the
-    /// workspace-local appearance of the manifest.
+    /// Relative paths that canonicalize outside the workspace
+    /// (typically via `..` segments or symlinks) are rejected with
+    /// `E_PATH_ESCAPE`, even though they look workspace-local in
+    /// the manifest.
     #[test]
     fn path_dep_escaping_via_dotdot_is_rejected_with_e_path_escape() {
         let outer = tempfile::tempdir().expect("outer tmpdir");
         let workspace_dir = outer.path().join("ws");
         std::fs::create_dir(&workspace_dir).expect("create workspace");
+        // The sibling just has to exist as a directory so canonicalize
+        // resolves it. Rejection lands before any chart parsing.
         let sibling = outer.path().join("sibling");
         std::fs::create_dir(&sibling).expect("create sibling");
-        std::fs::write(sibling.join("Chart.yaml"), b"name: bad\n").expect("write Chart.yaml");
         std::fs::write(
             workspace_dir.join("akua.toml"),
             r#"

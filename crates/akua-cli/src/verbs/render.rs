@@ -273,6 +273,8 @@ impl RenderError {
                         source: akua_core::oci_fetcher::OciFetchError::CosignSignatureMissing { .. },
                         ..
                     } => codes::E_COSIGN_SIG_MISSING,
+                    ChartResolveError::AbsolutePathRejected { .. }
+                    | ChartResolveError::PathEscape { .. } => codes::E_PATH_ESCAPE,
                     _ => codes::E_DEP_RESOLVE,
                 };
                 StructuredError::new(code, inner.to_string()).with_default_docs()

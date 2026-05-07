@@ -1,5 +1,5 @@
 [package]
-name    = "10-vendor-offline"
+name    = "12-vendor-offline"
 version = "0.1.0"
 edition = "akua.dev/v1alpha1"
 

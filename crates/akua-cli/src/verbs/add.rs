@@ -113,7 +113,12 @@ impl AddError {
                 .with_path(path.display().to_string())
                 .with_default_docs(),
             AddError::Resolve(inner) => {
-                StructuredError::new(codes::E_DEP_RESOLVE, inner.to_string()).with_default_docs()
+                let code = match inner {
+                    ChartResolveError::AbsolutePathRejected { .. }
+                    | ChartResolveError::PathEscape { .. } => codes::E_PATH_ESCAPE,
+                    _ => codes::E_DEP_RESOLVE,
+                };
+                StructuredError::new(code, inner.to_string()).with_default_docs()
             }
             AddError::LockSave(e) => e.to_structured(),
             AddError::StdoutWrite(e) => {

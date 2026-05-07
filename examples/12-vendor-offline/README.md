@@ -1,4 +1,4 @@
-# Example 10 — vendor-offline (render without network or auth)
+# example 12 — vendor-offline (render without network or auth)
 
 > **Renders end-to-end** off the local vendor tree. No registry, no
 > network, no credentials needed at render time. The same Package
