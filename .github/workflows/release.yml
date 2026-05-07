@@ -311,6 +311,14 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
+          # Filter to the artifacts this job actually consumes:
+          # `native-<target>` per-platform .node binaries (from native-build)
+          # plus `wasm-bundle` (engine wasm bytes for the engines package).
+          # Without a pattern, download-artifact@v4 grabs ALL workflow
+          # artifacts — including the docker job's auto-attached
+          # `cnap-tech~akua~<id>.dockerbuild` provenance artifact, whose
+          # `~`-containing name fails the action's path validation.
+          pattern: '{native-*,wasm-bundle}'
           path: crates/akua-napi/artifacts
 
       - name: Generate per-platform npm dirs
