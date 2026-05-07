@@ -106,6 +106,8 @@ pub mod test_runner;
 pub mod tree;
 #[cfg(feature = "engine-kcl")]
 pub mod values_schema;
+#[cfg(feature = "engine-kcl")]
+pub mod vendor;
 pub(crate) mod walk;
 #[cfg(feature = "engine-kcl")]
 pub(crate) mod yaml_multidoc;
@@ -137,4 +139,9 @@ pub use package_render::{
 pub use tree::{
     tree_from_parsed, tree_from_sources, DepRow, LockedInfo, PackageInfo, TreeOutput,
     TreeSourceError,
+};
+#[cfg(feature = "engine-kcl")]
+pub use vendor::{
+    VendorAddOutput, VendorCheckEntry, VendorCheckOutput, VendorError, VendorListEntry,
+    VendorListOutput,
 };
