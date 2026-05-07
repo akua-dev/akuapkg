@@ -1,26 +1,42 @@
 name: release
 
-# Single unified release pipeline. Triggered by `v<semver>` tag pushes.
-# Replaces the three previous workflows (native-release / sdk-release /
-# cli-release) and the runtime-coupling-via-npm-poll between them.
+# Build half of the release pipeline. Triggered by `v<semver>` tag pushes.
+# Builds binaries, creates the GitHub Release, then dispatches
+# `release-publish.yml` for the npm publish step.
 #
 # Job graph:
 #
-#   detect-version ─┬─> wasm-bundle ─┬─> native-build ──> native-publish ─┐
-#                   │                │                                    ├─> sdk-publish
-#                   │                │                  sdk-build ────────┘
-#                   │                │
-#                   │                └─> cli-build ─┬──> github-release ──> homebrew-tap
-#                   │                               └──> docker
+#   detect-version ─┬─> wasm-bundle ─┬─> native-build ──┐
+#                   │                │                  │
+#                   │                │  sdk-build ──────┤
+#                   │                │                  │
+#                   │                └─> cli-build ─┬─> github-release ┬─> trigger-publish ──> release-publish.yml
+#                   │                               └─> docker         │
+#                   │                                                  └─> homebrew-tap
 #                   └─ (version + is_prerelease propagated to every job)
 #
-# Key wins over the previous three-workflow setup:
-# - No npm polling. `sdk-publish` has `needs: native-publish` and runs
-#   the millisecond native finishes (was a 30-s-resolution / 45-min-
-#   timeout poll loop in sdk-release.yml).
-# - `wasm-bundle` builds once. native-release rebuilt the engine wasm
-#   inside its matrix; cli-release rebuilt it again. ~5–10 min saved.
-# - One status check per release run instead of three independent ones.
+# Why split publish into a separate workflow: `npm publish` is the
+# most failure-prone step (OIDC config drift, registry hiccups,
+# version-pin mismatch). When it fails today, fixing it required
+# re-running the whole build matrix (~hours). With the split:
+#
+#   $ gh workflow run release-publish.yml -f tag=vX.Y.Z
+#
+# re-runs publish only — ~1 minute, no rebuild. The build outputs
+# this workflow produces (native-*.tar.gz / wasm-bundle.tar.gz /
+# sdk-staged.tar.gz) are uploaded to the GitHub Release as durable
+# assets, addressable by tag, with no 90-day workflow-artifact TTL.
+# The publish workflow downloads them via `gh release download`.
+#
+# `trigger-publish` calls `gh workflow run release-publish.yml` —
+# `workflow_dispatch` is explicitly carved out of the GITHUB_TOKEN
+# no-recursion rule (per Actions docs), so the default token works
+# without a PAT.
+#
+# Other wins preserved from the prior unified-workflow setup:
+# - `wasm-bundle` builds once (was rebuilt in cli + native + sdk
+#   matrices — ~5–10 min saved per release).
+# - One status check on the build half; one on the publish half.
 #
 # Prerelease handling: tags containing `-` (e.g. `v0.8.7-rc1`) publish
 # to the npm `next` dist-tag instead of `latest`, are marked as
@@ -278,131 +294,77 @@ jobs:
   # native-publish — stages npm packages from the matrix artefacts +
   # the wasm bundle, publishes via OIDC trusted publishing.
   # ---------------------------------------------------------------------------
-  native-publish:
-    needs: [detect-version, wasm-bundle, native-build]
+  # ---------------------------------------------------------------------------
+  # trigger-publish — last step of release.yml. Bundles workflow-artifact
+  # outputs (native binaries, wasm engines, staged sdk tree) into
+  # tarballs, uploads them to the GitHub Release as durable assets, and
+  # dispatches `release-publish.yml` which runs `npm publish` against
+  # those assets.
+  #
+  # Why split: `npm publish` is the most failure-prone step in the
+  # pipeline (OIDC config drift, registry hiccups, version-pin
+  # mismatch). Putting it in its own dispatchable workflow means a
+  # publish-only retry takes ~1 minute instead of re-running the full
+  # build matrix (~hours). See release-publish.yml for the publish
+  # logic itself.
+  # ---------------------------------------------------------------------------
+  trigger-publish:
+    needs: [detect-version, wasm-bundle, native-build, sdk-build, github-release]
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || inputs.dry-run == false
     steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v4
-        # Node 24 ships npm 11.x which has OIDC trusted-publishing
-        # support. Node 22 ships npm 10.x (no trust support) and
-        # `npm install -g npm@latest` from there hits a known
-        # promise-retry self-upgrade bug. setup-node's `registry-url`
-        # is omitted on purpose: it writes a `.npmrc` containing a
-        # literal placeholder `_authToken=${NODE_AUTH_TOKEN}` that
-        # intercepts OIDC.
-        with:
-          node-version: '24'
-
-      - uses: oven-sh/setup-bun@v2
-
-      - name: Bump package.json version from the tag
-        run: |
-          set -eu
-          version="${{ needs.detect-version.outputs.version }}"
-          jq --arg v "$version" '.version = $v' \
-            crates/akua-napi/package.json > crates/akua-napi/package.json.tmp
-          mv crates/akua-napi/package.json.tmp crates/akua-napi/package.json
-
-      - name: Install napi deps
-        working-directory: crates/akua-napi
-        run: bun install --frozen-lockfile
-
       - uses: actions/download-artifact@v4
         with:
-          # Filter to the artifacts this job actually consumes:
-          # `native-<target>` per-platform .node binaries (from native-build)
-          # plus `wasm-bundle` (engine wasm bytes for the engines package).
-          # Without a pattern, download-artifact@v4 grabs ALL workflow
-          # artifacts — including the docker job's auto-attached
-          # `cnap-tech~akua~<id>.dockerbuild` provenance artifact, whose
-          # `~`-containing name fails the action's path validation.
-          pattern: '{native-*,wasm-bundle}'
-          path: crates/akua-napi/artifacts
+          # Same filter as the old native-publish step — without it,
+          # download-artifact@v4 also pulls the docker job's
+          # `cnap-tech~akua~<id>.dockerbuild` provenance artifact whose
+          # `~`-containing name fails path validation.
+          pattern: '{native-*,wasm-bundle,sdk-staged}'
+          path: artifacts
 
-      - name: Generate per-platform npm dirs
-        working-directory: crates/akua-napi
-        run: bunx napi create-npm-dirs
-
-      - name: Move artifacts into the per-platform npm dirs
-        working-directory: crates/akua-napi
-        run: bunx napi artifacts
-
-      - name: List staged packages
-        working-directory: crates/akua-napi
-        run: ls -R npm
-
-      - name: Stage engines into the npm package dir
-        # Bump version + copy the wasm bytes (downloaded above as the
-        # `wasm-bundle` artefact) into the engines package source layout
-        # so `npm publish` finds them.
-        #
-        # `wasm-bundle` was uploaded with a `path:` listing files
-        # rooted at both `crates/` and `target/`; upload-artifact's
-        # common-ancestor calculation falls back to the workspace root,
-        # which means the artifact's internal layout preserves the full
-        # `crates/...` and `target/...` prefixes. Hence the
-        # `<dest>/wasm-bundle/crates/<engine-crate>/...` source path here.
+      - name: Bundle artifacts into release-asset tarballs
+        # Each per-platform `native-<target>` and the shared `wasm-bundle`
+        # / `sdk-staged` directories get tar+gz'd. Downloading from a
+        # release is one HTTP request per file; the .tar.gz wrapper keeps
+        # internal directory layout intact (e.g. wasm-bundle preserves
+        # `crates/<engine>/assets/<engine>.wasm`) so release-publish.yml
+        # can reproduce the workflow-artifact view byte-for-byte.
         run: |
           set -eu
-          version="${{ needs.detect-version.outputs.version }}"
-          cp crates/akua-napi/artifacts/wasm-bundle/crates/helm-engine-wasm/assets/helm-engine.wasm \
-             crates/akua-native-engines-npm/helm-engine.wasm
-          cp crates/akua-napi/artifacts/wasm-bundle/crates/kustomize-engine-wasm/assets/kustomize-engine.wasm \
-             crates/akua-native-engines-npm/kustomize-engine.wasm
-          jq --arg v "$version" '.version = $v' \
-            crates/akua-native-engines-npm/package.json \
-            > crates/akua-native-engines-npm/package.json.tmp
-          mv crates/akua-native-engines-npm/package.json.tmp \
-             crates/akua-native-engines-npm/package.json
+          mkdir -p bundles
+          for d in artifacts/native-*; do
+            name=$(basename "$d")
+            tar -czf "bundles/${name}.tar.gz" -C "$d" .
+          done
+          tar -czf bundles/wasm-bundle.tar.gz -C artifacts/wasm-bundle .
+          tar -czf bundles/sdk-staged.tar.gz -C artifacts/sdk-staged .
+          ls -la bundles/
 
-      - name: Publish all packages
-        # Auth via npm trusted publishing (OIDC). Order is load-bearing:
-        # engines first, then per-platform `.node` packages, then the
-        # meta `@akua-dev/native` (which declares optionalDependencies
-        # on the per-platform packages + a regular dep on engines).
-        #
-        # Idempotency: probes `npm view <pkg>@<v>` and skips already-
-        # published packages. A recovery rerun from a previous partial
-        # publish (network blip, OIDC hiccup mid-loop) finishes the
-        # remaining packages without manual surgery.
-        if: github.event_name == 'push' || inputs.dry-run == false
+      - name: Upload bundles to the GitHub Release
+        # `--clobber` means re-runs of trigger-publish are idempotent
+        # (overwrites existing assets with the same name).
         env:
-          NPM_DIST_TAG: ${{ needs.detect-version.outputs.npm_dist_tag }}
+          TAG: ${{ needs.detect-version.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
+          gh release upload "$TAG" bundles/*.tar.gz --clobber --repo "$GITHUB_REPOSITORY"
 
-          publish_one() {
-            local dir="$1" name version
-            name=$(jq -r '.name'    "$dir/package.json")
-            version=$(jq -r '.version' "$dir/package.json")
-            if npm view "${name}@${version}" version > /dev/null 2>&1; then
-              echo "Skipping ${name}@${version} — already on npm"
-              return 0
-            fi
-            (cd "$dir" && npm publish --access public --provenance --tag "$NPM_DIST_TAG")
-          }
-
-          echo "Publishing under dist-tag: $NPM_DIST_TAG"
-          echo "Publishing @akua-dev/native-engines"
-          publish_one crates/akua-native-engines-npm
-          for dir in crates/akua-napi/npm/*/; do
-            echo "Publishing ${dir}"
-            publish_one "${dir%/}"
-          done
-          echo "Publishing meta @akua-dev/native"
-          publish_one crates/akua-napi
-
-      - name: Pack only (dry-run)
-        if: github.event_name == 'workflow_dispatch' && inputs.dry-run == true
+      - name: Dispatch release-publish.yml
+        # workflow_dispatch is explicitly carved out of the GITHUB_TOKEN
+        # no-recursion rule (per Actions docs), so the default token
+        # works — no PAT needed.
+        env:
+          TAG: ${{ needs.detect-version.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
-          (cd crates/akua-native-engines-npm && npm pack --dry-run)
-          for dir in crates/akua-napi/npm/*/; do
-            (cd "$dir" && npm pack --dry-run)
-          done
-          (cd crates/akua-napi && npm pack --dry-run)
+          gh workflow run release-publish.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f tag="$TAG"
+          echo "Dispatched release-publish.yml with tag=$TAG. Watch:"
+          echo "  https://github.com/$GITHUB_REPOSITORY/actions/workflows/release-publish.yml"
 
   # ---------------------------------------------------------------------------
   # sdk-build — regenerates types + schemas from the Rust source, runs
@@ -462,36 +424,6 @@ jobs:
           path: packages/sdk
           if-no-files-found: error
           retention-days: 1
-
-  # ---------------------------------------------------------------------------
-  # sdk-publish — depends on BOTH `sdk-build` AND `native-publish`.
-  # The `needs:` edge to native-publish replaces the 45-min npm-poll
-  # loop that the previous sdk-release.yml used. Instant sync, no
-  # stale-failure timeout masking real errors.
-  # ---------------------------------------------------------------------------
-  sdk-publish:
-    needs: [detect-version, sdk-build, native-publish]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: sdk-staged
-          path: sdk
-
-      - name: Pack dry-run (manifest sanity, post-staging)
-        working-directory: sdk
-        run: npm pack --dry-run
-
-      - name: Publish to npm
-        if: github.event_name == 'push' || inputs.dry-run == false
-        working-directory: sdk
-        env:
-          NPM_DIST_TAG: ${{ needs.detect-version.outputs.npm_dist_tag }}
-        run: npm publish --access public --provenance --tag "$NPM_DIST_TAG"
 
   # ---------------------------------------------------------------------------
   # cli-build — per-platform `akua` binary matrix. Downloads the wasm
@@ -636,6 +568,15 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
         with:
+          # Filter to the cli-build artifacts this job consumes —
+          # `cli-*` per-platform tarballs + sha256 sidecars. Without
+          # the pattern, download-artifact also pulls the docker job's
+          # `cnap-tech~akua~<id>.dockerbuild` provenance artifact whose
+          # `~`-containing name fails path validation in v4 (and only
+          # silently slips by on v8 because the merge-multiple flag
+          # tolerates it; defensive here so v8 → v4 downgrade doesn't
+          # bring back the bug).
+          pattern: 'cli-*'
           path: dist
           merge-multiple: true
       - name: Create release
@@ -666,6 +607,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
         with:
+          pattern: 'cli-*'
           path: dist
           merge-multiple: true
       - uses: docker/setup-qemu-action@v4
@@ -725,6 +667,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
+          pattern: 'cli-*'
           path: dist
           merge-multiple: true
 

@@ -1,0 +1,237 @@
+name: release-publish
+
+# Publishes the `@akua-dev/*` npm packages for an already-built release.
+#
+# This is the second half of the release pipeline, deliberately split
+# from `release.yml` so the retry boundary is scoped:
+#
+#   release.yml          — tag-triggered. Builds binaries, creates the
+#                          GitHub Release, uploads native + wasm + sdk
+#                          tarballs as Release assets, then dispatches
+#                          this workflow.
+#   release-publish.yml  — workflow_dispatch with `tag` input. Downloads
+#                          Release assets and runs `npm publish`.
+#
+# When publish fails (npm hiccup, OIDC config drift, version-pin
+# mismatch, …) you fix the workflow on main, then re-dispatch THIS
+# workflow with the same tag. ~1 minute, no rebuild.
+#
+# Per GitHub Actions docs: `workflow_dispatch` is explicitly carved
+# out of the GITHUB_TOKEN no-recursion rule, so the upstream workflow
+# can dispatch this one without a PAT.
+#
+# A failed run can also be re-run via `gh run rerun --failed <id>`;
+# the workflow file used will be the version on the dispatched ref
+# (typically main), not the one at the original tag's SHA — meaning
+# fixes to this workflow apply on rerun.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. v0.8.7).'
+        required: true
+        type: string
+      dry-run:
+        description: 'Pack only, do not publish.'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read   # gh release download
+  id-token: write  # npm publish: OIDC trusted publishing
+
+jobs:
+  detect-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.detect.outputs.version }}
+      tag: ${{ steps.detect.outputs.tag }}
+      is_prerelease: ${{ steps.detect.outputs.is_prerelease }}
+      npm_dist_tag: ${{ steps.detect.outputs.npm_dist_tag }}
+    steps:
+      - id: detect
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -eu
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::tag '$TAG' is not a valid semver v* tag"
+            exit 1
+          fi
+          version="${TAG#v}"
+          if [[ "$version" == *-* ]]; then
+            is_prerelease=true
+            npm_dist_tag=next
+          else
+            is_prerelease=false
+            npm_dist_tag=latest
+          fi
+          {
+            echo "tag=$TAG"
+            echo "version=$version"
+            echo "is_prerelease=$is_prerelease"
+            echo "npm_dist_tag=$npm_dist_tag"
+          } >> "$GITHUB_OUTPUT"
+          echo "Will publish $version under dist-tag: $npm_dist_tag"
+
+  native-publish:
+    needs: detect-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-node@v4
+        # Node 24 ships npm 11.x — required for OIDC trusted publishing.
+        # No `registry-url:` here on purpose; setup-node would write a
+        # `_authToken=${NODE_AUTH_TOKEN}` line in `.npmrc` that intercepts
+        # OIDC.
+        with:
+          node-version: '24'
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Bump package.json version from the tag
+        run: |
+          set -eu
+          version="${{ needs.detect-version.outputs.version }}"
+          jq --arg v "$version" '.version = $v' \
+            crates/akua-napi/package.json > crates/akua-napi/package.json.tmp
+          mv crates/akua-napi/package.json.tmp crates/akua-napi/package.json
+
+      - name: Install napi deps
+        working-directory: crates/akua-napi
+        run: bun install --frozen-lockfile
+
+      - name: Download release assets (native + wasm)
+        env:
+          TAG: ${{ needs.detect-version.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          mkdir -p crates/akua-napi/artifacts
+          cd crates/akua-napi/artifacts
+          # Each `native-<target>` and `wasm-bundle` was uploaded as
+          # `<name>.tar.gz` by release.yml's trigger-publish job.
+          gh release download "$TAG" \
+            --pattern 'native-*.tar.gz' \
+            --pattern 'wasm-bundle.tar.gz'
+          for f in native-*.tar.gz; do
+            name="${f%.tar.gz}"
+            mkdir "$name"
+            tar -xzf "$f" -C "$name"
+            rm "$f"
+          done
+          mkdir wasm-bundle
+          tar -xzf wasm-bundle.tar.gz -C wasm-bundle
+          rm wasm-bundle.tar.gz
+          ls -R
+
+      - name: Generate per-platform npm dirs
+        working-directory: crates/akua-napi
+        run: bunx napi create-npm-dirs
+
+      - name: Move artifacts into the per-platform npm dirs
+        working-directory: crates/akua-napi
+        run: bunx napi artifacts
+
+      - name: List staged packages
+        working-directory: crates/akua-napi
+        run: ls -R npm
+
+      - name: Stage engines into the npm package dir
+        # Bump version + copy the wasm bytes (downloaded above) into
+        # the engines package source layout so `npm publish` finds them.
+        run: |
+          set -eu
+          version="${{ needs.detect-version.outputs.version }}"
+          cp crates/akua-napi/artifacts/wasm-bundle/crates/helm-engine-wasm/assets/helm-engine.wasm \
+             crates/akua-native-engines-npm/helm-engine.wasm
+          cp crates/akua-napi/artifacts/wasm-bundle/crates/kustomize-engine-wasm/assets/kustomize-engine.wasm \
+             crates/akua-native-engines-npm/kustomize-engine.wasm
+          jq --arg v "$version" '.version = $v' \
+            crates/akua-native-engines-npm/package.json \
+            > crates/akua-native-engines-npm/package.json.tmp
+          mv crates/akua-native-engines-npm/package.json.tmp \
+             crates/akua-native-engines-npm/package.json
+
+      - name: Publish all packages
+        # Auth via npm trusted publishing (OIDC). Order is load-bearing:
+        # engines first, then per-platform `.node` packages, then the
+        # meta `@akua-dev/native` (which declares optionalDependencies
+        # on the per-platform packages + a regular dep on engines).
+        #
+        # Idempotency: probes `npm view <pkg>@<v>` and skips already-
+        # published packages — a re-dispatch after a partial publish
+        # finishes the rest without duplicate-publish errors.
+        if: ${{ inputs.dry-run == false }}
+        env:
+          NPM_DIST_TAG: ${{ needs.detect-version.outputs.npm_dist_tag }}
+        run: |
+          set -eu
+
+          publish_one() {
+            local dir="$1" name version
+            name=$(jq -r '.name'    "$dir/package.json")
+            version=$(jq -r '.version' "$dir/package.json")
+            if npm view "${name}@${version}" version > /dev/null 2>&1; then
+              echo "Skipping ${name}@${version} — already on npm"
+              return 0
+            fi
+            (cd "$dir" && npm publish --access public --provenance --tag "$NPM_DIST_TAG")
+          }
+
+          echo "Publishing under dist-tag: $NPM_DIST_TAG"
+          echo "Publishing @akua-dev/native-engines"
+          publish_one crates/akua-native-engines-npm
+          for dir in crates/akua-napi/npm/*/; do
+            echo "Publishing ${dir}"
+            publish_one "${dir%/}"
+          done
+          echo "Publishing meta @akua-dev/native"
+          publish_one crates/akua-napi
+
+      - name: Pack only (dry-run)
+        if: ${{ inputs.dry-run == true }}
+        run: |
+          set -eu
+          (cd crates/akua-native-engines-npm && npm pack --dry-run)
+          for dir in crates/akua-napi/npm/*/; do
+            (cd "$dir" && npm pack --dry-run)
+          done
+          (cd crates/akua-napi && npm pack --dry-run)
+
+  sdk-publish:
+    needs: [detect-version, native-publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Download release asset (sdk-staged)
+        env:
+          TAG: ${{ needs.detect-version.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          mkdir sdk
+          cd sdk
+          gh release download "$TAG" --pattern 'sdk-staged.tar.gz'
+          tar -xzf sdk-staged.tar.gz
+          rm sdk-staged.tar.gz
+          ls -la
+
+      - name: Pack dry-run (manifest sanity)
+        working-directory: sdk
+        run: npm pack --dry-run
+
+      - name: Publish to npm
+        if: ${{ inputs.dry-run == false }}
+        working-directory: sdk
+        env:
+          NPM_DIST_TAG: ${{ needs.detect-version.outputs.npm_dist_tag }}
+        run: npm publish --access public --provenance --tag "$NPM_DIST_TAG"
