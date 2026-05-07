@@ -22,7 +22,9 @@ use crate::chart_resolver::{
     WorkspacePathError, VENDOR_DIR,
 };
 use crate::cli_contract::{codes, ExitCode, StructuredError};
-use crate::lock_file::{AkuaLock, LockLoadError, LockedPackage, GIT_DIGEST_PREFIX};
+use crate::lock_file::{
+    AkuaLock, LockLoadError, LockedPackage, GIT_DIGEST_PREFIX, VENDORED_LOCK_FALLBACK,
+};
 use crate::mod_file::{AkuaManifest, Dependency, DependencySpec, ManifestLoadError};
 #[cfg(feature = "oci-fetch")]
 use crate::{cache_inventory, oci_auth, oci_fetcher};
@@ -346,8 +348,8 @@ fn upsert_vendor_lock_entry(
 /// convention; path/oci deps keep the `sha256:<hex>` form `hash_dir`
 /// produced.
 fn vendor_lock_source(dep: &Dependency, tree_digest: &str) -> (ResolvedSource, String) {
-    const VENDORED_FALLBACK: &str = "vendored";
-    match dep.spec() {
+    let spec = dep.spec();
+    match spec {
         DependencySpec::Path { declared } => (
             ResolvedSource::Path {
                 declared: declared.to_string(),
@@ -357,12 +359,12 @@ fn vendor_lock_source(dep: &Dependency, tree_digest: &str) -> (ResolvedSource, S
         DependencySpec::Oci { oci, version } => (
             ResolvedSource::Oci {
                 oci: oci.to_string(),
-                version: version.unwrap_or(VENDORED_FALLBACK).to_string(),
+                version: version.to_string(),
                 blob_digest: tree_digest.to_string(),
             },
             tree_digest.to_string(),
         ),
-        DependencySpec::Git { git, tag, rev } => {
+        DependencySpec::Git { git, .. } => {
             let raw = tree_digest
                 .strip_prefix("sha256:")
                 .unwrap_or(tree_digest)
@@ -370,7 +372,10 @@ fn vendor_lock_source(dep: &Dependency, tree_digest: &str) -> (ResolvedSource, S
             (
                 ResolvedSource::Git {
                     git: git.to_string(),
-                    tag_or_rev: tag.or(rev).unwrap_or(VENDORED_FALLBACK).to_string(),
+                    tag_or_rev: spec
+                        .tag_or_rev()
+                        .unwrap_or(VENDORED_LOCK_FALLBACK)
+                        .to_string(),
                     commit_sha: raw.clone(),
                 },
                 format!("{GIT_DIGEST_PREFIX}{raw}"),
@@ -624,9 +629,8 @@ fn resolve_oci_source(
     workspace: &Path,
     name: &str,
     oci: &str,
-    version: Option<&str>,
+    version: &str,
 ) -> Result<SourceResolution, VendorError> {
-    let version = version.expect("manifest validation requires version on oci deps");
     let cache_root = cache_inventory::default_cache_root("oci");
     let creds = oci_auth::CredsStore::load().map_err(|e| VendorError::AuthConfig(e.to_string()))?;
     let locked_expected = expected_digest_from_lock(workspace, name, "oci");
@@ -654,7 +658,7 @@ fn resolve_oci_source(
     _workspace: &Path,
     name: &str,
     _oci: &str,
-    _version: Option<&str>,
+    _version: &str,
 ) -> Result<SourceResolution, VendorError> {
     let _ = name;
     Err(VendorError::SourceMissing {
@@ -964,14 +968,6 @@ local = { path = "./charts/local" }
         assert_eq!(lock_v1, lock_v2, "repeat add must produce identical lock");
     }
 
-    /// `vendor_lock_source` projects a manifest [`Dependency`] + the
-    /// vendored-tree hash into the `(ResolvedSource, digest)` pair the
-    /// shared `upsert_locked_from_source` helper expects. The three
-    /// branches each have non-trivial behavior (path declares the
-    /// canonical-source string verbatim, oci version falls back to
-    /// `"vendored"`, git tag/rev falls through with a digest rewrite),
-    /// so each is unit-tested directly without the workspace I/O of
-    /// `add()`.
     mod vendor_lock_source_tests {
         use super::*;
         use crate::chart_resolver::ResolvedSource;
@@ -985,10 +981,10 @@ local = { path = "./charts/local" }
             }
         }
 
-        fn dep_oci(oci: &str, version: Option<&str>) -> Dependency {
+        fn dep_oci(oci: &str, version: &str) -> Dependency {
             Dependency {
                 oci: Some(oci.to_string()),
-                version: version.map(String::from),
+                version: Some(version.to_string()),
                 ..Default::default()
             }
         }
@@ -1014,8 +1010,8 @@ local = { path = "./charts/local" }
         }
 
         #[test]
-        fn oci_dep_with_explicit_version_passes_through() {
-            let dep = dep_oci("oci://ghcr.io/acme/nginx", Some("1.2.3"));
+        fn oci_dep_passes_oci_ref_and_version_through() {
+            let dep = dep_oci("oci://ghcr.io/acme/nginx", "1.2.3");
             let (source, digest) = vendor_lock_source(&dep, TREE_DIGEST);
             match source {
                 ResolvedSource::Oci {
@@ -1032,19 +1028,6 @@ local = { path = "./charts/local" }
             assert_eq!(digest, TREE_DIGEST);
         }
 
-        #[test]
-        fn oci_dep_without_version_falls_back_to_vendored_marker() {
-            let dep = dep_oci("oci://ghcr.io/acme/nginx", None);
-            let (source, _) = vendor_lock_source(&dep, TREE_DIGEST);
-            match source {
-                ResolvedSource::Oci { version, .. } => assert_eq!(version, "vendored"),
-                other => panic!("expected ResolvedSource::Oci, got {other:?}"),
-            }
-        }
-
-        /// Git deps rewrite the digest to `git:<hex>` per the lockfile
-        /// convention so it doesn't collide with OCI's `sha256:` scheme
-        /// (see `LockError::BadDigest` for the validator).
         #[test]
         fn git_dep_with_tag_rewrites_digest_to_git_prefix() {
             let dep = dep_git("https://github.com/foo/bar", Some("v1.0.0"), None);
@@ -1084,10 +1067,10 @@ local = { path = "./charts/local" }
             }
         }
 
-        /// The git digest rewrite must handle a tree hash that's
-        /// already prefixed (`sha256:abc`) AND one that isn't (`abc`).
-        /// Currently `hash_dir` always returns `sha256:`-prefixed, but
-        /// the strip-or-pass logic guards against future drift.
+        /// The git digest rewrite handles a tree hash that's already
+        /// prefixed (`sha256:abc`) AND one that isn't (`abc`). `hash_dir`
+        /// always returns `sha256:`-prefixed today, but the strip-or-pass
+        /// logic guards against future drift.
         #[test]
         fn git_dep_strips_existing_sha256_prefix_before_rewriting() {
             let dep = dep_git("https://github.com/foo/bar", Some("v1"), None);

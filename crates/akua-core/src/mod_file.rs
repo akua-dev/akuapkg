@@ -83,7 +83,8 @@ pub struct WorkspaceSection {
 /// A single dependency. Form is discriminated by which source-type field is
 /// set (`oci` / `git` / `path`). Exactly one must be present; all three
 /// present is a validation error.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Default))]
 pub struct Dependency {
     /// OCI ref. Exclusive with `git`, `path`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -129,12 +130,10 @@ pub enum DependencySource {
     Path,
 }
 
-/// Typed projection of a [`Dependency`]'s source form, carrying the
-/// associated data (the path string / OCI ref / git URL plus version /
-/// tag / rev) instead of requiring callers to re-destructure the
-/// [`Option`] triple. Returned by [`Dependency::spec`]; only meaningful
-/// after [`Dependency::validate`] has run, which is what the manifest
-/// loader does.
+/// Typed projection of a [`Dependency`]'s source form. Returned by
+/// [`Dependency::spec`] post-validation; field shapes encode the
+/// validate-enforced invariants (OCI deps have a version; git deps
+/// have at least one of tag/rev) so consumers don't re-prove them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DependencySpec<'a> {
     Path {
@@ -142,9 +141,7 @@ pub enum DependencySpec<'a> {
     },
     Oci {
         oci: &'a str,
-        /// `None` for a still-being-vendored dep; manifest validation
-        /// rejects this for OCI deps once they're fully declared.
-        version: Option<&'a str>,
+        version: &'a str,
     },
     Git {
         git: &'a str,
@@ -153,11 +150,11 @@ pub enum DependencySpec<'a> {
     },
 }
 
-impl DependencySpec<'_> {
-    /// `tag` if set, else `rev`. Either is sufficient under manifest
-    /// validation; used wherever lockfile/cache machinery needs a
-    /// single ref-or-commit string.
-    pub fn tag_or_rev(&self) -> Option<&str> {
+impl<'a> DependencySpec<'a> {
+    /// `tag` if set, else `rev`. Manifest validation guarantees one of
+    /// the two is `Some` for git deps, so the [`Option`] in the return
+    /// is purely for the non-Git arms (always `None`).
+    pub fn tag_or_rev(&self) -> Option<&'a str> {
         match self {
             DependencySpec::Git { tag, rev, .. } => tag.or(*rev),
             _ => None,
@@ -307,18 +304,15 @@ impl Dependency {
         }
     }
 
-    /// Typed projection of the dep's source form into a
-    /// [`DependencySpec`] that carries the associated data. Lets
-    /// callers `match dep.spec()` instead of `match (&dep.path,
-    /// &dep.oci, &dep.git)` + four `.expect("…")`s on the field
-    /// accesses inside each arm.
+    /// Typed projection of the dep's source. Caller must have
+    /// validated; reach for [`source`] when working with raw input.
     ///
     /// # Panics
     ///
-    /// Panics if the [`Dependency`] is not exactly-one-source — i.e.
-    /// invariant violated by failure to call [`validate`] first.
-    /// `AkuaManifest::load` runs `validate` for you; reach for
-    /// [`source`] when handling an unvalidated manifest.
+    /// Panics on an unvalidated manifest (zero / multiple sources, OCI
+    /// without version, git without tag-or-rev). `AkuaManifest::load`
+    /// runs validation; direct `Dependency` construction outside tests
+    /// must call [`validate`] first.
     pub fn spec(&self) -> DependencySpec<'_> {
         match (
             self.path.as_deref(),
@@ -328,7 +322,9 @@ impl Dependency {
             (Some(declared), None, None) => DependencySpec::Path { declared },
             (None, Some(oci), None) => DependencySpec::Oci {
                 oci,
-                version: self.version.as_deref(),
+                version: self.version.as_deref().expect(
+                    "Dependency::spec called on an unvalidated manifest — call validate() first",
+                ),
             },
             (None, None, Some(git)) => DependencySpec::Git {
                 git,
@@ -666,10 +662,24 @@ strict_signing = false
         match dep.spec() {
             DependencySpec::Oci { oci, version } => {
                 assert_eq!(oci, "oci://ghcr.io/acme/app");
-                assert_eq!(version, Some("1.0.0"));
+                assert_eq!(version, "1.0.0");
             }
             other => panic!("expected Oci, got {other:?}"),
         }
+    }
+
+    /// `Dependency::spec` documents that OCI without a version panics
+    /// (manifest validation rejects this shape upstream). Pin the
+    /// contract so the `version: &str` field on `DependencySpec::Oci`
+    /// can't be silently downgraded back to `Option`.
+    #[test]
+    #[should_panic(expected = "unvalidated manifest")]
+    fn spec_panics_on_oci_without_version() {
+        let dep = Dependency {
+            oci: Some("oci://ghcr.io/acme/app".to_string()),
+            ..Default::default()
+        };
+        let _ = dep.spec();
     }
 
     #[test]

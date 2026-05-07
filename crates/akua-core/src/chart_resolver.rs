@@ -28,6 +28,7 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 
 use crate::hex::hex_encode;
+use crate::lock_file::VENDORED_LOCK_FALLBACK;
 use crate::mod_file::{AkuaManifest, Dependency, DependencySource, DependencySpec};
 #[cfg(feature = "oci-fetch")]
 pub use crate::oci_fetcher::PackageKind;
@@ -413,48 +414,42 @@ pub fn resolve_with_options(
             entries.insert(name.clone(), chart);
             continue;
         }
-        // Vendor-first across all dep kinds — `.akua/vendor/<name>/`
-        // is the universal cache layer (per-customer install repos GC
-        // the canonical source after vendoring; pulled OCI Packages
-        // ship pre-vendored).
-        let vendor_kind = match dep.spec() {
+        // Vendor-first across all dep kinds — install repos GC
+        // canonical sources post-vendor; pulled Packages arrive
+        // pre-vendored.
+        let spec = dep.spec();
+        let vendor_kind = match spec {
             DependencySpec::Path { declared } => VendorKind::Path { declared },
             DependencySpec::Oci { oci, version } => VendorKind::Oci {
                 oci,
-                version: version.unwrap_or("vendored").to_string(),
+                version: version.to_string(),
             },
-            DependencySpec::Git { git, tag, rev } => VendorKind::Git {
+            DependencySpec::Git { git, .. } => VendorKind::Git {
                 git,
-                tag_or_rev: tag.or(rev).unwrap_or("vendored").to_string(),
+                tag_or_rev: spec
+                    .tag_or_rev()
+                    .unwrap_or(VENDORED_LOCK_FALLBACK)
+                    .to_string(),
             },
         };
         if let Some(chart) = resolve_from_vendor(name, workspace_root, dep, vendor_kind)? {
             entries.insert(name.clone(), chart);
             continue;
         }
-        match dep.spec() {
-            DependencySpec::Path { declared } => {
-                let src = ResolvedSource::Path {
+        let chart = match spec {
+            DependencySpec::Path { declared } => resolve_path(
+                name,
+                declared,
+                workspace_root,
+                ResolvedSource::Path {
                     declared: declared.to_string(),
-                };
-                entries.insert(
-                    name.clone(),
-                    resolve_path(
-                        name,
-                        declared,
-                        workspace_root,
-                        src,
-                        PathOrigin::UserManifest,
-                    )?,
-                );
-            }
-            DependencySpec::Oci { oci, .. } => {
-                entries.insert(name.clone(), resolve_oci(name, dep, oci, opts)?);
-            }
-            DependencySpec::Git { git, .. } => {
-                entries.insert(name.clone(), resolve_git(name, dep, git, opts)?);
-            }
-        }
+                },
+                PathOrigin::UserManifest,
+            )?,
+            DependencySpec::Oci { oci, .. } => resolve_oci(name, dep, oci, opts)?,
+            DependencySpec::Git { git, .. } => resolve_git(name, dep, git, opts)?,
+        };
+        entries.insert(name.clone(), chart);
     }
     Ok(ResolvedCharts { entries })
 }
@@ -771,15 +766,16 @@ fn resolved_source_for_replace(
     dep: &Dependency,
     replace_path: &str,
 ) -> Result<ResolvedSource, ChartResolveError> {
-    match dep.spec() {
+    let spec = dep.spec();
+    match spec {
         DependencySpec::Oci { oci, version } => Ok(ResolvedSource::OciReplaced {
             oci: oci.to_string(),
-            version: version.unwrap_or("unknown").to_string(),
+            version: version.to_string(),
             replace_path: replace_path.to_string(),
         }),
-        DependencySpec::Git { git, tag, rev } => Ok(ResolvedSource::GitReplaced {
+        DependencySpec::Git { git, .. } => Ok(ResolvedSource::GitReplaced {
             git: git.to_string(),
-            tag_or_rev: tag.or(rev).unwrap_or("HEAD").to_string(),
+            tag_or_rev: spec.tag_or_rev().unwrap_or("HEAD").to_string(),
             replace_path: replace_path.to_string(),
         }),
         DependencySpec::Path { .. } => unreachable!(
@@ -905,17 +901,12 @@ pub fn merge_into_lock(lock: &mut crate::lock_file::AkuaLock, resolved: &Resolve
 }
 
 /// Upsert one `LockedPackage` from a resolved source + digest. Shared
-/// between `merge_into_lock` (called by the resolver during `akua add`
-/// / `akua lock`) and `vendor::add_impl` (called when a dep is
-/// materialized into `.akua/vendor/<name>/`).
+/// between [`merge_into_lock`] and `vendor::add_impl`.
 ///
-/// **Bytes-tied metadata is only carried forward when the digest is
-/// unchanged.** Cosign signatures, SLSA attestations, transitive
-/// dependency lists, and Kyverno converter outputs are all valid only
-/// for the specific bytes they were produced over — when the digest
-/// changes (a re-vendor against a new tag, an `akua add` that bumps
-/// version), they're silently invalidated, so we drop them rather
-/// than write a `(digest=B, sig=sig(A))` lockfile entry.
+/// Bytes-tied metadata (signature / attestation / dependencies /
+/// yanked / kyverno-converter fields) carries forward only when the
+/// digest is unchanged — preserving them across a digest change would
+/// write `(digest=B, sig=sig(A))` entries that no consumer can verify.
 pub fn upsert_locked_from_source(
     lock: &mut crate::lock_file::AkuaLock,
     name: &str,
@@ -924,9 +915,14 @@ pub fn upsert_locked_from_source(
 ) {
     use crate::lock_file::LockedPackage;
     let (source_str, version, replaced) = source.to_locked_fields();
-    let prior = lock.packages.iter().find(|p| p.name == name);
-    let carry = prior.filter(|p| p.digest == digest);
-    lock.upsert(LockedPackage {
+    // Single linear scan: find_slot pinpoints the upsert position AND
+    // gives us the prior entry for digest-match check, so the bigger
+    // merge_into_lock loop is O(n) rather than O(n²).
+    let slot = lock.find_slot(name, &version);
+    let carry = slot
+        .map(|i| &lock.packages[i])
+        .filter(|p| p.digest == digest);
+    let entry = LockedPackage {
         name: name.to_string(),
         version,
         source: source_str,
@@ -938,7 +934,8 @@ pub fn upsert_locked_from_source(
         yanked: carry.and_then(|p| p.yanked),
         kyverno_source_digest: carry.and_then(|p| p.kyverno_source_digest.clone()),
         converter_version: carry.and_then(|p| p.converter_version.clone()),
-    });
+    };
+    lock.upsert_at(slot, entry);
 }
 
 /// Human-readable tag for a dep source. Used by `UnsupportedSource`'s
@@ -1737,13 +1734,9 @@ alpha = { path = "./charts/alpha" }
         assert_eq!(entry.yanked, Some(false));
     }
 
-    /// Regression test for the bytes-tied invariant. A cosign signature
-    /// is valid only over the specific bytes it was produced over —
-    /// when the digest changes (re-vendor against a new tag, `akua add`
-    /// bumps version) the prior signature is silently invalidated, so
-    /// the upsert must drop it rather than write a `(digest=B, sig=sig(A))`
-    /// lockfile entry. Same applies to attestation / dependencies /
-    /// yanked / kyverno-converter metadata.
+    /// Bytes-tied metadata (sig / attestation / deps / yanked / kyverno)
+    /// must drop when digest changes, so the lockfile never carries
+    /// `(digest=B, sig=sig(A))`.
     #[test]
     fn merge_into_lock_clears_signature_when_digest_changes() {
         use crate::lock_file::{AkuaLock, LockedPackage};
