@@ -197,7 +197,9 @@ Updates to the highest allowed version per `akua.toml` constraints; rewrites the
 
 ### `akua vendor` (optional)
 
-Writes full dependency tree to `./vendor/` for air-gapped builds. Content matches `akua.lock` digests. Not needed for online builds.
+Materializes a dependency's bytes into `.akua/vendor/<name>/` and pins the tree digest in `akua.lock`. The resolver prefers the vendored copy across all dep kinds (`path` / `oci` / `git`), so the canonical source can be deleted post-vendor and `akua render` still succeeds offline. Required for air-gapped builds, optional otherwise.
+
+**Bytes-tied lockfile metadata.** Cosign signatures, SLSA attestations, transitive dependency lists, `yanked`, and Kyverno-converter fields all bind to a specific digest. When a re-vendor or version bump produces a new digest, those fields are dropped on upsert rather than written as `(digest=B, sig=sig(A))` entries that no consumer can verify. The `source` / `version` / `digest` triple is always rewritten; everything else is conditional on `prior.digest == new.digest`.
 
 ---
 

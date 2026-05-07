@@ -90,7 +90,12 @@ impl LockError {
                 StructuredError::new(codes::E_LOCK_PARSE, e.to_string()).with_default_docs()
             }
             LockError::Resolve(e) => {
-                StructuredError::new(codes::E_CHART_RESOLVE, e.to_string()).with_default_docs()
+                let code = match e {
+                    ChartResolveError::AbsolutePathRejected { .. }
+                    | ChartResolveError::PathEscape { .. } => codes::E_PATH_ESCAPE,
+                    _ => codes::E_DEP_RESOLVE,
+                };
+                StructuredError::new(code, e.to_string()).with_default_docs()
             }
             LockError::Drift => {
                 StructuredError::new(codes::E_LOCK_DRIFT, self.to_string()).with_default_docs()

@@ -84,6 +84,7 @@ pub struct WorkspaceSection {
 /// set (`oci` / `git` / `path`). Exactly one must be present; all three
 /// present is a validation error.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Default))]
 pub struct Dependency {
     /// OCI ref. Exclusive with `git`, `path`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -127,6 +128,38 @@ pub enum DependencySource {
     Oci,
     Git,
     Path,
+}
+
+/// Typed projection of a [`Dependency`]'s source form. Returned by
+/// [`Dependency::spec`] post-validation; field shapes encode the
+/// validate-enforced invariants (OCI deps have a version; git deps
+/// have at least one of tag/rev) so consumers don't re-prove them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DependencySpec<'a> {
+    Path {
+        declared: &'a str,
+    },
+    Oci {
+        oci: &'a str,
+        version: &'a str,
+    },
+    Git {
+        git: &'a str,
+        tag: Option<&'a str>,
+        rev: Option<&'a str>,
+    },
+}
+
+impl<'a> DependencySpec<'a> {
+    /// `tag` if set, else `rev`. Manifest validation guarantees one of
+    /// the two is `Some` for git deps, so the [`Option`] in the return
+    /// is purely for the non-Git arms (always `None`).
+    pub fn tag_or_rev(&self) -> Option<&'a str> {
+        match self {
+            DependencySpec::Git { tag, rev, .. } => tag.or(*rev),
+            _ => None,
+        }
+    }
 }
 
 /// Errors produced by this module.
@@ -268,6 +301,39 @@ impl Dependency {
             (false, true, false) => Some(DependencySource::Git),
             (false, false, true) => Some(DependencySource::Path),
             _ => None,
+        }
+    }
+
+    /// Typed projection of the dep's source. Caller must have
+    /// validated; reach for [`source`] when working with raw input.
+    ///
+    /// # Panics
+    ///
+    /// Panics on an unvalidated manifest (zero / multiple sources, OCI
+    /// without version, git without tag-or-rev). `AkuaManifest::load`
+    /// runs validation; direct `Dependency` construction outside tests
+    /// must call [`validate`] first.
+    pub fn spec(&self) -> DependencySpec<'_> {
+        match (
+            self.path.as_deref(),
+            self.oci.as_deref(),
+            self.git.as_deref(),
+        ) {
+            (Some(declared), None, None) => DependencySpec::Path { declared },
+            (None, Some(oci), None) => DependencySpec::Oci {
+                oci,
+                version: self.version.as_deref().expect(
+                    "Dependency::spec called on an unvalidated manifest — call validate() first",
+                ),
+            },
+            (None, None, Some(git)) => DependencySpec::Git {
+                git,
+                tag: self.tag.as_deref(),
+                rev: self.rev.as_deref(),
+            },
+            _ => unreachable!(
+                "Dependency::spec called on an unvalidated manifest — call validate() first"
+            ),
         }
     }
 
@@ -575,5 +641,97 @@ strict_signing = false
 "#;
         let m = AkuaManifest::parse(s).expect("parse");
         assert!(!m.package.strict_signing);
+    }
+
+    #[test]
+    fn spec_projects_path_dep() {
+        let dep = Dependency {
+            path: Some("./local".to_string()),
+            ..Default::default()
+        };
+        assert!(matches!(dep.spec(), DependencySpec::Path { declared } if declared == "./local"));
+    }
+
+    #[test]
+    fn spec_projects_oci_dep_with_version() {
+        let dep = Dependency {
+            oci: Some("oci://ghcr.io/acme/app".to_string()),
+            version: Some("1.0.0".to_string()),
+            ..Default::default()
+        };
+        match dep.spec() {
+            DependencySpec::Oci { oci, version } => {
+                assert_eq!(oci, "oci://ghcr.io/acme/app");
+                assert_eq!(version, "1.0.0");
+            }
+            other => panic!("expected Oci, got {other:?}"),
+        }
+    }
+
+    /// `Dependency::spec` documents that OCI without a version panics
+    /// (manifest validation rejects this shape upstream). Pin the
+    /// contract so the `version: &str` field on `DependencySpec::Oci`
+    /// can't be silently downgraded back to `Option`.
+    #[test]
+    #[should_panic(expected = "unvalidated manifest")]
+    fn spec_panics_on_oci_without_version() {
+        let dep = Dependency {
+            oci: Some("oci://ghcr.io/acme/app".to_string()),
+            ..Default::default()
+        };
+        let _ = dep.spec();
+    }
+
+    #[test]
+    fn spec_projects_git_dep_exposes_tag_and_rev_separately() {
+        let dep = Dependency {
+            git: Some("https://github.com/foo/bar".to_string()),
+            tag: Some("v1.0.0".to_string()),
+            rev: Some("abc123".to_string()),
+            ..Default::default()
+        };
+        match dep.spec() {
+            DependencySpec::Git { git, tag, rev } => {
+                assert_eq!(git, "https://github.com/foo/bar");
+                assert_eq!(tag, Some("v1.0.0"));
+                assert_eq!(rev, Some("abc123"));
+            }
+            other => panic!("expected Git, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn spec_tag_or_rev_prefers_tag() {
+        let dep = Dependency {
+            git: Some("https://github.com/foo/bar".to_string()),
+            tag: Some("v1.0.0".to_string()),
+            rev: Some("abc123".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(dep.spec().tag_or_rev(), Some("v1.0.0"));
+    }
+
+    #[test]
+    fn spec_tag_or_rev_falls_back_to_rev_when_tag_absent() {
+        let dep = Dependency {
+            git: Some("https://github.com/foo/bar".to_string()),
+            rev: Some("abc123".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(dep.spec().tag_or_rev(), Some("abc123"));
+    }
+
+    /// `Dependency::spec` is documented as panicking on an unvalidated
+    /// manifest — the `_ => unreachable!` arm. This test pins that
+    /// contract so a regression is caught immediately.
+    #[test]
+    #[should_panic(expected = "unvalidated manifest")]
+    fn spec_panics_on_ambiguous_source() {
+        let dep = Dependency {
+            path: Some("./local".to_string()),
+            oci: Some("oci://ghcr.io/acme/app".to_string()),
+            ..Default::default()
+        };
+        let _ = dep.spec();
     }
 }

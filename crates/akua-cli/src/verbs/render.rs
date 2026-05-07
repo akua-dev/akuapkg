@@ -111,7 +111,7 @@ pub struct RenderArgs<'a> {
 
     /// `--offline`: the resolver may not touch the network. OCI deps
     /// must be fully satisfied from the content-addressed cache. A
-    /// missing cache entry fails the render with `E_CHART_RESOLVE`
+    /// missing cache entry fails the render with `E_DEP_RESOLVE`
     /// (distinct from a HTTP failure). Path + replace deps always
     /// resolve locally, so offline renders keep working for them.
     /// Designed for air-gapped CI runners where the `akua add` step
@@ -273,7 +273,9 @@ impl RenderError {
                         source: akua_core::oci_fetcher::OciFetchError::CosignSignatureMissing { .. },
                         ..
                     } => codes::E_COSIGN_SIG_MISSING,
-                    _ => codes::E_CHART_RESOLVE,
+                    ChartResolveError::AbsolutePathRejected { .. }
+                    | ChartResolveError::PathEscape { .. } => codes::E_PATH_ESCAPE,
+                    _ => codes::E_DEP_RESOLVE,
                 };
                 StructuredError::new(code, inner.to_string()).with_default_docs()
             }

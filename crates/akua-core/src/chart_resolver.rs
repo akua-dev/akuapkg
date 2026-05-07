@@ -28,7 +28,8 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 
 use crate::hex::hex_encode;
-use crate::mod_file::{AkuaManifest, Dependency, DependencySource};
+use crate::lock_file::VENDORED_LOCK_FALLBACK;
+use crate::mod_file::{AkuaManifest, Dependency, DependencySource, DependencySpec};
 #[cfg(feature = "oci-fetch")]
 pub use crate::oci_fetcher::PackageKind;
 
@@ -413,44 +414,42 @@ pub fn resolve_with_options(
             entries.insert(name.clone(), chart);
             continue;
         }
-        // Match directly on the source fields rather than re-querying
-        // `dep.source()` — pre-validated manifests are already guaranteed
-        // to have exactly one set, and matching inline makes the
-        // "path requires `path`" invariant unambiguous.
-        match (&dep.path, &dep.oci, &dep.git) {
-            (Some(path), None, None) => {
-                let src = ResolvedSource::Path {
-                    declared: path.clone(),
-                };
-                entries.insert(
-                    name.clone(),
-                    resolve_path(name, path, workspace_root, src, PathOrigin::UserManifest)?,
-                );
-            }
-            (None, Some(oci), None) => {
-                // Vendor-first: if `akua publish` embedded this dep's
-                // chart tree at `.akua/vendor/<name>/`, resolve from
-                // there instead of pulling. `akua pull` populates
-                // that dir, so a pulled Package renders offline.
-                if let Some(chart) =
-                    resolve_from_vendor(name, workspace_root, dep, vendor_kind_oci(oci, dep))?
-                {
-                    entries.insert(name.clone(), chart);
-                } else {
-                    entries.insert(name.clone(), resolve_oci(name, dep, oci, opts)?);
-                }
-            }
-            (None, None, Some(git)) => {
-                if let Some(chart) =
-                    resolve_from_vendor(name, workspace_root, dep, vendor_kind_git(git, dep))?
-                {
-                    entries.insert(name.clone(), chart);
-                } else {
-                    entries.insert(name.clone(), resolve_git(name, dep, git, opts)?);
-                }
-            }
-            _ => unreachable!("manifest validation rejects ambiguous / empty sources"),
+        // Vendor-first across all dep kinds — install repos GC
+        // canonical sources post-vendor; pulled Packages arrive
+        // pre-vendored.
+        let spec = dep.spec();
+        let vendor_kind = match spec {
+            DependencySpec::Path { declared } => VendorKind::Path { declared },
+            DependencySpec::Oci { oci, version } => VendorKind::Oci {
+                oci,
+                version: version.to_string(),
+            },
+            DependencySpec::Git { git, .. } => VendorKind::Git {
+                git,
+                tag_or_rev: spec
+                    .tag_or_rev()
+                    .unwrap_or(VENDORED_LOCK_FALLBACK)
+                    .to_string(),
+            },
+        };
+        if let Some(chart) = resolve_from_vendor(name, workspace_root, dep, vendor_kind)? {
+            entries.insert(name.clone(), chart);
+            continue;
         }
+        let chart = match spec {
+            DependencySpec::Path { declared } => resolve_path(
+                name,
+                declared,
+                workspace_root,
+                ResolvedSource::Path {
+                    declared: declared.to_string(),
+                },
+                PathOrigin::UserManifest,
+            )?,
+            DependencySpec::Oci { oci, .. } => resolve_oci(name, dep, oci, opts)?,
+            DependencySpec::Git { git, .. } => resolve_git(name, dep, git, opts)?,
+        };
+        entries.insert(name.clone(), chart);
     }
     Ok(ResolvedCharts { entries })
 }
@@ -462,6 +461,7 @@ pub const VENDOR_DIR: &str = ".akua/vendor";
 /// Which flavor of vendored dep we're materializing. Carries the
 /// canonical-source metadata [`ResolvedSource`] needs post-hash.
 enum VendorKind<'a> {
+    Path { declared: &'a str },
     Oci { oci: &'a str, version: String },
     Git { git: &'a str, tag_or_rev: String },
 }
@@ -488,6 +488,9 @@ fn resolve_from_vendor(
     // tree + assigns `sha256:<hex>`. We patch the source variant
     // with that digest in-place so the ResolvedChart is built once.
     let placeholder = match &kind {
+        VendorKind::Path { declared } => ResolvedSource::Path {
+            declared: (*declared).to_string(),
+        },
         VendorKind::Oci { oci, version } => ResolvedSource::Oci {
             oci: (*oci).to_string(),
             version: version.clone(),
@@ -521,30 +524,12 @@ fn resolve_from_vendor(
             *commit_sha = raw.clone();
             chart.sha256 = format!("{}{}", crate::lock_file::GIT_DIGEST_PREFIX, raw);
         }
+        // Path source has no embedded digest to patch — chart.sha256
+        // already holds the vendored-tree hash.
+        ResolvedSource::Path { .. } => {}
         _ => {}
     }
     Ok(Some(chart))
-}
-
-fn vendor_kind_oci<'a>(oci: &'a str, dep: &Dependency) -> VendorKind<'a> {
-    VendorKind::Oci {
-        oci,
-        version: dep
-            .version
-            .clone()
-            .unwrap_or_else(|| "vendored".to_string()),
-    }
-}
-
-fn vendor_kind_git<'a>(git: &'a str, dep: &Dependency) -> VendorKind<'a> {
-    VendorKind::Git {
-        git,
-        tag_or_rev: dep
-            .tag
-            .clone()
-            .or_else(|| dep.rev.clone())
-            .unwrap_or_else(|| "vendored".to_string()),
-    }
 }
 
 /// Resolve an OCI-sourced dep: fetch (or retrieve from cache) via
@@ -781,26 +766,20 @@ fn resolved_source_for_replace(
     dep: &Dependency,
     replace_path: &str,
 ) -> Result<ResolvedSource, ChartResolveError> {
-    match (&dep.oci, &dep.git, &dep.path) {
-        (Some(oci), None, None) => Ok(ResolvedSource::OciReplaced {
-            oci: oci.clone(),
-            version: dep.version.clone().unwrap_or_else(|| "unknown".to_string()),
+    let spec = dep.spec();
+    match spec {
+        DependencySpec::Oci { oci, version } => Ok(ResolvedSource::OciReplaced {
+            oci: oci.to_string(),
+            version: version.to_string(),
             replace_path: replace_path.to_string(),
         }),
-        (None, Some(git), None) => {
-            let tag_or_rev = dep
-                .tag
-                .clone()
-                .or_else(|| dep.rev.clone())
-                .unwrap_or_else(|| "HEAD".to_string());
-            Ok(ResolvedSource::GitReplaced {
-                git: git.clone(),
-                tag_or_rev,
-                replace_path: replace_path.to_string(),
-            })
-        }
-        _ => unreachable!(
-            "replace on a path-only or multi-source dep should have been rejected by manifest \
+        DependencySpec::Git { git, .. } => Ok(ResolvedSource::GitReplaced {
+            git: git.to_string(),
+            tag_or_rev: spec.tag_or_rev().unwrap_or("HEAD").to_string(),
+            replace_path: replace_path.to_string(),
+        }),
+        DependencySpec::Path { .. } => unreachable!(
+            "replace on a path-only dep should have been rejected by manifest \
              validation (dep `{name}`)"
         ),
     }
@@ -915,29 +894,48 @@ fn scan_top_level_import_roots(source: &str) -> Vec<String> {
 }
 
 pub fn merge_into_lock(lock: &mut crate::lock_file::AkuaLock, resolved: &ResolvedCharts) {
-    use crate::lock_file::LockedPackage;
     for chart in resolved.entries.values() {
-        let (source, version, replaced) = chart.source.to_locked_fields();
-        let prior = lock.packages.iter().find(|p| p.name == chart.name);
-
-        lock.upsert(LockedPackage {
-            name: chart.name.clone(),
-            version,
-            source,
-            digest: chart.sha256.clone(),
-            // Cosign signatures / SLSA attestations are populated by
-            // `akua publish` — preserve whatever the prior entry had
-            // on an update.
-            signature: prior.and_then(|p| p.signature.clone()),
-            attestation: prior.and_then(|p| p.attestation.clone()),
-            dependencies: prior.map(|p| p.dependencies.clone()).unwrap_or_default(),
-            replaced,
-            yanked: prior.and_then(|p| p.yanked),
-            kyverno_source_digest: prior.and_then(|p| p.kyverno_source_digest.clone()),
-            converter_version: prior.and_then(|p| p.converter_version.clone()),
-        });
+        upsert_locked_from_source(lock, &chart.name, &chart.source, &chart.sha256);
     }
     lock.sort();
+}
+
+/// Upsert one `LockedPackage` from a resolved source + digest. Shared
+/// between [`merge_into_lock`] and `vendor::add_impl`.
+///
+/// Bytes-tied metadata (signature / attestation / dependencies /
+/// yanked / kyverno-converter fields) carries forward only when the
+/// digest is unchanged — preserving them across a digest change would
+/// write `(digest=B, sig=sig(A))` entries that no consumer can verify.
+pub fn upsert_locked_from_source(
+    lock: &mut crate::lock_file::AkuaLock,
+    name: &str,
+    source: &ResolvedSource,
+    digest: &str,
+) {
+    use crate::lock_file::LockedPackage;
+    let (source_str, version, replaced) = source.to_locked_fields();
+    // Single linear scan: find_slot pinpoints the upsert position AND
+    // gives us the prior entry for digest-match check, so the bigger
+    // merge_into_lock loop is O(n) rather than O(n²).
+    let slot = lock.find_slot(name, &version);
+    let carry = slot
+        .map(|i| &lock.packages[i])
+        .filter(|p| p.digest == digest);
+    let entry = LockedPackage {
+        name: name.to_string(),
+        version,
+        source: source_str,
+        digest: digest.to_string(),
+        signature: carry.and_then(|p| p.signature.clone()),
+        attestation: carry.and_then(|p| p.attestation.clone()),
+        dependencies: carry.map(|p| p.dependencies.clone()).unwrap_or_default(),
+        replaced,
+        yanked: carry.and_then(|p| p.yanked),
+        kyverno_source_digest: carry.and_then(|p| p.kyverno_source_digest.clone()),
+        converter_version: carry.and_then(|p| p.converter_version.clone()),
+    };
+    lock.upsert_at(slot, entry);
 }
 
 /// Human-readable tag for a dep source. Used by `UnsupportedSource`'s
@@ -984,6 +982,73 @@ enum PathOrigin {
     Internal,
 }
 
+/// Outcome of [`validate_workspace_path`]. Each variant maps to a
+/// caller-domain error variant + the `E_PATH_ESCAPE` structured code.
+#[derive(Debug)]
+pub(crate) enum WorkspacePathError {
+    AbsoluteRejected {
+        path: PathBuf,
+    },
+    NotFound {
+        path: PathBuf,
+    },
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    Escape {
+        resolved: PathBuf,
+        workspace_root: PathBuf,
+    },
+}
+
+/// Validate a user-authored relative path against the workspace-local
+/// invariant. Used by `chart_resolver::resolve_path` (path-dep
+/// resolution) and `vendor::resolve_path_dep` (vendoring path deps)
+/// — both must canonicalize the joined target and reject anything
+/// that escapes the workspace root.
+///
+/// Returns the canonical target on success. Caller is responsible
+/// for the kind-specific check (`is_dir` for vendor, full chart
+/// validation for the resolver).
+///
+/// `workspace_canon` should be the **already-canonicalized** workspace
+/// root — caller canonicalizes once and threads it through, so we
+/// don't pay the syscall on every dep in a multi-dep manifest. If
+/// the workspace root itself can't be canonicalized that's a fatal
+/// caller-side condition (broken workspace), not something this
+/// helper should silently paper over.
+pub(crate) fn validate_workspace_path(
+    workspace_canon: &Path,
+    workspace_root: &Path,
+    requested: &str,
+) -> Result<PathBuf, WorkspacePathError> {
+    let rel = PathBuf::from(requested);
+    if rel.is_absolute() {
+        return Err(WorkspacePathError::AbsoluteRejected { path: rel });
+    }
+    let joined = workspace_root.join(&rel);
+    let canon = match joined.canonicalize() {
+        Ok(p) => p,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(WorkspacePathError::NotFound { path: joined });
+        }
+        Err(e) => {
+            return Err(WorkspacePathError::Io {
+                path: joined,
+                source: e,
+            });
+        }
+    };
+    if !canon.starts_with(workspace_canon) {
+        return Err(WorkspacePathError::Escape {
+            resolved: canon,
+            workspace_root: workspace_canon.to_path_buf(),
+        });
+    }
+    Ok(canon)
+}
+
 fn resolve_path(
     name: &str,
     requested: &str,
@@ -991,53 +1056,81 @@ fn resolve_path(
     source: ResolvedSource,
     origin: PathOrigin,
 ) -> Result<ResolvedChart, ChartResolveError> {
-    let rel = PathBuf::from(requested);
-    if origin == PathOrigin::UserManifest && rel.is_absolute() {
-        return Err(ChartResolveError::AbsolutePathRejected {
-            name: name.to_string(),
-            path: rel,
-        });
-    }
-    let joined = if rel.is_absolute() {
-        rel.clone()
-    } else {
-        workspace_root.join(&rel)
+    let canon = match origin {
+        PathOrigin::UserManifest => {
+            // Canonicalize the workspace once. If this fails the
+            // workspace itself is broken; surface it.
+            let workspace_canon =
+                workspace_root
+                    .canonicalize()
+                    .map_err(|e| ChartResolveError::Io {
+                        name: name.to_string(),
+                        path: workspace_root.to_path_buf(),
+                        source: e,
+                    })?;
+            match validate_workspace_path(&workspace_canon, workspace_root, requested) {
+                Ok(canon) => canon,
+                Err(WorkspacePathError::AbsoluteRejected { path }) => {
+                    return Err(ChartResolveError::AbsolutePathRejected {
+                        name: name.to_string(),
+                        path,
+                    });
+                }
+                Err(WorkspacePathError::NotFound { path }) => {
+                    return Err(ChartResolveError::NotFound {
+                        name: name.to_string(),
+                        path,
+                    });
+                }
+                Err(WorkspacePathError::Io { path, source }) => {
+                    return Err(ChartResolveError::Io {
+                        name: name.to_string(),
+                        path,
+                        source,
+                    });
+                }
+                Err(WorkspacePathError::Escape {
+                    resolved,
+                    workspace_root: ws,
+                }) => {
+                    return Err(ChartResolveError::PathEscape {
+                        name: name.to_string(),
+                        requested: PathBuf::from(requested),
+                        resolved,
+                        workspace_root: ws,
+                    });
+                }
+            }
+        }
+        PathOrigin::Internal => {
+            // Internal akua-managed paths (vendor materialization,
+            // OCI cache extraction) are absolute by construction and
+            // legitimately live outside the workspace. Skip the
+            // escape guard; just canonicalize.
+            let rel = PathBuf::from(requested);
+            let joined = if rel.is_absolute() {
+                rel
+            } else {
+                workspace_root.join(&rel)
+            };
+            match joined.canonicalize() {
+                Ok(p) => p,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    return Err(ChartResolveError::NotFound {
+                        name: name.to_string(),
+                        path: joined,
+                    });
+                }
+                Err(e) => {
+                    return Err(ChartResolveError::Io {
+                        name: name.to_string(),
+                        path: joined,
+                        source: e,
+                    });
+                }
+            }
+        }
     };
-
-    let canon = match joined.canonicalize() {
-        Ok(p) => p,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Err(ChartResolveError::NotFound {
-                name: name.to_string(),
-                path: joined,
-            });
-        }
-        Err(e) => {
-            return Err(ChartResolveError::Io {
-                name: name.to_string(),
-                path: joined,
-                source: e,
-            });
-        }
-    };
-
-    // Workspace-escape guard for user-authored paths only. Internal
-    // callers (vendor, OCI cache) hand us absolute paths that
-    // legitimately live outside the workspace at canonicalize time
-    // (e.g. `$XDG_CACHE_HOME/akua/oci/...`).
-    if origin == PathOrigin::UserManifest {
-        let workspace_canon = workspace_root
-            .canonicalize()
-            .unwrap_or_else(|_| workspace_root.to_path_buf());
-        if !canon.starts_with(&workspace_canon) {
-            return Err(ChartResolveError::PathEscape {
-                name: name.to_string(),
-                requested: rel,
-                resolved: canon,
-                workspace_root: workspace_canon,
-            });
-        }
-    }
 
     let meta = canon.metadata().map_err(|e| ChartResolveError::Io {
         name: name.to_string(),
@@ -1051,7 +1144,7 @@ fn resolve_path(
         });
     }
 
-    let sha256 = hash_dir(&canon).map_err(|e| ChartResolveError::Io {
+    let (sha256, _size_bytes) = hash_dir(&canon).map_err(|e| ChartResolveError::Io {
         name: name.to_string(),
         path: canon.clone(),
         source: e,
@@ -1078,12 +1171,17 @@ fn resolve_path(
 /// dir, which breaks both determinism and the sandbox assumption that
 /// the tarball we hand the engine has no escape hatches. An actual
 /// chart needing a symlink is already broken on Windows hosts.
-fn hash_dir(root: &Path) -> std::io::Result<String> {
+/// Deterministic content-hash of a directory tree, plus the total bytes
+/// hashed. Returns `(sha256:<hex>, size_bytes)`. Used by both the chart
+/// resolver (path-dep digest) and the vendor module (vendored-tree digest)
+/// — keep this the single canonical implementation.
+pub(crate) fn hash_dir(root: &Path) -> std::io::Result<(String, u64)> {
     let mut files = Vec::new();
     collect_files(root, root, &mut files)?;
     files.sort_by(|a, b| a.0.cmp(&b.0));
 
     let mut hasher = Sha256::new();
+    let mut size_bytes = 0_u64;
     for (rel, abs) in files {
         // Use `to_string_lossy` for cross-platform parity: Windows uses
         // UTF-16 OsStr internally; Unix is bytes. A chart with
@@ -1093,13 +1191,19 @@ fn hash_dir(root: &Path) -> std::io::Result<String> {
         hasher.update(b"\0");
         // Stream the file into the hasher so multi-MB values.yaml
         // or long template trees don't balloon memory. BufReader
-        // + io::copy is the standard pattern.
+        // + io::copy is the standard pattern. `io::copy` returns the
+        // bytes streamed — accumulate it instead of a separate
+        // `metadata().len()` syscall.
         let file = std::fs::File::open(&abs)?;
         let mut reader = std::io::BufReader::new(file);
-        std::io::copy(&mut reader, &mut hasher)?;
+        let copied = std::io::copy(&mut reader, &mut hasher)?;
+        size_bytes = size_bytes.saturating_add(copied);
         hasher.update(b"\n");
     }
-    Ok(format!("sha256:{}", hex_encode(&hasher.finalize())))
+    Ok((
+        format!("sha256:{}", hex_encode(&hasher.finalize())),
+        size_bytes,
+    ))
 }
 
 fn collect_files(
@@ -1590,7 +1694,51 @@ alpha = { path = "./charts/alpha" }
     }
 
     #[test]
-    fn merge_into_lock_preserves_signature_on_update() {
+    fn merge_into_lock_preserves_signature_when_digest_unchanged() {
+        use crate::lock_file::{AkuaLock, LockedPackage};
+
+        let ws = tempfile::tempdir().unwrap();
+        write_minimal_chart(&ws.path().join("charts/nginx"));
+        let manifest = minimal_manifest(r#"nginx = { path = "./charts/nginx" }"#);
+
+        // Pre-populate the lock with a prior entry whose digest matches
+        // what the resolver will produce — first compute the live digest.
+        let resolved = resolve(&manifest, ws.path()).unwrap();
+        let live_digest = resolved.entries.get("nginx").unwrap().sha256.clone();
+
+        let mut lock = AkuaLock::empty();
+        lock.packages.push(LockedPackage {
+            name: "nginx".to_string(),
+            version: "local".to_string(),
+            source: "path+file://./charts/nginx".to_string(),
+            digest: live_digest.clone(),
+            signature: Some("cosign:sigstore:prior-publish".to_string()),
+            attestation: Some("slsa:prior".to_string()),
+            dependencies: vec!["transitive@1.0.0".to_string()],
+            replaced: None,
+            yanked: Some(false),
+            kyverno_source_digest: None,
+            converter_version: None,
+        });
+
+        merge_into_lock(&mut lock, &resolved);
+
+        let entry = &lock.packages[0];
+        assert_eq!(entry.digest, live_digest);
+        assert_eq!(
+            entry.signature.as_deref(),
+            Some("cosign:sigstore:prior-publish")
+        );
+        assert_eq!(entry.attestation.as_deref(), Some("slsa:prior"));
+        assert_eq!(entry.dependencies, vec!["transitive@1.0.0".to_string()]);
+        assert_eq!(entry.yanked, Some(false));
+    }
+
+    /// Bytes-tied metadata (sig / attestation / deps / yanked / kyverno)
+    /// must drop when digest changes, so the lockfile never carries
+    /// `(digest=B, sig=sig(A))`.
+    #[test]
+    fn merge_into_lock_clears_signature_when_digest_changes() {
         use crate::lock_file::{AkuaLock, LockedPackage};
 
         let ws = tempfile::tempdir().unwrap();
@@ -1602,25 +1750,27 @@ alpha = { path = "./charts/alpha" }
             name: "nginx".to_string(),
             version: "local".to_string(),
             source: "path+file://./charts/nginx".to_string(),
-            digest: "sha256:0000".to_string(), // stale digest
+            digest: "sha256:0000".to_string(), // stale — won't match live
             signature: Some("cosign:sigstore:prior-publish".to_string()),
-            dependencies: vec![],
-            attestation: None,
+            attestation: Some("slsa:prior".to_string()),
+            dependencies: vec!["transitive@1.0.0".to_string()],
             replaced: None,
-            yanked: None,
-            kyverno_source_digest: None,
-            converter_version: None,
+            yanked: Some(true),
+            kyverno_source_digest: Some("sha256:kyverno-prior".to_string()),
+            converter_version: Some("v1.2.3".to_string()),
         });
 
         let resolved = resolve(&manifest, ws.path()).unwrap();
         merge_into_lock(&mut lock, &resolved);
 
-        // Digest refreshed to the live chart; signature preserved.
-        assert_ne!(lock.packages[0].digest, "sha256:0000");
-        assert_eq!(
-            lock.packages[0].signature.as_deref(),
-            Some("cosign:sigstore:prior-publish")
-        );
+        let entry = &lock.packages[0];
+        assert_ne!(entry.digest, "sha256:0000");
+        assert_eq!(entry.signature, None);
+        assert_eq!(entry.attestation, None);
+        assert!(entry.dependencies.is_empty());
+        assert_eq!(entry.yanked, None);
+        assert_eq!(entry.kyverno_source_digest, None);
+        assert_eq!(entry.converter_version, None);
     }
 
     #[test]
@@ -1690,6 +1840,34 @@ alpha = { path = "./charts/alpha" }
             other => panic!("expected ResolvedSource::Git, got {other:?}"),
         }
         assert!(libs.sha256.starts_with("git:"));
+    }
+
+    #[test]
+    fn vendored_path_dep_resolves_from_vendor_tree() {
+        let ws = tempfile::tempdir().unwrap();
+        write_minimal_chart(&ws.path().join(".akua/vendor/local"));
+        let manifest = minimal_manifest(r#"local = { path = "./vendored-source" }"#);
+        let resolved = resolve(&manifest, ws.path()).expect("vendor-first works for path deps");
+        let local = resolved.entries.get("local").unwrap();
+        assert!(local.abs_path.ends_with(".akua/vendor/local"));
+        match &local.source {
+            ResolvedSource::Path { declared } => {
+                assert_eq!(declared, "./vendored-source");
+            }
+            other => panic!("expected ResolvedSource::Path, got {other:?}"),
+        }
+        assert!(local.sha256.starts_with("sha256:"));
+    }
+
+    #[test]
+    fn vendored_path_wins_over_canonical_path_source() {
+        let ws = tempfile::tempdir().unwrap();
+        write_minimal_chart(&ws.path().join(".akua/vendor/local"));
+        write_minimal_chart(&ws.path().join("canonical-source"));
+        let manifest = minimal_manifest(r#"local = { path = "./canonical-source" }"#);
+        let resolved = resolve(&manifest, ws.path()).expect("vendor-first wins");
+        let local = resolved.entries.get("local").unwrap();
+        assert!(local.abs_path.ends_with(".akua/vendor/local"));
     }
 
     #[test]

@@ -26,6 +26,8 @@ One import path for every runtime. The shipped artifact ships both a Node-loadab
 
 Verbs split into two transport tiers. Pure-compute verbs run in-process via the bundled `akua-wasm` module — **no `akua` binary required**. Verbs that need network / OCI registry / cryptographic signing shell out to the CLI.
 
+Workspace-vendor verbs (`vendorAdd`, `vendorCheck`, `vendorList`) use the native addon path so they can read and mutate the workspace filesystem without spawning the CLI binary.
+
 ### Transport table (v0.1.0)
 
 | Verb | Transport | Binary required? |
@@ -42,6 +44,7 @@ Verbs split into two transport tiers. Pure-compute verbs run in-process via the 
 | `verify` | shell-out | yes (cosign WASM deferred to v0.2.0) |
 | `version`, `whoami` | shell-out | yes (describe the CLI binary) |
 | `add`, `publish`, `pull`, `push`, `pack`, `sign`, `lock`, `update`, `cache`, `auth`, `dev`, `repl` | shell-out | yes (network / OCI / OS) |
+| `vendorAdd`, `vendorCheck`, `vendorList` | native addon | no |
 
 See [security-model.md](security-model.md) for the sandbox-layers table and [spikes/engines-on-wasm32-unknown-unknown.md](spikes/engines-on-wasm32-unknown-unknown.md) for why engine-using verbs + verify stay shell-out in v0.1.0.
 
@@ -119,6 +122,9 @@ class Akua {
   pull(ref: string, opts?: PullOptions): Promise<PullResult>;
   inspect(ref: string, opts?: InspectOptions): Promise<InspectResult>;
   export(opts: ExportOptions): Promise<ExportResult>;
+  vendorAdd(name: string, opts?: VendorAddOptions): Promise<VendorAddResult>;
+  vendorCheck(opts?: VendorWorkspaceOptions): Promise<VendorCheckResult>;
+  vendorList(opts?: VendorWorkspaceOptions): Promise<VendorListResult>;
 
   // Develop (matches CLI verbs: test, fmt, check, lint, bench, cov, eval, repl)
   test(opts?: TestOptions): Promise<TestResult>;

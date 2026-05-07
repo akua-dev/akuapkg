@@ -27,7 +27,7 @@ The roadmap is ordered by implementation phase, but releases cut across phases. 
 
 **Shipped on `main` today (all load-bearing for v0.1.0):**
 
-- CLI contract + ~26 verbs (`init`, `render`, `check`, `lint`, `fmt`, `test`, `dev`, `repl`, `add`, `remove`, `tree`, `lock`, `update`, `verify`, `diff`, `inspect`, `pack`, `push`, `sign`, `pull`, `publish`, `cache`, `auth`, `whoami`, `version`, `export`)
+- CLI contract + ~27 verbs (`init`, `render`, `check`, `lint`, `fmt`, `test`, `dev`, `repl`, `add`, `remove`, `tree`, `lock`, `update`, `verify`, `diff`, `inspect`, `pack`, `push`, `sign`, `pull`, `publish`, `cache`, `auth`, `whoami`, `version`, `export`, `vendor`)
 - Deterministic raw-YAML render writer + per-output sha256
 - `Package.k` loader via `kcl_lang::API` + the `akua.*` KCL stdlib
 - Helm + Kustomize WASM engines
@@ -391,7 +391,7 @@ Many markdown files predate recent shipping and make claims that no longer match
 
 **Out of scope for this sweep: [CLAUDE.md](../CLAUDE.md).** That file is read by agents every session and describes the target invariants (sandboxed by default, signed + attested by default, no shell-out ever, thirty-verb surface). Pinning it to "today's state" would rot within days as phases ship. Agents need the north star — reality lives in the human-facing docs below and the [Release tracks](#release-tracks) section above.
 
-- [ ] **README.md** (repo root) — reflect the shipped verb set (~25 today, not the "thirty verbs" line from CLAUDE.md's target state). Name the v0.1.0 caveats explicitly: process-sandbox is Phase 4, Rego layer is post-0.5.0, full verb roster is CLAUDE.md's target, not v0.1.0. Humans read this; agents read CLAUDE.md.
+- [ ] **README.md** (repo root) — reflect the shipped verb set (~27 today, not the "thirty verbs" line from CLAUDE.md's target state). Name the v0.1.0 caveats explicitly: process-sandbox is Phase 4, Rego layer is post-0.5.0, full verb roster is CLAUDE.md's target, not v0.1.0. Humans read this; agents read CLAUDE.md.
 - [ ] **[docs/cli.md](cli.md)** — list every shipped verb + every exit code they emit. Drop any entry for verbs that don't yet exist (`policy`, `deploy`, `query`, `trace`, `audit`, `infra`, `export`).
 - [ ] **[docs/cli-contract.md](cli-contract.md)** — audit against what the universal args actually accept today. Every "MUST" must be true of every verb.
 - [ ] **[docs/package-format.md](package-format.md)** — matches the `PackageK` loader's current parse (no drift since last doc refresh).

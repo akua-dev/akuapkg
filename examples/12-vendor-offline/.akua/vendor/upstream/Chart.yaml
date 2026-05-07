@@ -1,0 +1,4 @@
+apiVersion: v2
+name: upstream-chart
+description: Standalone chart vendored into .akua/vendor/ for offline render.
+version: 0.1.0

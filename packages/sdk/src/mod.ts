@@ -16,6 +16,9 @@ import type { LintOutput } from './types/LintOutput.ts';
 import type { OptionInfo } from './types/OptionInfo.ts';
 import type { RenderSummary } from './types/RenderSummary.ts';
 import type { TreeOutput } from './types/TreeOutput.ts';
+import type { VendorAddOutput } from './types/VendorAddOutput.ts';
+import type { VendorCheckOutput } from './types/VendorCheckOutput.ts';
+import type { VendorListOutput } from './types/VendorListOutput.ts';
 import type { VerifyOutput } from './types/VerifyOutput.ts';
 import type { VersionOutput } from './types/VersionOutput.ts';
 import type { WhoamiOutput } from './types/WhoamiOutput.ts';
@@ -49,6 +52,9 @@ export type {
 	OptionInfo,
 	RenderSummary,
 	TreeOutput,
+	VendorAddOutput,
+	VendorCheckOutput,
+	VendorListOutput,
 	VerifyOutput,
 	VersionOutput,
 	WhoamiOutput,
@@ -76,6 +82,18 @@ export interface InspectOptions {
 }
 
 export interface TreeOptions {
+	/** Workspace root (dir containing `akua.toml`). Default: `.`. */
+	workspace?: string;
+}
+
+export interface VendorAddOptions {
+	/** Workspace root (dir containing `akua.toml`). Default: `.`. */
+	workspace?: string;
+	/** Preview the add without writing the vendor tree. */
+	plan?: boolean;
+}
+
+export interface VendorWorkspaceOptions {
 	/** Workspace root (dir containing `akua.toml`). Default: `.`. */
 	workspace?: string;
 }
@@ -363,6 +381,44 @@ export class Akua {
 		const napi = loadNapi();
 		const result = callNapi<unknown>(() => napi.tree({ workspace: opts.workspace ?? '.' }));
 		return validateAs<TreeOutput>('TreeOutput', result);
+	}
+
+	/**
+	 * Materialize a declared dependency into `.akua/vendor/<name>/`.
+	 * With `plan=true`, computes the same output without mutating the
+	 * workspace.
+	 */
+	async vendorAdd(name: string, opts: VendorAddOptions = {}): Promise<VendorAddOutput> {
+		const napi = loadNapi();
+		const result = callNapi<unknown>(() =>
+			napi.vendorAdd({
+				workspace: opts.workspace ?? '.',
+				name,
+				plan: opts.plan,
+			}),
+		);
+		return validateAs<VendorAddOutput>('VendorAddOutput', result);
+	}
+
+	/**
+	 * Compare the on-disk vendor tree against the manifest + lockfile
+	 * declaration. Returns a drift report; drift still yields a
+	 * structured output, not an exception.
+	 */
+	async vendorCheck(opts: VendorWorkspaceOptions = {}): Promise<VendorCheckOutput> {
+		const napi = loadNapi();
+		const result = callNapi<unknown>(() => napi.vendorCheck({ workspace: opts.workspace ?? '.' }));
+		return validateAs<VendorCheckOutput>('VendorCheckOutput', result);
+	}
+
+	/**
+	 * Enumerate the vendor tree, including orphaned on-disk entries
+	 * that no manifest/lock entry currently references.
+	 */
+	async vendorList(opts: VendorWorkspaceOptions = {}): Promise<VendorListOutput> {
+		const napi = loadNapi();
+		const result = callNapi<unknown>(() => napi.vendorList({ workspace: opts.workspace ?? '.' }));
+		return validateAs<VendorListOutput>('VendorListOutput', result);
 	}
 
 	/**

@@ -691,6 +691,173 @@
       ],
       "type": "object"
     },
+    "VendorAddOutput": {
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "replaced": {
+          "type": "boolean"
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source_kind": {
+          "type": "string"
+        },
+        "source_ref": {
+          "type": "string"
+        },
+        "wrote": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "source_kind",
+        "source_ref",
+        "path",
+        "digest",
+        "size_bytes",
+        "wrote",
+        "replaced"
+      ],
+      "type": "object"
+    },
+    "VendorCheckEntry": {
+      "properties": {
+        "actual_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expected_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "missing_source": {
+          "type": "boolean"
+        },
+        "missing_vendor": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "orphan": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        },
+        "source_kind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "path",
+        "orphan",
+        "missing_vendor",
+        "missing_source"
+      ],
+      "type": "object"
+    },
+    "VendorCheckOutput": {
+      "properties": {
+        "drift": {
+          "type": "boolean"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/VendorCheckEntry"
+          },
+          "type": "array"
+        },
+        "missing": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "orphaned": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "drift",
+        "entries",
+        "orphaned",
+        "missing"
+      ],
+      "type": "object"
+    },
+    "VendorListEntry": {
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "orphan": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "path",
+        "digest",
+        "size_bytes",
+        "orphan"
+      ],
+      "type": "object"
+    },
+    "VendorListOutput": {
+      "properties": {
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/VendorListEntry"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "entries"
+      ],
+      "type": "object"
+    },
     "VerifyOutput": {
       "description": "Verify verdict JSON shape. Stable across releases.",
       "properties": {

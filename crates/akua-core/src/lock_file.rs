@@ -22,6 +22,14 @@ pub const SHA256_DIGEST_PREFIX: &str = "sha256:";
 /// `sha256:` so the validator doesn't confuse hash algorithms.
 pub const GIT_DIGEST_PREFIX: &str = "git:";
 
+/// Sentinel `version` / `tag_or_rev` value for vendored deps that have
+/// no canonical version — typically a git dep whose manifest declared
+/// neither `tag` nor `rev`, or an OCI dep mid-vendoring before the
+/// manifest's `version` is set. Lockfile consumers (e.g. `vendor check`)
+/// match on this sentinel rather than treating an empty string as "no
+/// version" — explicit beats accidental.
+pub const VENDORED_LOCK_FALLBACK: &str = "vendored";
+
 /// The top-level shape of an `akua.lock` file.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AkuaLock {
@@ -287,18 +295,34 @@ impl AkuaLock {
         self.packages.iter().find(|p| p.name == name)
     }
 
-    /// Upsert `entry` into `packages` by `(name, version)`. New entries
-    /// land in sorted position via a subsequent `sort()`.
-    pub fn upsert(&mut self, entry: LockedPackage) {
-        if let Some(slot) = self
-            .packages
-            .iter_mut()
-            .find(|p| p.name == entry.name && p.version == entry.version)
-        {
-            *slot = entry;
-        } else {
-            self.packages.push(entry);
+    /// Index of the locked entry matching `(name, version)`. Lets the
+    /// caller perform a single linear scan that both decides whether
+    /// to carry forward bytes-tied metadata and identifies the upsert
+    /// slot — without this, naive `find` + `upsert` does two scans
+    /// per dep, making `merge_into_lock` O(n²) over the workspace.
+    pub fn find_slot(&self, name: &str, version: &str) -> Option<usize> {
+        self.packages
+            .iter()
+            .position(|p| p.name == name && p.version == version)
+    }
+
+    /// Upsert at a known slot index (paired with [`find_slot`]).
+    /// `None` appends; new entries are sorted into place by a
+    /// subsequent [`sort`] call.
+    pub fn upsert_at(&mut self, slot: Option<usize>, entry: LockedPackage) {
+        match slot {
+            Some(idx) => self.packages[idx] = entry,
+            None => self.packages.push(entry),
         }
+    }
+
+    /// Upsert `entry` into `packages` by `(name, version)`. New entries
+    /// land in sorted position via a subsequent `sort()`. Convenience
+    /// over [`find_slot`] + [`upsert_at`] when the caller doesn't need
+    /// the prior entry.
+    pub fn upsert(&mut self, entry: LockedPackage) {
+        let slot = self.find_slot(&entry.name, &entry.version);
+        self.upsert_at(slot, entry);
     }
 }
 
