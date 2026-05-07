@@ -20,15 +20,21 @@
 //! - Public HTTPS + `file://` URLs. Public github / gitlab / gitea
 //!   anonymous clones all work; `file://` covers tests and air-
 //!   gapped mirrors.
+//! - Private HTTPS via the [`host_auth`](crate::host_auth) credential
+//!   map — caller passes `auth: Option<&HostAuthMap>` to [`fetch`];
+//!   the longest-prefix-matching credential is sent as
+//!   `Authorization: Basic <b64>` via gix's in-memory config
+//!   override (`http.extraHeader`). Akua never reads ambient
+//!   credential files (`~/.netrc`, `~/.docker/config.json`, env
+//!   vars) — multi-tenant SDK consumers require explicit auth.
 //! - `ssh://` URLs intentionally not supported yet — needs an
 //!   SSH agent integration beyond this slice. Users on that path
 //!   can mirror to a local path or set up a self-hosted HTTPS
 //!   endpoint.
-//! - Private HTTPS auth (GitHub PAT etc.) — follow-up. The
-//!   `oci_auth` credential store is reusable; wiring it into gix's
-//!   transport is the work.
 
 use std::path::{Path, PathBuf};
+
+use crate::host_auth::{self, HostAuthMap};
 
 /// Reference specification — exactly one of tag or commit SHA.
 /// Builds from the declarative `tag` / `rev` fields on a `Dependency`.
@@ -118,15 +124,20 @@ pub fn fetch(
     ref_spec: &RefSpec,
     cache_root: &Path,
     expected_commit: Option<&str>,
+    auth: Option<&HostAuthMap>,
 ) -> Result<FetchedRepo, GitFetchError> {
-    let bare_path = bare_repo_path(cache_root, url);
+    // Cache key uses the canonical URL — userinfo, default ports, and
+    // `.git` suffix variations all collapse to one entry. Ensures
+    // creds (if a malformed URL ever sneaks past validation) cannot
+    // shape the on-disk cache directory.
+    let bare_path = bare_repo_path(cache_root, &host_auth::canonicalize_url(url));
 
     // Fast path: bare repo already cloned → just resolve the ref.
     // Slow path: clone fresh.
     let bare = if bare_path.join("HEAD").is_file() {
         open_bare(&bare_path, url)?
     } else {
-        clone_bare(url, &bare_path)?
+        clone_bare(url, &bare_path, auth)?
     };
 
     let commit = resolve_ref(&bare, url, ref_spec)?;
@@ -183,7 +194,11 @@ fn bare_repo_path(cache_root: &Path, url: &str) -> PathBuf {
     cache_root.join("repos").join(format!("{out}.git"))
 }
 
-fn clone_bare(url: &str, dest: &Path) -> Result<gix::Repository, GitFetchError> {
+fn clone_bare(
+    url: &str,
+    dest: &Path,
+    auth: Option<&HostAuthMap>,
+) -> Result<gix::Repository, GitFetchError> {
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent).map_err(|source| GitFetchError::Io {
             path: parent.to_path_buf(),
@@ -194,6 +209,14 @@ fn clone_bare(url: &str, dest: &Path) -> Result<gix::Repository, GitFetchError> 
         url: url.to_string(),
         detail: e.to_string(),
     })?;
+    // Inject Authorization header via gix's in-memory config override.
+    // Only sent when a credential matches the URL prefix; absent
+    // matches mean an anonymous fetch attempt (which 401s on private
+    // repos with a clear error rather than silently leaking creds).
+    let overrides = build_http_overrides(url, auth);
+    if !overrides.is_empty() {
+        prep = prep.with_in_memory_config_overrides(overrides);
+    }
     let (repo, _) = prep
         .fetch_only(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
         .map_err(|e| GitFetchError::Clone {
@@ -201,6 +224,30 @@ fn clone_bare(url: &str, dest: &Path) -> Result<gix::Repository, GitFetchError> 
             detail: e.to_string(),
         })?;
     Ok(repo)
+}
+
+/// Build the gix in-memory config override list for a fetch.
+///
+/// Returns an empty vec when no credential matches `url` — gix is
+/// then invoked unmodified and falls back to its default (anonymous)
+/// transport.
+///
+/// When a credential matches, emits a global `http.extraHeader` that
+/// gix's HTTP transport sends with every request for the duration
+/// of the clone. Per-URL granularity isn't needed because each clone
+/// targets exactly one remote URL; the lookup already selected the
+/// right credential by URL prefix.
+fn build_http_overrides(url: &str, auth: Option<&HostAuthMap>) -> Vec<String> {
+    let Some(map) = auth else {
+        return Vec::new();
+    };
+    let Some(creds) = host_auth::lookup(map, url) else {
+        return Vec::new();
+    };
+    vec![format!(
+        "http.extraHeader=Authorization: {}",
+        creds.to_authorization_header()
+    )]
 }
 
 fn open_bare(path: &Path, url: &str) -> Result<gix::Repository, GitFetchError> {
@@ -470,7 +517,8 @@ mod tests {
 
         let cache = tmp.path().join("cache");
         let url = file_url(&origin);
-        let fetched = fetch(&url, &RefSpec::Tag("v1.0.0".into()), &cache, None).expect("fetch");
+        let fetched =
+            fetch(&url, &RefSpec::Tag("v1.0.0".into()), &cache, None, None).expect("fetch");
         assert_eq!(fetched.commit_sha, commit);
         assert!(fetched.chart_dir.join("Chart.yaml").is_file());
         assert!(fetched.chart_dir.join("values.yaml").is_file());
@@ -488,7 +536,8 @@ mod tests {
 
         let cache = tmp.path().join("cache");
         let url = file_url(&origin);
-        let fetched = fetch(&url, &RefSpec::Rev(commit.clone()), &cache, None).expect("fetch");
+        let fetched =
+            fetch(&url, &RefSpec::Rev(commit.clone()), &cache, None, None).expect("fetch");
         assert_eq!(fetched.commit_sha, commit);
     }
 
@@ -506,8 +555,8 @@ mod tests {
         let cache = tmp.path().join("cache");
         let url = file_url(&origin);
 
-        let a = fetch(&url, &RefSpec::Tag("v1.0".into()), &cache, None).expect("first");
-        let b = fetch(&url, &RefSpec::Tag("v1.0".into()), &cache, None).expect("second");
+        let a = fetch(&url, &RefSpec::Tag("v1.0".into()), &cache, None, None).expect("first");
+        let b = fetch(&url, &RefSpec::Tag("v1.0".into()), &cache, None, None).expect("second");
         assert_eq!(a.chart_dir, b.chart_dir);
     }
 
@@ -523,7 +572,8 @@ mod tests {
         let cache = tmp.path().join("cache");
         let url = file_url(&origin);
         let expected = "0000000000000000000000000000000000000000"; // wrong SHA
-        let err = fetch(&url, &RefSpec::Tag("v1.0".into()), &cache, Some(expected)).unwrap_err();
+        let err =
+            fetch(&url, &RefSpec::Tag("v1.0".into()), &cache, Some(expected), None).unwrap_err();
         assert!(matches!(err, GitFetchError::LockCommitMismatch { .. }));
     }
 
@@ -538,7 +588,7 @@ mod tests {
         );
         let cache = tmp.path().join("cache");
         let url = file_url(&origin);
-        let err = fetch(&url, &RefSpec::Tag("v999".into()), &cache, None).unwrap_err();
+        let err = fetch(&url, &RefSpec::Tag("v999".into()), &cache, None, None).unwrap_err();
         assert!(matches!(err, GitFetchError::RefNotFound { .. }));
     }
 

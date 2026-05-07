@@ -70,10 +70,13 @@ pub fn run<W: Write>(
 ) -> Result<ExitCode, VendorVerbError> {
     match &args.action {
         VendorAction::Add { workspace, name } => {
+            // TODO(host-auth-cli): wire `--auth` / `--auth-file` flags
+            // here. Shipping the core API first; CLI flag plumbing
+            // lands in the next commit.
             let output = if ctx.plan {
-                core_vendor::plan_add(workspace, name)?
+                core_vendor::plan_add(workspace, name, None)?
             } else {
-                core_vendor::add(workspace, name)?
+                core_vendor::add(workspace, name, None)?
             };
             emit_output(stdout, ctx, &output, |w| {
                 write_add_text(w, &output, ctx.plan)
@@ -131,6 +134,7 @@ pub fn collect_vendor_pairs(workspace: &Path, manifest: &AkuaManifest) -> Vec<(S
         expected_digests,
         cosign_public_key_pem: None,
         reject_replace: chart_resolver::replace_rejected_from_env(),
+        auth: None,
     };
     let resolved = match chart_resolver::resolve_with_options(manifest, workspace, &opts) {
         Ok(r) => r,

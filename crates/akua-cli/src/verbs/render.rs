@@ -425,6 +425,8 @@ fn resolve_package_charts(
         // { path = "..." }`); humans can also opt in via env var. See
         // CLAUDE.md "`replace` and `path` deps are workspace-local".
         reject_replace: ctx.agent.detected || chart_resolver::replace_rejected_from_env(),
+        // CLI flag plumbing for --auth lands in a follow-up commit.
+        auth: None,
     };
     Ok(chart_resolver::resolve_with_options(
         &manifest, workspace, &opts,

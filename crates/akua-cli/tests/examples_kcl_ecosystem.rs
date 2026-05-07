@@ -60,6 +60,7 @@ fn renders_kcl_ecosystem_dep_against_golden() {
         expected_digests,
         cosign_public_key_pem: None,
         reject_replace: false,
+        auth: None,
     };
     let resolved =
         chart_resolver::resolve_with_options(&manifest, &dir, &opts).expect("resolve k8s pkg");

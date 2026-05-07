@@ -243,15 +243,28 @@ impl VendorError {
     }
 }
 
-pub fn add(workspace: &Path, name: &str) -> Result<VendorAddOutput, VendorError> {
-    add_impl(workspace, name, true)
+pub fn add(
+    workspace: &Path,
+    name: &str,
+    auth: Option<&crate::host_auth::HostAuthMap>,
+) -> Result<VendorAddOutput, VendorError> {
+    add_impl(workspace, name, true, auth)
 }
 
-pub fn plan_add(workspace: &Path, name: &str) -> Result<VendorAddOutput, VendorError> {
-    add_impl(workspace, name, false)
+pub fn plan_add(
+    workspace: &Path,
+    name: &str,
+    auth: Option<&crate::host_auth::HostAuthMap>,
+) -> Result<VendorAddOutput, VendorError> {
+    add_impl(workspace, name, false, auth)
 }
 
-fn add_impl(workspace: &Path, name: &str, write: bool) -> Result<VendorAddOutput, VendorError> {
+fn add_impl(
+    workspace: &Path,
+    name: &str,
+    write: bool,
+    auth: Option<&crate::host_auth::HostAuthMap>,
+) -> Result<VendorAddOutput, VendorError> {
     let manifest = AkuaManifest::load(workspace)?;
     let dep = manifest
         .dependencies
@@ -259,7 +272,7 @@ fn add_impl(workspace: &Path, name: &str, write: bool) -> Result<VendorAddOutput
         .ok_or_else(|| VendorError::MissingDependency {
             name: name.to_string(),
         })?;
-    let source = resolve_source(workspace, name, dep)?;
+    let source = resolve_source(workspace, name, dep, auth)?;
     let vendor_root = vendor_root(workspace);
     let target = vendor_root.join(name);
 
@@ -524,7 +537,12 @@ fn expected_entries(workspace: &Path) -> Result<ExpectedSet, VendorError> {
             continue;
         }
 
-        let source = resolve_source(workspace, name, dep)?;
+        // No auth: `vendor check` / `vendor list` should already have
+        // a lockfile entry for every dep. If we fall through to a
+        // resolve, it's a missing lock entry — populate it via
+        // `vendor add --auth ...` rather than re-implementing auth
+        // plumbing on the discovery path.
+        let source = resolve_source(workspace, name, dep, None)?;
         let (digest, _) = hash_dir(&source.root).map_err(|err| VendorError::Io {
             path: source.root.clone(),
             source: err,
@@ -612,6 +630,7 @@ fn resolve_source(
     workspace: &Path,
     name: &str,
     dep: &Dependency,
+    auth: Option<&crate::host_auth::HostAuthMap>,
 ) -> Result<SourceResolution, VendorError> {
     match dep.spec() {
         DependencySpec::Path { declared } => Ok(SourceResolution {
@@ -620,7 +639,9 @@ fn resolve_source(
             root: resolve_path_dep(workspace, name, declared)?,
         }),
         DependencySpec::Oci { oci, version } => resolve_oci_source(workspace, name, oci, version),
-        DependencySpec::Git { git, tag, rev } => resolve_git_source(workspace, name, git, tag, rev),
+        DependencySpec::Git { git, tag, rev } => {
+            resolve_git_source(workspace, name, git, tag, rev, auth)
+        }
     }
 }
 
@@ -673,6 +694,7 @@ fn resolve_git_source(
     git: &str,
     tag: Option<&str>,
     rev: Option<&str>,
+    auth: Option<&crate::host_auth::HostAuthMap>,
 ) -> Result<SourceResolution, VendorError> {
     let ref_spec = match (tag, rev) {
         (Some(tag), _) => RefSpec::Tag(tag.to_string()),
@@ -682,7 +704,7 @@ fn resolve_git_source(
     let cache_root = cache_inventory::default_cache_root("git");
     let expected_commit = expected_digest_from_lock(workspace, name, "git")
         .and_then(|d| d.strip_prefix("git:").map(str::to_string));
-    let fetched = git_fetcher::fetch(git, &ref_spec, &cache_root, expected_commit.as_deref())
+    let fetched = git_fetcher::fetch(git, &ref_spec, &cache_root, expected_commit.as_deref(), auth)
         .map_err(|source| VendorError::GitFetch {
             name: name.to_string(),
             source,
@@ -701,6 +723,7 @@ fn resolve_git_source(
     _git: &str,
     _tag: Option<&str>,
     _rev: Option<&str>,
+    _auth: Option<&crate::host_auth::HostAuthMap>,
 ) -> Result<SourceResolution, VendorError> {
     let _ = name;
     Err(VendorError::SourceMissing {
@@ -844,7 +867,7 @@ local = { path = "./charts/local" }
         let ws = workspace(minimal_manifest());
         make_source_tree(&ws.path().join("charts/local"));
 
-        let out = add(ws.path(), "local").expect("add");
+        let out = add(ws.path(), "local", None).expect("add");
         assert!(out.wrote);
         assert_eq!(out.source_kind, "path");
         assert!(out.path.ends_with(".akua/vendor/local"));
@@ -860,8 +883,8 @@ local = { path = "./charts/local" }
         let ws = workspace(minimal_manifest());
         make_source_tree(&ws.path().join("charts/local"));
 
-        let first = add(ws.path(), "local").expect("first add");
-        let second = add(ws.path(), "local").expect("second add");
+        let first = add(ws.path(), "local", None).expect("first add");
+        let second = add(ws.path(), "local", None).expect("second add");
         assert!(first.wrote);
         assert!(!second.wrote);
         assert_eq!(first.digest, second.digest);
@@ -871,7 +894,7 @@ local = { path = "./charts/local" }
     fn check_reports_drift_after_vendored_tree_changes() {
         let ws = workspace(minimal_manifest());
         make_source_tree(&ws.path().join("charts/local"));
-        add(ws.path(), "local").expect("add");
+        add(ws.path(), "local", None).expect("add");
 
         std::fs::write(
             ws.path().join(".akua/vendor/local/templates/a.yaml"),
@@ -899,7 +922,7 @@ local = { path = "./charts/local" }
     fn list_marks_orphaned_vendor_trees() {
         let ws = workspace(minimal_manifest());
         make_source_tree(&ws.path().join("charts/local"));
-        add(ws.path(), "local").expect("add");
+        add(ws.path(), "local", None).expect("add");
 
         write(
             ws.path(),
@@ -920,7 +943,7 @@ local = { path = "./charts/local" }
     #[test]
     fn missing_dependency_suggests_vendor_path_declaration() {
         let ws = workspace(minimal_manifest());
-        let err = add(ws.path(), "nope").unwrap_err();
+        let err = add(ws.path(), "nope", None).unwrap_err();
         let structured = err.to_structured();
         assert_eq!(structured.code, codes::E_VENDOR_DEP_MISSING);
         assert!(structured
@@ -938,7 +961,7 @@ local = { path = "./charts/local" }
         let ws = workspace(minimal_manifest());
         make_source_tree(&ws.path().join("charts/local"));
 
-        let out = add(ws.path(), "local").expect("add");
+        let out = add(ws.path(), "local", None).expect("add");
         assert!(out.wrote);
 
         let lock_path = ws.path().join("akua.lock");
@@ -959,10 +982,10 @@ local = { path = "./charts/local" }
         let ws = workspace(minimal_manifest());
         make_source_tree(&ws.path().join("charts/local"));
 
-        add(ws.path(), "local").expect("add 1");
+        add(ws.path(), "local", None).expect("add 1");
         let lock_v1 = std::fs::read_to_string(ws.path().join("akua.lock")).expect("read 1");
 
-        add(ws.path(), "local").expect("add 2");
+        add(ws.path(), "local", None).expect("add 2");
         let lock_v2 = std::fs::read_to_string(ws.path().join("akua.lock")).expect("read 2");
 
         assert_eq!(lock_v1, lock_v2, "repeat add must produce identical lock");
@@ -1099,7 +1122,7 @@ edition = "akua.dev/v1alpha1"
 bad = { path = "/etc" }
 "#,
         );
-        let err = add(ws.path(), "bad").unwrap_err();
+        let err = add(ws.path(), "bad", None).unwrap_err();
         let structured = err.to_structured();
         assert_eq!(structured.code, codes::E_PATH_ESCAPE);
         assert!(matches!(err, VendorError::AbsolutePathRejected { .. }));
@@ -1132,7 +1155,7 @@ bad = { path = "../sibling" }
         )
         .expect("write manifest");
 
-        let err = add(&workspace_dir, "bad").unwrap_err();
+        let err = add(&workspace_dir, "bad", None).unwrap_err();
         let structured = err.to_structured();
         assert_eq!(structured.code, codes::E_PATH_ESCAPE);
         assert!(matches!(err, VendorError::PathEscape { .. }));

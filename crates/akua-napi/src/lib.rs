@@ -340,10 +340,10 @@ pub fn vendor_add(args: NapiVendorAddArgs) -> Result<serde_json::Value> {
     let workspace = Path::new(&args.workspace);
     let name = args.name;
     let output = if args.plan.unwrap_or(false) {
-        core_vendor::plan_add(workspace, &name)
+        core_vendor::plan_add(workspace, &name, None)
             .map_err(|e| into_napi(e.to_structured(), e.exit_code()))?
     } else {
-        core_vendor::add(workspace, &name)
+        core_vendor::add(workspace, &name, None)
             .map_err(|e| into_napi(e.to_structured(), e.exit_code()))?
     };
     let ctx = Context::json();

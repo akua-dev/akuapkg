@@ -50,13 +50,13 @@ engine-kustomize = ["dep:kustomize-engine-wasm"]
 # client — no tokio runtime injection into the render path. Disable
 # for offline-only builds (lockfile-only, no resolution against
 # remote registries).
-oci-fetch = ["dep:reqwest", "dep:flate2", "dep:tar", "dep:base64"]
+oci-fetch = ["dep:reqwest", "dep:flate2", "dep:tar"]
 # Git chart fetch. Pulls charts hosted in git repos via `gix` (pure
 # Rust, no shell-out). Disabled by default — the dep tree is large
 # and the feature is opt-in for ops who actually use git charts.
 # Public HTTPS + file:// URLs supported; ssh:// + private-repo auth
 # are follow-ups.
-git-fetch = ["dep:gix", "dep:base64"]
+git-fetch = ["dep:gix"]
 # Cosign keyed signature verification. Pairs with oci-fetch: when a
 # public key is configured, the pull path also pulls the chart's
 # cosign `.sig` sidecar and verifies the signature before handing
@@ -104,7 +104,7 @@ kustomize-engine-wasm = { path = "../kustomize-engine-wasm", optional = true, de
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"], optional = true }
 flate2 = { version = "1", optional = true }
 tar = { version = "0.4", optional = true }
-base64 = { version = "0.22", optional = true }
+base64 = { version = "0.22" }
 # `blocking-http-transport-reqwest-rust-tls` reuses the reqwest stack
 # we already pull in for oci-fetch; `max-performance-safe` keeps
 # compile time reasonable (skips `zlib-ng` optional perf wins).

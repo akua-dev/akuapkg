@@ -175,13 +175,17 @@ impl ResolvedSource {
             ),
             ResolvedSource::Git {
                 git, tag_or_rev, ..
-            } => (format!("git+{git}@{tag_or_rev}"), tag_or_rev.clone(), None),
+            } => (
+                format!("git+{}@{tag_or_rev}", crate::host_auth::canonicalize_url(git)),
+                tag_or_rev.clone(),
+                None,
+            ),
             ResolvedSource::GitReplaced {
                 git,
                 tag_or_rev,
                 replace_path,
             } => (
-                format!("git+{git}@{tag_or_rev}"),
+                format!("git+{}@{tag_or_rev}", crate::host_auth::canonicalize_url(git)),
                 tag_or_rev.clone(),
                 Some(Replaced {
                     path: replace_path.clone(),
@@ -341,6 +345,13 @@ pub struct ResolverOptions {
     /// Packages must run with this on. See CLAUDE.md "`replace` and
     /// `path` deps are workspace-local".
     pub reject_replace: bool,
+
+    /// Caller-supplied credentials for private git remotes. Keyed by
+    /// URL prefix (longest match wins); see [`crate::host_auth`] for
+    /// the resolution rules. `None` means anonymous fetches; private
+    /// remotes will then 401 with a typed error rather than reading
+    /// any ambient credential file.
+    pub auth: Option<crate::host_auth::HostAuthMap>,
 }
 
 impl ResolverOptions {
@@ -355,6 +366,7 @@ impl ResolverOptions {
             expected_digests,
             cosign_public_key_pem: None,
             reject_replace: replace_rejected_from_env(),
+            auth: None,
         }
     }
 }
@@ -680,12 +692,17 @@ fn resolve_git(
             }
         })?
     } else {
-        git_fetcher::fetch(git, &ref_spec, &cache_root, expected_commit.as_deref()).map_err(
-            |source| ChartResolveError::GitFetch {
-                name: name.to_string(),
-                source,
-            },
-        )?
+        git_fetcher::fetch(
+            git,
+            &ref_spec,
+            &cache_root,
+            expected_commit.as_deref(),
+            opts.auth.as_ref(),
+        )
+        .map_err(|source| ChartResolveError::GitFetch {
+            name: name.to_string(),
+            source,
+        })?
     };
 
     // For git deps the lockfile digest is the commit SHA (git-native
