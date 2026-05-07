@@ -17,6 +17,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use crate::chart_resolver::{hash_dir, VENDOR_DIR};
 use crate::cli_contract::{codes, ExitCode, StructuredError};
 use crate::lock_file::{AkuaLock, LockLoadError, LockedPackage};
 use crate::mod_file::{AkuaManifest, Dependency, DependencySource, ManifestLoadError};
@@ -25,7 +26,6 @@ use crate::{cache_inventory, oci_auth, oci_fetcher};
 #[cfg(feature = "git-fetch")]
 use crate::{git_fetcher, git_fetcher::RefSpec};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 crate::contract_type! {
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -211,43 +211,46 @@ fn add_impl(workspace: &Path, name: &str, write: bool) -> Result<VendorAddOutput
     let source = resolve_source(workspace, name, dep)?;
     let vendor_root = vendor_root(workspace);
     let target = vendor_root.join(name);
-    let (wrote, replaced) = if write {
-        let SyncOutcome { wrote, replaced } = sync_tree(&source.root, &target)?;
-        (wrote, replaced)
+
+    // Source digest is also the post-copy target digest — `copy_tree` is
+    // byte-identical, so we don't re-hash the target after writing.
+    let (digest, size_bytes) = hash_dir(&source.root).map_err(|err| VendorError::Io {
+        path: source.root.clone(),
+        source: err,
+    })?;
+
+    let target_existed = target.exists();
+    let target_matches = if target_existed {
+        let (target_digest, _) = hash_dir(&target).map_err(|err| VendorError::Io {
+            path: target.clone(),
+            source: err,
+        })?;
+        target_digest == digest
     } else {
-        let (source_digest, size_bytes) =
-            hash_tree(&source.root).map_err(|err| VendorError::Io {
-                path: source.root.clone(),
-                source: err,
-            })?;
-        let (wrote, replaced) = if target.exists() {
-            let (target_digest, _) = hash_tree(&target).map_err(|err| VendorError::Io {
+        false
+    };
+
+    let (wrote, replaced) = if target_matches {
+        (false, false)
+    } else if write {
+        if target_existed {
+            std::fs::remove_dir_all(&target).map_err(|err| VendorError::Io {
                 path: target.clone(),
                 source: err,
             })?;
-            if target_digest == source_digest {
-                (false, false)
-            } else {
-                (true, true)
-            }
-        } else {
-            (true, false)
-        };
-        return Ok(VendorAddOutput {
-            name: name.to_string(),
-            source_kind: source.kind.to_string(),
-            source_ref: source.source_ref,
-            path: target,
-            digest: source_digest,
-            size_bytes,
-            wrote,
-            replaced,
-        });
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|err| VendorError::Io {
+                path: parent.to_path_buf(),
+                source: err,
+            })?;
+        }
+        copy_tree(&source.root, &target)?;
+        (true, target_existed)
+    } else {
+        // plan mode: report what would happen without writing
+        (true, target_existed)
     };
-    let (digest, size_bytes) = hash_tree(&target).map_err(|err| VendorError::Io {
-        path: target.clone(),
-        source: err,
-    })?;
 
     Ok(VendorAddOutput {
         name: name.to_string(),
@@ -262,7 +265,7 @@ fn add_impl(workspace: &Path, name: &str, write: bool) -> Result<VendorAddOutput
 }
 
 pub fn list(workspace: &Path) -> Result<VendorListOutput, VendorError> {
-    let expected = expected_names(workspace)?;
+    let expected = expected_entries(workspace)?.names;
     let vendor_root = vendor_root(workspace);
     let entries = scan_vendor_entries(&vendor_root, &expected)?;
     Ok(VendorListOutput { entries })
@@ -278,15 +281,14 @@ pub fn check(workspace: &Path) -> Result<VendorCheckOutput, VendorError> {
     let mut orphaned = Vec::new();
     let mut missing = Vec::new();
 
-    let disk_map: BTreeMap<String, VendorListEntry> = on_disk
-        .clone()
-        .into_iter()
-        .map(|entry| (entry.name.clone(), entry))
+    let disk_map: BTreeMap<&str, &VendorListEntry> = on_disk
+        .iter()
+        .map(|entry| (entry.name.as_str(), entry))
         .collect();
 
     for expected in expected.entries {
         let path = vendor_root.join(&expected.name);
-        match disk_map.get(&expected.name) {
+        match disk_map.get(expected.name.as_str()) {
             Some(actual) => {
                 let mismatch = actual.digest != expected.digest;
                 drift |= mismatch;
@@ -320,6 +322,7 @@ pub fn check(workspace: &Path) -> Result<VendorCheckOutput, VendorError> {
         }
     }
 
+    drop(disk_map);
     for entry in on_disk {
         if expected.names.contains(&entry.name) {
             continue;
@@ -327,7 +330,7 @@ pub fn check(workspace: &Path) -> Result<VendorCheckOutput, VendorError> {
         drift = true;
         orphaned.push(entry.name.clone());
         entries.push(VendorCheckEntry {
-            name: entry.name.clone(),
+            name: entry.name,
             path: entry.path,
             source_kind: None,
             source_ref: None,
@@ -378,16 +381,6 @@ struct SourceResolution {
     root: PathBuf,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct SyncOutcome {
-    wrote: bool,
-    replaced: bool,
-}
-
-fn expected_names(workspace: &Path) -> Result<std::collections::BTreeSet<String>, VendorError> {
-    Ok(expected_entries(workspace)?.names)
-}
-
 fn expected_entries(workspace: &Path) -> Result<ExpectedSet, VendorError> {
     let manifest = AkuaManifest::load(workspace)?;
     let lock = match AkuaLock::load(workspace) {
@@ -412,7 +405,7 @@ fn expected_entries(workspace: &Path) -> Result<ExpectedSet, VendorError> {
         }
 
         let source = resolve_source(workspace, name, dep)?;
-        let (digest, _) = hash_tree(&source.root).map_err(|err| VendorError::Io {
+        let (digest, _) = hash_dir(&source.root).map_err(|err| VendorError::Io {
             path: source.root.clone(),
             source: err,
         })?;
@@ -577,7 +570,7 @@ fn expected_digest_from_lock(workspace: &Path, name: &str, kind: &str) -> Option
 }
 
 fn vendor_root(workspace: &Path) -> PathBuf {
-    workspace.join(".akua/vendor")
+    workspace.join(VENDOR_DIR)
 }
 
 fn scan_vendor_entries(
@@ -585,8 +578,15 @@ fn scan_vendor_entries(
     expected: &std::collections::BTreeSet<String>,
 ) -> Result<Vec<VendorListEntry>, VendorError> {
     let mut entries = Vec::new();
-    let Ok(rd) = std::fs::read_dir(vendor_root) else {
-        return Ok(entries);
+    let rd = match std::fs::read_dir(vendor_root) {
+        Ok(rd) => rd,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(entries),
+        Err(err) => {
+            return Err(VendorError::Io {
+                path: vendor_root.to_path_buf(),
+                source: err,
+            });
+        }
     };
     for entry in rd {
         let entry = entry.map_err(|source| VendorError::Io {
@@ -598,7 +598,7 @@ fn scan_vendor_entries(
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        let (digest, size_bytes) = hash_tree(&path).map_err(|source| VendorError::Io {
+        let (digest, size_bytes) = hash_dir(&path).map_err(|source| VendorError::Io {
             path: path.clone(),
             source,
         })?;
@@ -612,51 +612,6 @@ fn scan_vendor_entries(
     }
     entries.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(entries)
-}
-
-fn sync_tree(source: &Path, target: &Path) -> Result<SyncOutcome, VendorError> {
-    let (source_digest, _) = hash_tree(source).map_err(|err| VendorError::Io {
-        path: source.to_path_buf(),
-        source: err,
-    })?;
-    if target.exists() {
-        let (target_digest, _) = hash_tree(target).map_err(|err| VendorError::Io {
-            path: target.to_path_buf(),
-            source: err,
-        })?;
-        if target_digest == source_digest {
-            return Ok(SyncOutcome {
-                wrote: false,
-                replaced: false,
-            });
-        }
-        std::fs::remove_dir_all(target).map_err(|err| VendorError::Io {
-            path: target.to_path_buf(),
-            source: err,
-        })?;
-        if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent).map_err(|err| VendorError::Io {
-                path: parent.to_path_buf(),
-                source: err,
-            })?;
-        }
-        copy_tree(source, target)?;
-        return Ok(SyncOutcome {
-            wrote: true,
-            replaced: true,
-        });
-    }
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent).map_err(|err| VendorError::Io {
-            path: parent.to_path_buf(),
-            source: err,
-        })?;
-    }
-    copy_tree(source, target)?;
-    Ok(SyncOutcome {
-        wrote: true,
-        replaced: false,
-    })
 }
 
 fn copy_tree(source: &Path, target: &Path) -> Result<(), VendorError> {
@@ -689,66 +644,6 @@ fn copy_tree(source: &Path, target: &Path) -> Result<(), VendorError> {
         }
     }
     Ok(())
-}
-
-fn hash_tree(root: &Path) -> Result<(String, u64), std::io::Error> {
-    let mut files = Vec::new();
-    collect_files(root, root, &mut files)?;
-    files.sort_by(|a, b| a.0.cmp(&b.0));
-    let mut hasher = Sha256::new();
-    let mut size_bytes = 0_u64;
-    for (rel, abs) in files {
-        hasher.update(rel.to_string_lossy().as_bytes());
-        hasher.update(b"\0");
-        let file = std::fs::File::open(&abs)?;
-        size_bytes = size_bytes.saturating_add(file.metadata()?.len());
-        let mut reader = std::io::BufReader::new(file);
-        std::io::copy(&mut reader, &mut hasher)?;
-        hasher.update(b"\n");
-    }
-    Ok((
-        format!("sha256:{}", hex::encode(hasher.finalize())),
-        size_bytes,
-    ))
-}
-
-fn collect_files(
-    root: &Path,
-    dir: &Path,
-    out: &mut Vec<(PathBuf, PathBuf)>,
-) -> Result<(), std::io::Error> {
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let ft = entry.file_type()?;
-        let path = entry.path();
-        if ft.is_dir() {
-            collect_files(root, &path, out)?;
-        } else if ft.is_file() {
-            let rel = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
-            out.push((rel, path));
-        }
-    }
-    Ok(())
-}
-
-mod hex {
-    pub fn encode(bytes: impl AsRef<[u8]>) -> String {
-        let bytes = bytes.as_ref();
-        let mut out = String::with_capacity(bytes.len() * 2);
-        for b in bytes {
-            out.push(hex_char(b >> 4));
-            out.push(hex_char(b & 0x0f));
-        }
-        out
-    }
-
-    fn hex_char(nibble: u8) -> char {
-        match nibble {
-            0..=9 => (b'0' + nibble) as char,
-            10..=15 => (b'a' + nibble - 10) as char,
-            _ => unreachable!("nibble out of range"),
-        }
-    }
 }
 
 #[cfg(test)]

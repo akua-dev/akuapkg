@@ -101,10 +101,9 @@ fn init_scaffolds_three_files_and_reports_them() {
 
 #[test]
 fn init_dot_uses_cwd_basename_not_literal_dot() {
-    // Regression for #4: `akua init .` from a directory must record
-    // the directory's basename in [package].name, not the literal `.`.
-    // Without the fix, render → check fails because `.` isn't a valid
-    // KCL identifier and the manifest parser rejects it.
+    // `akua init .` from a directory must record the directory's basename
+    // in [package].name, not the literal `.` — `.` isn't a valid KCL
+    // identifier and the manifest parser rejects it.
     let dir = tempdir();
     let pkg = dir.path().join("hello-app");
     std::fs::create_dir_all(&pkg).unwrap();
@@ -208,12 +207,10 @@ fn init_then_render_without_inputs_flag_uses_scaffold_inputs_example() {
 
 #[test]
 fn render_path_escape_emits_e_path_escape_with_remediation_suggestion() {
-    // Regression for #7: a Package that calls a path-taking plugin
-    // with a path that escapes its own directory must surface
-    // E_PATH_ESCAPE with an actionable `suggestion` field naming both
-    // remediations (vendor under the Package, or declare in akua.toml
-    // and reference the resolved alias). Pre-fix: the suggestion was
-    // a generic "no `..` escape" line that gave no path forward.
+    // A Package that calls a path-taking plugin with a path that escapes
+    // its own directory must surface E_PATH_ESCAPE with an actionable
+    // `suggestion` field naming both remediations: vendor under the
+    // Package, or declare in akua.toml and reference the resolved alias.
     let dir = tempdir();
     let pkg = dir.path().join("escaper");
     std::fs::create_dir_all(&pkg).unwrap();

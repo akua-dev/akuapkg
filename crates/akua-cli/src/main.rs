@@ -936,13 +936,29 @@ fn dispatch(command: Commands) -> ExitCode {
                     name,
                     workspace,
                 },
-        } => run_vendor_add(&args, &name, &workspace),
+        } => run_vendor(
+            &args,
+            vendor_verb::VendorAction::Add {
+                workspace: &workspace,
+                name: &name,
+            },
+        ),
         Commands::Vendor {
             sub: VendorSub::Check { args, workspace },
-        } => run_vendor_check(&args, &workspace),
+        } => run_vendor(
+            &args,
+            vendor_verb::VendorAction::Check {
+                workspace: &workspace,
+            },
+        ),
         Commands::Vendor {
             sub: VendorSub::List { args, workspace },
-        } => run_vendor_list(&args, &workspace),
+        } => run_vendor(
+            &args,
+            vendor_verb::VendorAction::List {
+                workspace: &workspace,
+            },
+        ),
         Commands::Cache { sub } => run_cache(sub),
         Commands::Auth { sub } => run_auth(sub),
         Commands::Pack {
@@ -1017,35 +1033,9 @@ fn run_pack(
     }
 }
 
-fn run_vendor_add(args: &UniversalArgs, name: &str, workspace: &std::path::Path) -> ExitCode {
+fn run_vendor(args: &UniversalArgs, action: vendor_verb::VendorAction<'_>) -> ExitCode {
     let ctx = resolve_ctx(args);
-    let verb_args = vendor_verb::VendorArgs {
-        action: vendor_verb::VendorAction::Add { workspace, name },
-    };
-    let mut stdout = io::stdout().lock();
-    match vendor_verb::run(&ctx, &verb_args, &mut stdout) {
-        Ok(code) => code,
-        Err(e) => emit_structured(&ctx, &e.to_structured(), e.exit_code()),
-    }
-}
-
-fn run_vendor_check(args: &UniversalArgs, workspace: &std::path::Path) -> ExitCode {
-    let ctx = resolve_ctx(args);
-    let verb_args = vendor_verb::VendorArgs {
-        action: vendor_verb::VendorAction::Check { workspace },
-    };
-    let mut stdout = io::stdout().lock();
-    match vendor_verb::run(&ctx, &verb_args, &mut stdout) {
-        Ok(code) => code,
-        Err(e) => emit_structured(&ctx, &e.to_structured(), e.exit_code()),
-    }
-}
-
-fn run_vendor_list(args: &UniversalArgs, workspace: &std::path::Path) -> ExitCode {
-    let ctx = resolve_ctx(args);
-    let verb_args = vendor_verb::VendorArgs {
-        action: vendor_verb::VendorAction::List { workspace },
-    };
+    let verb_args = vendor_verb::VendorArgs { action };
     let mut stdout = io::stdout().lock();
     match vendor_verb::run(&ctx, &verb_args, &mut stdout) {
         Ok(code) => code,

@@ -1051,7 +1051,7 @@ fn resolve_path(
         });
     }
 
-    let sha256 = hash_dir(&canon).map_err(|e| ChartResolveError::Io {
+    let (sha256, _size_bytes) = hash_dir(&canon).map_err(|e| ChartResolveError::Io {
         name: name.to_string(),
         path: canon.clone(),
         source: e,
@@ -1078,12 +1078,17 @@ fn resolve_path(
 /// dir, which breaks both determinism and the sandbox assumption that
 /// the tarball we hand the engine has no escape hatches. An actual
 /// chart needing a symlink is already broken on Windows hosts.
-fn hash_dir(root: &Path) -> std::io::Result<String> {
+/// Deterministic content-hash of a directory tree, plus the total bytes
+/// hashed. Returns `(sha256:<hex>, size_bytes)`. Used by both the chart
+/// resolver (path-dep digest) and the vendor module (vendored-tree digest)
+/// — keep this the single canonical implementation.
+pub(crate) fn hash_dir(root: &Path) -> std::io::Result<(String, u64)> {
     let mut files = Vec::new();
     collect_files(root, root, &mut files)?;
     files.sort_by(|a, b| a.0.cmp(&b.0));
 
     let mut hasher = Sha256::new();
+    let mut size_bytes = 0_u64;
     for (rel, abs) in files {
         // Use `to_string_lossy` for cross-platform parity: Windows uses
         // UTF-16 OsStr internally; Unix is bytes. A chart with
@@ -1093,13 +1098,19 @@ fn hash_dir(root: &Path) -> std::io::Result<String> {
         hasher.update(b"\0");
         // Stream the file into the hasher so multi-MB values.yaml
         // or long template trees don't balloon memory. BufReader
-        // + io::copy is the standard pattern.
+        // + io::copy is the standard pattern. `io::copy` returns the
+        // bytes streamed — accumulate it instead of a separate
+        // `metadata().len()` syscall.
         let file = std::fs::File::open(&abs)?;
         let mut reader = std::io::BufReader::new(file);
-        std::io::copy(&mut reader, &mut hasher)?;
+        let copied = std::io::copy(&mut reader, &mut hasher)?;
+        size_bytes = size_bytes.saturating_add(copied);
         hasher.update(b"\n");
     }
-    Ok(format!("sha256:{}", hex_encode(&hasher.finalize())))
+    Ok((
+        format!("sha256:{}", hex_encode(&hasher.finalize())),
+        size_bytes,
+    ))
 }
 
 fn collect_files(
