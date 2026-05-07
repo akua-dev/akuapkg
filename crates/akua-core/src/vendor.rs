@@ -23,7 +23,7 @@ use crate::chart_resolver::{
 };
 use crate::cli_contract::{codes, ExitCode, StructuredError};
 use crate::lock_file::{AkuaLock, LockLoadError, LockedPackage, GIT_DIGEST_PREFIX};
-use crate::mod_file::{AkuaManifest, Dependency, DependencySource, ManifestLoadError};
+use crate::mod_file::{AkuaManifest, Dependency, DependencySpec, ManifestLoadError};
 #[cfg(feature = "oci-fetch")]
 use crate::{cache_inventory, oci_auth, oci_fetcher};
 #[cfg(feature = "git-fetch")]
@@ -346,40 +346,31 @@ fn upsert_vendor_lock_entry(
 /// convention; path/oci deps keep the `sha256:<hex>` form `hash_dir`
 /// produced.
 fn vendor_lock_source(dep: &Dependency, tree_digest: &str) -> (ResolvedSource, String) {
-    let kind = dep
-        .source()
-        .expect("manifest validation guarantees exactly one source");
-    match kind {
-        DependencySource::Path => (
+    const VENDORED_FALLBACK: &str = "vendored";
+    match dep.spec() {
+        DependencySpec::Path { declared } => (
             ResolvedSource::Path {
-                declared: dep.path.clone().expect("path dep has path"),
+                declared: declared.to_string(),
             },
             tree_digest.to_string(),
         ),
-        DependencySource::Oci => (
+        DependencySpec::Oci { oci, version } => (
             ResolvedSource::Oci {
-                oci: dep.oci.clone().expect("oci dep has oci ref"),
-                version: dep
-                    .version
-                    .clone()
-                    .unwrap_or_else(|| "vendored".to_string()),
+                oci: oci.to_string(),
+                version: version.unwrap_or(VENDORED_FALLBACK).to_string(),
                 blob_digest: tree_digest.to_string(),
             },
             tree_digest.to_string(),
         ),
-        DependencySource::Git => {
+        DependencySpec::Git { git, tag, rev } => {
             let raw = tree_digest
                 .strip_prefix("sha256:")
                 .unwrap_or(tree_digest)
                 .to_string();
             (
                 ResolvedSource::Git {
-                    git: dep.git.clone().expect("git dep has git ref"),
-                    tag_or_rev: dep
-                        .tag
-                        .clone()
-                        .or_else(|| dep.rev.clone())
-                        .unwrap_or_else(|| "vendored".to_string()),
+                    git: git.to_string(),
+                    tag_or_rev: tag.or(rev).unwrap_or(VENDORED_FALLBACK).to_string(),
                     commit_sha: raw.clone(),
                 },
                 format!("{GIT_DIGEST_PREFIX}{raw}"),
@@ -617,21 +608,14 @@ fn resolve_source(
     name: &str,
     dep: &Dependency,
 ) -> Result<SourceResolution, VendorError> {
-    let source_kind = dep
-        .source()
-        .expect("manifest validation guarantees exactly one source");
-    match source_kind {
-        DependencySource::Path => {
-            let rel = dep.path.as_ref().expect("path dep has a path");
-            let root = resolve_path_dep(workspace, name, rel)?;
-            Ok(SourceResolution {
-                kind: "path",
-                source_ref: rel.clone(),
-                root,
-            })
-        }
-        DependencySource::Oci => resolve_oci_source(workspace, name, dep),
-        DependencySource::Git => resolve_git_source(workspace, name, dep),
+    match dep.spec() {
+        DependencySpec::Path { declared } => Ok(SourceResolution {
+            kind: "path",
+            source_ref: declared.to_string(),
+            root: resolve_path_dep(workspace, name, declared)?,
+        }),
+        DependencySpec::Oci { oci, version } => resolve_oci_source(workspace, name, oci, version),
+        DependencySpec::Git { git, tag, rev } => resolve_git_source(workspace, name, git, tag, rev),
     }
 }
 
@@ -639,10 +623,10 @@ fn resolve_source(
 fn resolve_oci_source(
     workspace: &Path,
     name: &str,
-    dep: &Dependency,
+    oci: &str,
+    version: Option<&str>,
 ) -> Result<SourceResolution, VendorError> {
-    let oci = dep.oci.as_ref().expect("oci dep has oci ref");
-    let version = dep.version.as_deref().expect("oci dep has version");
+    let version = version.expect("manifest validation requires version on oci deps");
     let cache_root = cache_inventory::default_cache_root("oci");
     let creds = oci_auth::CredsStore::load().map_err(|e| VendorError::AuthConfig(e.to_string()))?;
     let locked_expected = expected_digest_from_lock(workspace, name, "oci");
@@ -669,7 +653,8 @@ fn resolve_oci_source(
 fn resolve_oci_source(
     _workspace: &Path,
     name: &str,
-    _dep: &Dependency,
+    _oci: &str,
+    _version: Option<&str>,
 ) -> Result<SourceResolution, VendorError> {
     let _ = name;
     Err(VendorError::SourceMissing {
@@ -681,12 +666,13 @@ fn resolve_oci_source(
 fn resolve_git_source(
     workspace: &Path,
     name: &str,
-    dep: &Dependency,
+    git: &str,
+    tag: Option<&str>,
+    rev: Option<&str>,
 ) -> Result<SourceResolution, VendorError> {
-    let git = dep.git.as_ref().expect("git dep has git ref");
-    let ref_spec = match (dep.tag.as_ref(), dep.rev.as_ref()) {
-        (Some(tag), _) => RefSpec::Tag(tag.clone()),
-        (_, Some(rev)) => RefSpec::Rev(rev.clone()),
+    let ref_spec = match (tag, rev) {
+        (Some(tag), _) => RefSpec::Tag(tag.to_string()),
+        (_, Some(rev)) => RefSpec::Rev(rev.to_string()),
         _ => unreachable!("manifest validation guarantees tag or rev"),
     };
     let cache_root = cache_inventory::default_cache_root("git");
@@ -708,7 +694,9 @@ fn resolve_git_source(
 fn resolve_git_source(
     _workspace: &Path,
     name: &str,
-    _dep: &Dependency,
+    _git: &str,
+    _tag: Option<&str>,
+    _rev: Option<&str>,
 ) -> Result<SourceResolution, VendorError> {
     let _ = name;
     Err(VendorError::SourceMissing {
@@ -974,6 +962,141 @@ local = { path = "./charts/local" }
         let lock_v2 = std::fs::read_to_string(ws.path().join("akua.lock")).expect("read 2");
 
         assert_eq!(lock_v1, lock_v2, "repeat add must produce identical lock");
+    }
+
+    /// `vendor_lock_source` projects a manifest [`Dependency`] + the
+    /// vendored-tree hash into the `(ResolvedSource, digest)` pair the
+    /// shared `upsert_locked_from_source` helper expects. The three
+    /// branches each have non-trivial behavior (path declares the
+    /// canonical-source string verbatim, oci version falls back to
+    /// `"vendored"`, git tag/rev falls through with a digest rewrite),
+    /// so each is unit-tested directly without the workspace I/O of
+    /// `add()`.
+    mod vendor_lock_source_tests {
+        use super::*;
+        use crate::chart_resolver::ResolvedSource;
+
+        const TREE_DIGEST: &str = "sha256:deadbeef";
+
+        fn dep_path(declared: &str) -> Dependency {
+            Dependency {
+                path: Some(declared.to_string()),
+                ..Default::default()
+            }
+        }
+
+        fn dep_oci(oci: &str, version: Option<&str>) -> Dependency {
+            Dependency {
+                oci: Some(oci.to_string()),
+                version: version.map(String::from),
+                ..Default::default()
+            }
+        }
+
+        fn dep_git(git: &str, tag: Option<&str>, rev: Option<&str>) -> Dependency {
+            Dependency {
+                git: Some(git.to_string()),
+                tag: tag.map(String::from),
+                rev: rev.map(String::from),
+                ..Default::default()
+            }
+        }
+
+        #[test]
+        fn path_dep_keeps_declared_string_and_sha256_digest() {
+            let dep = dep_path("./charts/local");
+            let (source, digest) = vendor_lock_source(&dep, TREE_DIGEST);
+            match source {
+                ResolvedSource::Path { declared } => assert_eq!(declared, "./charts/local"),
+                other => panic!("expected ResolvedSource::Path, got {other:?}"),
+            }
+            assert_eq!(digest, TREE_DIGEST);
+        }
+
+        #[test]
+        fn oci_dep_with_explicit_version_passes_through() {
+            let dep = dep_oci("oci://ghcr.io/acme/nginx", Some("1.2.3"));
+            let (source, digest) = vendor_lock_source(&dep, TREE_DIGEST);
+            match source {
+                ResolvedSource::Oci {
+                    oci,
+                    version,
+                    blob_digest,
+                } => {
+                    assert_eq!(oci, "oci://ghcr.io/acme/nginx");
+                    assert_eq!(version, "1.2.3");
+                    assert_eq!(blob_digest, TREE_DIGEST);
+                }
+                other => panic!("expected ResolvedSource::Oci, got {other:?}"),
+            }
+            assert_eq!(digest, TREE_DIGEST);
+        }
+
+        #[test]
+        fn oci_dep_without_version_falls_back_to_vendored_marker() {
+            let dep = dep_oci("oci://ghcr.io/acme/nginx", None);
+            let (source, _) = vendor_lock_source(&dep, TREE_DIGEST);
+            match source {
+                ResolvedSource::Oci { version, .. } => assert_eq!(version, "vendored"),
+                other => panic!("expected ResolvedSource::Oci, got {other:?}"),
+            }
+        }
+
+        /// Git deps rewrite the digest to `git:<hex>` per the lockfile
+        /// convention so it doesn't collide with OCI's `sha256:` scheme
+        /// (see `LockError::BadDigest` for the validator).
+        #[test]
+        fn git_dep_with_tag_rewrites_digest_to_git_prefix() {
+            let dep = dep_git("https://github.com/foo/bar", Some("v1.0.0"), None);
+            let (source, digest) = vendor_lock_source(&dep, TREE_DIGEST);
+            match source {
+                ResolvedSource::Git {
+                    git,
+                    tag_or_rev,
+                    commit_sha,
+                } => {
+                    assert_eq!(git, "https://github.com/foo/bar");
+                    assert_eq!(tag_or_rev, "v1.0.0");
+                    assert_eq!(commit_sha, "deadbeef");
+                }
+                other => panic!("expected ResolvedSource::Git, got {other:?}"),
+            }
+            assert_eq!(digest, "git:deadbeef");
+        }
+
+        #[test]
+        fn git_dep_with_rev_only_uses_rev_as_tag_or_rev() {
+            let dep = dep_git("https://github.com/foo/bar", None, Some("abc123"));
+            let (source, _) = vendor_lock_source(&dep, TREE_DIGEST);
+            match source {
+                ResolvedSource::Git { tag_or_rev, .. } => assert_eq!(tag_or_rev, "abc123"),
+                other => panic!("expected ResolvedSource::Git, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn git_dep_with_neither_tag_nor_rev_falls_back_to_vendored_marker() {
+            let dep = dep_git("https://github.com/foo/bar", None, None);
+            let (source, _) = vendor_lock_source(&dep, TREE_DIGEST);
+            match source {
+                ResolvedSource::Git { tag_or_rev, .. } => assert_eq!(tag_or_rev, "vendored"),
+                other => panic!("expected ResolvedSource::Git, got {other:?}"),
+            }
+        }
+
+        /// The git digest rewrite must handle a tree hash that's
+        /// already prefixed (`sha256:abc`) AND one that isn't (`abc`).
+        /// Currently `hash_dir` always returns `sha256:`-prefixed, but
+        /// the strip-or-pass logic guards against future drift.
+        #[test]
+        fn git_dep_strips_existing_sha256_prefix_before_rewriting() {
+            let dep = dep_git("https://github.com/foo/bar", Some("v1"), None);
+            let (_, digest) = vendor_lock_source(&dep, "sha256:abc");
+            assert_eq!(digest, "git:abc");
+
+            let (_, digest_unprefixed) = vendor_lock_source(&dep, "abc");
+            assert_eq!(digest_unprefixed, "git:abc");
+        }
     }
 
     /// Path deps must stay under the workspace root. Absolute paths

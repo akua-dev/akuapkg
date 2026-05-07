@@ -83,7 +83,7 @@ pub struct WorkspaceSection {
 /// A single dependency. Form is discriminated by which source-type field is
 /// set (`oci` / `git` / `path`). Exactly one must be present; all three
 /// present is a validation error.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Dependency {
     /// OCI ref. Exclusive with `git`, `path`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -127,6 +127,42 @@ pub enum DependencySource {
     Oci,
     Git,
     Path,
+}
+
+/// Typed projection of a [`Dependency`]'s source form, carrying the
+/// associated data (the path string / OCI ref / git URL plus version /
+/// tag / rev) instead of requiring callers to re-destructure the
+/// [`Option`] triple. Returned by [`Dependency::spec`]; only meaningful
+/// after [`Dependency::validate`] has run, which is what the manifest
+/// loader does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DependencySpec<'a> {
+    Path {
+        declared: &'a str,
+    },
+    Oci {
+        oci: &'a str,
+        /// `None` for a still-being-vendored dep; manifest validation
+        /// rejects this for OCI deps once they're fully declared.
+        version: Option<&'a str>,
+    },
+    Git {
+        git: &'a str,
+        tag: Option<&'a str>,
+        rev: Option<&'a str>,
+    },
+}
+
+impl DependencySpec<'_> {
+    /// `tag` if set, else `rev`. Either is sufficient under manifest
+    /// validation; used wherever lockfile/cache machinery needs a
+    /// single ref-or-commit string.
+    pub fn tag_or_rev(&self) -> Option<&str> {
+        match self {
+            DependencySpec::Git { tag, rev, .. } => tag.or(*rev),
+            _ => None,
+        }
+    }
 }
 
 /// Errors produced by this module.
@@ -268,6 +304,40 @@ impl Dependency {
             (false, true, false) => Some(DependencySource::Git),
             (false, false, true) => Some(DependencySource::Path),
             _ => None,
+        }
+    }
+
+    /// Typed projection of the dep's source form into a
+    /// [`DependencySpec`] that carries the associated data. Lets
+    /// callers `match dep.spec()` instead of `match (&dep.path,
+    /// &dep.oci, &dep.git)` + four `.expect("…")`s on the field
+    /// accesses inside each arm.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the [`Dependency`] is not exactly-one-source — i.e.
+    /// invariant violated by failure to call [`validate`] first.
+    /// `AkuaManifest::load` runs `validate` for you; reach for
+    /// [`source`] when handling an unvalidated manifest.
+    pub fn spec(&self) -> DependencySpec<'_> {
+        match (
+            self.path.as_deref(),
+            self.oci.as_deref(),
+            self.git.as_deref(),
+        ) {
+            (Some(declared), None, None) => DependencySpec::Path { declared },
+            (None, Some(oci), None) => DependencySpec::Oci {
+                oci,
+                version: self.version.as_deref(),
+            },
+            (None, None, Some(git)) => DependencySpec::Git {
+                git,
+                tag: self.tag.as_deref(),
+                rev: self.rev.as_deref(),
+            },
+            _ => unreachable!(
+                "Dependency::spec called on an unvalidated manifest — call validate() first"
+            ),
         }
     }
 
@@ -575,5 +645,83 @@ strict_signing = false
 "#;
         let m = AkuaManifest::parse(s).expect("parse");
         assert!(!m.package.strict_signing);
+    }
+
+    #[test]
+    fn spec_projects_path_dep() {
+        let dep = Dependency {
+            path: Some("./local".to_string()),
+            ..Default::default()
+        };
+        assert!(matches!(dep.spec(), DependencySpec::Path { declared } if declared == "./local"));
+    }
+
+    #[test]
+    fn spec_projects_oci_dep_with_version() {
+        let dep = Dependency {
+            oci: Some("oci://ghcr.io/acme/app".to_string()),
+            version: Some("1.0.0".to_string()),
+            ..Default::default()
+        };
+        match dep.spec() {
+            DependencySpec::Oci { oci, version } => {
+                assert_eq!(oci, "oci://ghcr.io/acme/app");
+                assert_eq!(version, Some("1.0.0"));
+            }
+            other => panic!("expected Oci, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn spec_projects_git_dep_exposes_tag_and_rev_separately() {
+        let dep = Dependency {
+            git: Some("https://github.com/foo/bar".to_string()),
+            tag: Some("v1.0.0".to_string()),
+            rev: Some("abc123".to_string()),
+            ..Default::default()
+        };
+        match dep.spec() {
+            DependencySpec::Git { git, tag, rev } => {
+                assert_eq!(git, "https://github.com/foo/bar");
+                assert_eq!(tag, Some("v1.0.0"));
+                assert_eq!(rev, Some("abc123"));
+            }
+            other => panic!("expected Git, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn spec_tag_or_rev_prefers_tag() {
+        let dep = Dependency {
+            git: Some("https://github.com/foo/bar".to_string()),
+            tag: Some("v1.0.0".to_string()),
+            rev: Some("abc123".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(dep.spec().tag_or_rev(), Some("v1.0.0"));
+    }
+
+    #[test]
+    fn spec_tag_or_rev_falls_back_to_rev_when_tag_absent() {
+        let dep = Dependency {
+            git: Some("https://github.com/foo/bar".to_string()),
+            rev: Some("abc123".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(dep.spec().tag_or_rev(), Some("abc123"));
+    }
+
+    /// `Dependency::spec` is documented as panicking on an unvalidated
+    /// manifest — the `_ => unreachable!` arm. This test pins that
+    /// contract so a regression is caught immediately.
+    #[test]
+    #[should_panic(expected = "unvalidated manifest")]
+    fn spec_panics_on_ambiguous_source() {
+        let dep = Dependency {
+            path: Some("./local".to_string()),
+            oci: Some("oci://ghcr.io/acme/app".to_string()),
+            ..Default::default()
+        };
+        let _ = dep.spec();
     }
 }
