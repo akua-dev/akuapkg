@@ -34,15 +34,26 @@ body {
   min-height: 100vh;
 }
 
-/* ----- Top nav ----- */
+/* ----- Top nav -----
+ * Fixed-position bar that fades in as the user scrolls past the top.
+ * Driven by an inline script that toggles a "scrolled" class on body. */
 .topnav {
-  position: sticky;
-  top: 0;
+  position: fixed;
+  top: 0; left: 0; right: 0;
   z-index: 10;
-  background: rgba(10, 10, 10, 0.92);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(10, 10, 10, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line);
+  transform: translateY(-100%);
+  opacity: 0;
+  transition: transform 220ms ease-out, opacity 220ms ease-out;
+  pointer-events: none;
+}
+body.scrolled .topnav {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
 }
 .topnav-inner {
   display: flex;
@@ -50,7 +61,8 @@ body {
   gap: 32px;
   max-width: 1080px;
   margin: 0 auto;
-  padding: 14px 20px;
+  padding: 12px 20px;
+  min-height: 52px;
 }
 .brand {
   display: flex;
@@ -60,21 +72,29 @@ body {
   color: var(--fg);
   font-weight: 600;
   letter-spacing: -0.01em;
+  line-height: 1;
 }
-.brand img { width: 28px; height: 28px; display: block; }
-.brand span { font-size: 17px; }
+.brand img { width: 26px; height: 26px; display: block; }
+.brand span { font-size: 16px; line-height: 1; }
 .brand:hover { text-decoration: none; }
 .topnav-links {
   display: flex;
+  align-items: center;
   gap: 22px;
-  margin-left: auto;
-  list-style: none;
+  margin: 0 0 0 auto;
   padding: 0;
+  list-style: none;
+  line-height: 1;
 }
+.topnav-links li { line-height: 1; }
 .topnav-links a {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
   color: var(--muted);
   text-decoration: none;
   font-size: 14px;
+  line-height: 1;
   letter-spacing: 0.01em;
   transition: color 120ms ease;
 }
@@ -92,11 +112,27 @@ body {
 }
 .layout.no-sidebar { grid-template-columns: minmax(0, 720px); margin: 0 auto; }
 
-/* ----- Sidebar ----- */
+/* Landing layout: single centered column, no padding inflation from
+ * a missing sidebar slot. The vertical-centered feel comes from the
+ * grid centering on body, not from a hero block above the content. */
+body.landing {
+  display: grid;
+  grid-template-rows: 1fr;
+  align-items: center;
+  min-height: 100vh;
+}
+body.landing .layout {
+  grid-template-columns: minmax(0, 560px);
+  padding: 60px 20px;
+}
+
+/* ----- Sidebar -----
+ * Sticky at top: 24px so it floats just under the (fade-in) nav when
+ * one is showing, and reads cleanly at the very top when it isn't. */
 .sidebar {
   position: sticky;
-  top: 76px;
-  max-height: calc(100vh - 96px);
+  top: 24px;
+  max-height: calc(100vh - 48px);
   overflow-y: auto;
   font-size: 13px;
   padding-right: 8px;
@@ -383,5 +419,15 @@ resources = [*_pg, *_labeled]
 </footer>
 </main>
 </div>
+<script>
+(function () {
+  var threshold = 40;
+  function update() {
+    document.body.classList.toggle('scrolled', window.scrollY > threshold);
+  }
+  update();
+  addEventListener('scroll', update, { passive: true });
+})();
+</script>
 </body>
 </html>
