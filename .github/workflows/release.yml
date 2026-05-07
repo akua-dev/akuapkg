@@ -569,14 +569,15 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           # Filter to the cli-build artifacts this job consumes —
-          # `cli-*` per-platform tarballs + sha256 sidecars. Without
-          # the pattern, download-artifact also pulls the docker job's
-          # `cnap-tech~akua~<id>.dockerbuild` provenance artifact whose
-          # `~`-containing name fails path validation in v4 (and only
-          # silently slips by on v8 because the merge-multiple flag
-          # tolerates it; defensive here so v8 → v4 downgrade doesn't
-          # bring back the bug).
-          pattern: 'cli-*'
+          # `akua-<target>` per-platform tarballs + sha256 sidecars
+          # (uploaded as `name: akua-${{ matrix.target }}` upstream).
+          # Without the pattern, download-artifact also pulls the
+          # docker job's `cnap-tech~akua~<id>.dockerbuild` provenance
+          # artifact whose `~`-containing name fails path validation
+          # in v4 (and only silently slips by on v8 because the
+          # merge-multiple flag tolerates it; defensive here so a
+          # v8 → v4 downgrade doesn't bring back the bug).
+          pattern: 'akua-*'
           path: dist
           merge-multiple: true
       - name: Create release
@@ -607,7 +608,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
         with:
-          pattern: 'cli-*'
+          pattern: 'akua-*'
           path: dist
           merge-multiple: true
       - uses: docker/setup-qemu-action@v4
@@ -667,7 +668,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          pattern: 'cli-*'
+          pattern: 'akua-*'
           path: dist
           merge-multiple: true
 
