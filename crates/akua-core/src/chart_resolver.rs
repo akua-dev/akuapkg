@@ -419,13 +419,27 @@ pub fn resolve_with_options(
         // "path requires `path`" invariant unambiguous.
         match (&dep.path, &dep.oci, &dep.git) {
             (Some(path), None, None) => {
-                let src = ResolvedSource::Path {
-                    declared: path.clone(),
-                };
-                entries.insert(
-                    name.clone(),
-                    resolve_path(name, path, workspace_root, src, PathOrigin::UserManifest)?,
-                );
+                // Vendor-first: if `.akua/vendor/<name>/` exists, render
+                // reads from there and the canonical path source can be
+                // absent (e.g. cnap install pipelines GC the cloned
+                // source tree after vendoring). When the vendor dir is
+                // absent we fall through to the path source as before.
+                if let Some(chart) = resolve_from_vendor(
+                    name,
+                    workspace_root,
+                    dep,
+                    vendor_kind_path(path),
+                )? {
+                    entries.insert(name.clone(), chart);
+                } else {
+                    let src = ResolvedSource::Path {
+                        declared: path.clone(),
+                    };
+                    entries.insert(
+                        name.clone(),
+                        resolve_path(name, path, workspace_root, src, PathOrigin::UserManifest)?,
+                    );
+                }
             }
             (None, Some(oci), None) => {
                 // Vendor-first: if `akua publish` embedded this dep's
@@ -461,7 +475,12 @@ pub const VENDOR_DIR: &str = ".akua/vendor";
 
 /// Which flavor of vendored dep we're materializing. Carries the
 /// canonical-source metadata [`ResolvedSource`] needs post-hash.
+/// `.akua/vendor/<name>/` is the universal cache layer — every dep
+/// kind, including `path`, is allowed to vendor. Render reads from
+/// the vendored tree when present + lockfile pin matches; otherwise
+/// falls through to the canonical source.
 enum VendorKind<'a> {
+    Path { declared: &'a str },
     Oci { oci: &'a str, version: String },
     Git { git: &'a str, tag_or_rev: String },
 }
@@ -488,6 +507,9 @@ fn resolve_from_vendor(
     // tree + assigns `sha256:<hex>`. We patch the source variant
     // with that digest in-place so the ResolvedChart is built once.
     let placeholder = match &kind {
+        VendorKind::Path { declared } => ResolvedSource::Path {
+            declared: (*declared).to_string(),
+        },
         VendorKind::Oci { oci, version } => ResolvedSource::Oci {
             oci: (*oci).to_string(),
             version: version.clone(),
@@ -521,9 +543,18 @@ fn resolve_from_vendor(
             *commit_sha = raw.clone();
             chart.sha256 = format!("{}{}", crate::lock_file::GIT_DIGEST_PREFIX, raw);
         }
+        ResolvedSource::Path { .. } => {
+            // Path source carries no embedded digest — `chart.sha256`
+            // already holds the vendored-tree hash and that's what the
+            // lockfile records. Nothing to patch.
+        }
         _ => {}
     }
     Ok(Some(chart))
+}
+
+fn vendor_kind_path(declared: &str) -> VendorKind<'_> {
+    VendorKind::Path { declared }
 }
 
 fn vendor_kind_oci<'a>(oci: &'a str, dep: &Dependency) -> VendorKind<'a> {
@@ -1796,6 +1827,40 @@ alpha = { path = "./charts/alpha" }
             other => panic!("expected ResolvedSource::Git, got {other:?}"),
         }
         assert!(libs.sha256.starts_with("git:"));
+    }
+
+    #[test]
+    fn vendored_path_dep_resolves_from_vendor_tree() {
+        let ws = tempfile::tempdir().unwrap();
+        // Vendor tree present, canonical path source absent.
+        // `.akua/vendor/<name>/` is the universal cache layer — the
+        // resolver reads from it regardless of dep kind, so the
+        // canonical source can be GC'd after vendoring.
+        write_minimal_chart(&ws.path().join(".akua/vendor/local"));
+        let manifest = minimal_manifest(r#"local = { path = "./vendored-source" }"#);
+        let resolved = resolve(&manifest, ws.path()).expect("vendor-first works for path deps");
+        let local = resolved.entries.get("local").unwrap();
+        assert!(local.abs_path.ends_with(".akua/vendor/local"));
+        match &local.source {
+            ResolvedSource::Path { declared } => {
+                assert_eq!(declared, "./vendored-source");
+            }
+            other => panic!("expected ResolvedSource::Path, got {other:?}"),
+        }
+        assert!(local.sha256.starts_with("sha256:"));
+    }
+
+    #[test]
+    fn vendored_path_wins_over_canonical_path_source() {
+        let ws = tempfile::tempdir().unwrap();
+        // Both vendor tree AND canonical path source exist.
+        // Vendor wins — that's the point of caching.
+        write_minimal_chart(&ws.path().join(".akua/vendor/local"));
+        write_minimal_chart(&ws.path().join("canonical-source"));
+        let manifest = minimal_manifest(r#"local = { path = "./canonical-source" }"#);
+        let resolved = resolve(&manifest, ws.path()).expect("vendor-first wins");
+        let local = resolved.entries.get("local").unwrap();
+        assert!(local.abs_path.ends_with(".akua/vendor/local"));
     }
 
     #[test]
