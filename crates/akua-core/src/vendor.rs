@@ -27,55 +27,65 @@ use crate::{git_fetcher, git_fetcher::RefSpec};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct VendorListEntry {
-    pub name: String,
-    pub path: PathBuf,
-    pub digest: String,
-    pub size_bytes: u64,
-    pub orphan: bool,
+crate::contract_type! {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+    pub struct VendorListEntry {
+        pub name: String,
+        pub path: PathBuf,
+        pub digest: String,
+        pub size_bytes: u64,
+        pub orphan: bool,
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct VendorListOutput {
-    pub entries: Vec<VendorListEntry>,
+crate::contract_type! {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+    pub struct VendorListOutput {
+        pub entries: Vec<VendorListEntry>,
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct VendorCheckEntry {
-    pub name: String,
-    pub path: PathBuf,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub source_kind: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub source_ref: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expected_digest: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub actual_digest: Option<String>,
-    pub orphan: bool,
-    pub missing_vendor: bool,
-    pub missing_source: bool,
+crate::contract_type! {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+    pub struct VendorCheckEntry {
+        pub name: String,
+        pub path: PathBuf,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub source_kind: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub source_ref: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub expected_digest: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub actual_digest: Option<String>,
+        pub orphan: bool,
+        pub missing_vendor: bool,
+        pub missing_source: bool,
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct VendorCheckOutput {
-    pub drift: bool,
-    pub entries: Vec<VendorCheckEntry>,
-    pub orphaned: Vec<String>,
-    pub missing: Vec<String>,
+crate::contract_type! {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+    pub struct VendorCheckOutput {
+        pub drift: bool,
+        pub entries: Vec<VendorCheckEntry>,
+        pub orphaned: Vec<String>,
+        pub missing: Vec<String>,
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct VendorAddOutput {
-    pub name: String,
-    pub source_kind: String,
-    pub source_ref: String,
-    pub path: PathBuf,
-    pub digest: String,
-    pub size_bytes: u64,
-    pub wrote: bool,
-    pub replaced: bool,
+crate::contract_type! {
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+    pub struct VendorAddOutput {
+        pub name: String,
+        pub source_kind: String,
+        pub source_ref: String,
+        pub path: PathBuf,
+        pub digest: String,
+        pub size_bytes: u64,
+        pub wrote: bool,
+        pub replaced: bool,
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

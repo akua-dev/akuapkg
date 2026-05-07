@@ -28,6 +28,7 @@ use akua_core::cli_contract::{AgentContext, AgentSource, ExitCode, StructuredErr
 use akua_core::dir_diff::DirDiff;
 use akua_core::package_k::LintIssue;
 use akua_core::package_render::RenderSummary;
+use akua_core::vendor::{VendorAddOutput, VendorCheckOutput, VendorListOutput};
 use schemars::generate::SchemaSettings;
 
 #[test]
@@ -51,6 +52,9 @@ fn export_json_schema_bundle() {
     generator.subschema_for::<FmtOutput>();
     generator.subschema_for::<InspectOutput>();
     generator.subschema_for::<TreeOutput>();
+    generator.subschema_for::<VendorAddOutput>();
+    generator.subschema_for::<VendorCheckOutput>();
+    generator.subschema_for::<VendorListOutput>();
     generator.subschema_for::<VerifyOutput>();
     generator.subschema_for::<DirDiff>();
 

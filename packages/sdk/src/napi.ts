@@ -59,6 +59,9 @@ export interface NapiAddon {
 	verify(args: { workspace: string }): unknown;
 	whoami(): unknown;
 	inspect(args: { package?: string; tarball?: string }): unknown;
+	vendorAdd(args: { workspace: string; name: string; plan?: boolean }): unknown;
+	vendorCheck(args: { workspace: string }): unknown;
+	vendorList(args: { workspace: string }): unknown;
 }
 
 // Cache both successful loads AND failures. Without the failure

@@ -14,9 +14,10 @@
 use std::io::Cursor;
 use std::path::Path;
 
-use akua_cli::contract::Context;
+use akua_cli::contract::{emit_output, Context};
 use akua_cli::verbs;
 use akua_core::cli_contract::{ExitCode, StructuredError};
+use akua_core::vendor as core_vendor;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
@@ -320,6 +321,67 @@ pub fn verify(args: NapiWorkspaceArgs) -> Result<serde_json::Value> {
     invoke_verb(|ctx, stdout| {
         verbs::verify::run(ctx, workspace, stdout)
             .map_err(|e| into_napi(e.to_structured(), e.exit_code()))
+    })
+}
+
+// ---------------------------------------------------------------------------
+// vendor — workspace vendor-tree sync / inspection
+// ---------------------------------------------------------------------------
+
+#[napi(object)]
+pub struct NapiVendorAddArgs {
+    pub workspace: String,
+    pub name: String,
+    pub plan: Option<bool>,
+}
+
+#[napi]
+pub fn vendor_add(args: NapiVendorAddArgs) -> Result<serde_json::Value> {
+    let workspace = Path::new(&args.workspace);
+    let name = args.name;
+    let output = if args.plan.unwrap_or(false) {
+        core_vendor::plan_add(workspace, &name)
+            .map_err(|e| into_napi(e.to_structured(), e.exit_code()))?
+    } else {
+        core_vendor::add(workspace, &name)
+            .map_err(|e| into_napi(e.to_structured(), e.exit_code()))?
+    };
+    let ctx = Context::json();
+    invoke_verb_with(&ctx, move |ctx, stdout| {
+        emit_output(stdout, ctx, &output, |_| Ok(())).map_err(into_napi_io)?;
+        Ok(ExitCode::Success)
+    })
+}
+
+#[napi]
+pub fn vendor_check(args: NapiWorkspaceArgs) -> Result<serde_json::Value> {
+    let workspace = Path::new(&args.workspace);
+    let output = match core_vendor::check(workspace) {
+        Ok(output) => output,
+        Err(core_vendor::VendorError::Drift { output }) => output,
+        Err(err) => return Err(into_napi(err.to_structured(), err.exit_code())),
+    };
+    let drift = output.drift;
+    let ctx = Context::json();
+    invoke_verb_with(&ctx, move |ctx, stdout| {
+        emit_output(stdout, ctx, &output, |_| Ok(())).map_err(into_napi_io)?;
+        Ok(if drift {
+            ExitCode::UserError
+        } else {
+            ExitCode::Success
+        })
+    })
+}
+
+#[napi]
+pub fn vendor_list(args: NapiWorkspaceArgs) -> Result<serde_json::Value> {
+    let workspace = Path::new(&args.workspace);
+    let output =
+        core_vendor::list(workspace).map_err(|e| into_napi(e.to_structured(), e.exit_code()))?;
+    let ctx = Context::json();
+    invoke_verb_with(&ctx, move |ctx, stdout| {
+        emit_output(stdout, ctx, &output, |_| Ok(())).map_err(into_napi_io)?;
+        Ok(ExitCode::Success)
     })
 }
 

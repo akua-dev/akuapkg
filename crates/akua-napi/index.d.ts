@@ -79,6 +79,12 @@ export interface NapiRenderArgs {
   maxDepth?: number
 }
 
+export interface NapiVendorAddArgs {
+  workspace: string
+  name: string
+  plan?: boolean
+}
+
 export interface NapiWorkspaceArgs {
   workspace: string
 }
@@ -94,6 +100,12 @@ export declare function render(args: NapiRenderArgs): any
 export declare function renderToYaml(args: NapiRenderArgs): string
 
 export declare function tree(args: NapiWorkspaceArgs): any
+
+export declare function vendorAdd(args: NapiVendorAddArgs): any
+
+export declare function vendorCheck(args: NapiWorkspaceArgs): any
+
+export declare function vendorList(args: NapiWorkspaceArgs): any
 
 export declare function verify(args: NapiWorkspaceArgs): any
 
