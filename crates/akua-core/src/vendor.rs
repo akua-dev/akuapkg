@@ -107,6 +107,33 @@ pub enum VendorError {
     #[error("source path `{path}` does not exist")]
     SourceMissing { path: PathBuf },
 
+    /// Absolute path in `akua.toml` `path = "..."`. Rejected for the
+    /// same reason `chart_resolver` does — see CLAUDE.md "`replace`
+    /// and `path` deps are workspace-local; never cross Package
+    /// boundaries". Without this, a malicious manifest could vendor
+    /// host-fs bytes into the workspace where they'd be committed.
+    #[error(
+        "dep `{name}`: absolute path `{}` is rejected — \
+         path deps must stay under the workspace root",
+        path.display()
+    )]
+    AbsolutePathRejected { name: String, path: PathBuf },
+
+    /// Relative path that canonicalizes outside the workspace
+    /// (typically via `..` segments or symlinks). Same workspace-local
+    /// invariant as [`Self::AbsolutePathRejected`].
+    #[error(
+        "dep `{name}`: path `{}` resolves to `{}`, which escapes \
+         the workspace root `{}`",
+        requested.display(), resolved.display(), workspace_root.display()
+    )]
+    PathEscape {
+        name: String,
+        requested: PathBuf,
+        resolved: PathBuf,
+        workspace_root: PathBuf,
+    },
+
     #[error("i/o at `{}`: {source}", path.display())]
     Io {
         path: PathBuf,
@@ -154,6 +181,24 @@ impl VendorError {
                     .with_path(path.display().to_string())
                     .with_default_docs()
             }
+            VendorError::AbsolutePathRejected { path, .. } => {
+                StructuredError::new(codes::E_PATH_ESCAPE, self.to_string())
+                    .with_path(path.display().to_string())
+                    .with_suggestion(
+                        "use a relative path under the workspace, or vendor the \
+                         dep via `oci = \"...\"` / `git = \"...\"`",
+                    )
+                    .with_default_docs()
+            }
+            VendorError::PathEscape { resolved, .. } => {
+                StructuredError::new(codes::E_PATH_ESCAPE, self.to_string())
+                    .with_path(resolved.display().to_string())
+                    .with_suggestion(
+                        "rewrite the path to stay under the workspace, or move \
+                         the source into the workspace",
+                    )
+                    .with_default_docs()
+            }
             VendorError::Io { path, source } => {
                 StructuredError::new(codes::E_IO, source.to_string())
                     .with_path(path.display().to_string())
@@ -181,6 +226,8 @@ impl VendorError {
             VendorError::Lock(e) if e.is_system() => ExitCode::SystemError,
             VendorError::Drift { .. }
             | VendorError::MissingDependency { .. }
+            | VendorError::AbsolutePathRejected { .. }
+            | VendorError::PathEscape { .. }
             | VendorError::Manifest(_)
             | VendorError::Lock(_)
             | VendorError::AuthConfig(_) => ExitCode::UserError,
@@ -437,6 +484,50 @@ fn expected_entries(workspace: &Path) -> Result<ExpectedSet, VendorError> {
     Ok(ExpectedSet { names, entries })
 }
 
+/// Validate a `path = "..."` dep target against the workspace-local
+/// invariant. Mirrors `chart_resolver::resolve_path` — absolute paths
+/// rejected, the canonicalized target must live under the canonical
+/// workspace root. Without this guard, `akua vendor add` would happily
+/// copy bytes from an arbitrary host directory into `.akua/vendor/`
+/// where they'd land in the install repo.
+fn resolve_path_dep(workspace: &Path, name: &str, requested: &str) -> Result<PathBuf, VendorError> {
+    let rel = PathBuf::from(requested);
+    if rel.is_absolute() {
+        return Err(VendorError::AbsolutePathRejected {
+            name: name.to_string(),
+            path: rel,
+        });
+    }
+    let joined = workspace.join(&rel);
+    let canon = match joined.canonicalize() {
+        Ok(p) => p,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Err(VendorError::SourceMissing { path: joined });
+        }
+        Err(err) => {
+            return Err(VendorError::Io {
+                path: joined,
+                source: err,
+            });
+        }
+    };
+    let workspace_canon = workspace
+        .canonicalize()
+        .unwrap_or_else(|_| workspace.to_path_buf());
+    if !canon.starts_with(&workspace_canon) {
+        return Err(VendorError::PathEscape {
+            name: name.to_string(),
+            requested: rel,
+            resolved: canon,
+            workspace_root: workspace_canon,
+        });
+    }
+    if !canon.is_dir() {
+        return Err(VendorError::SourceMissing { path: canon });
+    }
+    Ok(canon)
+}
+
 fn locked_source_meta(pkg: &LockedPackage) -> (&'static str, String) {
     if pkg.is_path() {
         ("path", pkg.source.clone())
@@ -458,10 +549,7 @@ fn resolve_source(
     match source_kind {
         DependencySource::Path => {
             let rel = dep.path.as_ref().expect("path dep has a path");
-            let root = workspace.join(rel);
-            if !root.is_dir() {
-                return Err(VendorError::SourceMissing { path: root });
-            }
+            let root = resolve_path_dep(workspace, name, rel)?;
             Ok(SourceResolution {
                 kind: "path",
                 source_ref: rel.clone(),
@@ -773,5 +861,60 @@ local = { path = "./charts/local" }
             .suggestion
             .unwrap_or_default()
             .contains("path = \".akua/vendor/nope\""));
+    }
+
+    /// A malicious manifest that points a `path` dep at an absolute
+    /// host directory must NOT cause `vendor add` to copy host bytes
+    /// into the workspace. Same workspace-local invariant the
+    /// chart_resolver enforces — see CLAUDE.md.
+    #[test]
+    fn absolute_path_dep_is_rejected_with_e_path_escape() {
+        let ws = workspace(
+            r#"
+[package]
+name = "vendor-test"
+version = "0.1.0"
+edition = "akua.dev/v1alpha1"
+
+[dependencies]
+bad = { path = "/etc" }
+"#,
+        );
+        let err = add(ws.path(), "bad").unwrap_err();
+        let structured = err.to_structured();
+        assert_eq!(structured.code, codes::E_PATH_ESCAPE);
+        assert!(matches!(err, VendorError::AbsolutePathRejected { .. }));
+    }
+
+    /// `..` segments that resolve outside the workspace are rejected
+    /// even when relative. Without this, a `path = "../sibling"`
+    /// would let `vendor add` exfiltrate host bytes through the
+    /// workspace-local appearance of the manifest.
+    #[test]
+    fn path_dep_escaping_via_dotdot_is_rejected_with_e_path_escape() {
+        let outer = tempfile::tempdir().expect("outer tmpdir");
+        let workspace_dir = outer.path().join("ws");
+        std::fs::create_dir(&workspace_dir).expect("create workspace");
+        let sibling = outer.path().join("sibling");
+        std::fs::create_dir(&sibling).expect("create sibling");
+        std::fs::write(sibling.join("Chart.yaml"), b"name: bad\n").expect("write Chart.yaml");
+        std::fs::write(
+            workspace_dir.join("akua.toml"),
+            r#"
+[package]
+name = "escape_test"
+version = "0.0.1"
+edition = "akua.dev/v1alpha1"
+
+[dependencies]
+bad = { path = "../sibling" }
+"#,
+        )
+        .expect("write manifest");
+
+        let err = add(&workspace_dir, "bad").unwrap_err();
+        let structured = err.to_structured();
+        assert_eq!(structured.code, codes::E_PATH_ESCAPE);
+        assert!(matches!(err, VendorError::PathEscape { .. }));
     }
 }
