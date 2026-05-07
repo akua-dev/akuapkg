@@ -17,7 +17,10 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use crate::chart_resolver::{hash_dir, validate_workspace_path, WorkspacePathError, VENDOR_DIR};
+use crate::chart_resolver::{
+    hash_dir, upsert_locked_from_source, validate_workspace_path, ResolvedSource,
+    WorkspacePathError, VENDOR_DIR,
+};
 use crate::cli_contract::{codes, ExitCode, StructuredError};
 use crate::lock_file::{AkuaLock, LockLoadError, LockedPackage, GIT_DIGEST_PREFIX};
 use crate::mod_file::{AkuaManifest, Dependency, DependencySource, ManifestLoadError};
@@ -298,11 +301,8 @@ fn add_impl(workspace: &Path, name: &str, write: bool) -> Result<VendorAddOutput
         (true, target_existed)
     };
 
-    // Pin the vendored tree in `akua.lock` (write mode only — plan mode
-    // is read-only by contract). Render's vendor-first lookup hashes the
-    // tree at resolve time, but the lockfile is what `vendor check`
-    // compares against to detect drift; without this pin a vendored dep
-    // would always re-hash the source (or fail if the source was GC'd).
+    // `vendor check` compares against the lockfile pin; without it a
+    // GC'd canonical source breaks drift detection.
     if write {
         upsert_vendor_lock_entry(workspace, name, dep, &digest)?;
     }
@@ -319,11 +319,10 @@ fn add_impl(workspace: &Path, name: &str, write: bool) -> Result<VendorAddOutput
     })
 }
 
-/// Upsert a `LockedPackage` for the vendored dep. Mirrors what
-/// `chart_resolver::merge_into_lock` writes for the same dep when
-/// resolved via vendor-first — same `source` / `version` / `digest`
-/// shape so `vendor check` and `akua verify` produce consistent
-/// results regardless of which path produced the lockfile.
+/// Upsert a `LockedPackage` for the vendored dep, routing through the
+/// resolver's shared `upsert_locked_from_source` so the lockfile shape
+/// stays identical whether the entry came from `vendor add` or from a
+/// resolver-driven `akua add` / `akua lock`.
 fn upsert_vendor_lock_entry(
     workspace: &Path,
     name: &str,
@@ -335,69 +334,58 @@ fn upsert_vendor_lock_entry(
         Err(LockLoadError::Missing { .. }) => AkuaLock::empty(),
         Err(e) => return Err(VendorError::Lock(e)),
     };
-    let prior = lock.find(name).cloned();
+    let (source, digest) = vendor_lock_source(dep, tree_digest);
+    upsert_locked_from_source(&mut lock, name, &source, &digest);
+    lock.save(workspace).map_err(VendorError::Lock)?;
+    Ok(())
+}
+
+/// Project the dep + vendored-tree hash into the
+/// `(ResolvedSource, digest)` pair `upsert_locked_from_source` expects.
+/// Git deps rewrite the digest to `git:<hex>` per the lockfile
+/// convention; path/oci deps keep the `sha256:<hex>` form `hash_dir`
+/// produced.
+fn vendor_lock_source(dep: &Dependency, tree_digest: &str) -> (ResolvedSource, String) {
     let kind = dep
         .source()
         .expect("manifest validation guarantees exactly one source");
-    let (source, version, digest) = match kind {
-        DependencySource::Path => {
-            let declared = dep.path.as_ref().expect("path dep has path").clone();
-            (
-                format!("path+file://{declared}"),
-                "local".to_string(),
-                tree_digest.to_string(),
-            )
-        }
-        DependencySource::Oci => {
-            let oci = dep.oci.as_ref().expect("oci dep has oci ref").clone();
-            let version = dep
-                .version
-                .clone()
-                .unwrap_or_else(|| "vendored".to_string());
-            (oci, version, tree_digest.to_string())
-        }
+    match kind {
+        DependencySource::Path => (
+            ResolvedSource::Path {
+                declared: dep.path.clone().expect("path dep has path"),
+            },
+            tree_digest.to_string(),
+        ),
+        DependencySource::Oci => (
+            ResolvedSource::Oci {
+                oci: dep.oci.clone().expect("oci dep has oci ref"),
+                version: dep
+                    .version
+                    .clone()
+                    .unwrap_or_else(|| "vendored".to_string()),
+                blob_digest: tree_digest.to_string(),
+            },
+            tree_digest.to_string(),
+        ),
         DependencySource::Git => {
-            let git = dep.git.as_ref().expect("git dep has git ref").clone();
-            let tag_or_rev = dep
-                .tag
-                .clone()
-                .or_else(|| dep.rev.clone())
-                .unwrap_or_else(|| "vendored".to_string());
-            // Git lockfile digest is `git:<tree-hex>` per the resolver's
-            // existing convention (see `chart_resolver::resolve_from_vendor`
-            // and `vendored_git_dep_resolves_locally` test).
             let raw = tree_digest
                 .strip_prefix("sha256:")
                 .unwrap_or(tree_digest)
                 .to_string();
             (
-                format!("git+{git}@{tag_or_rev}"),
-                tag_or_rev,
+                ResolvedSource::Git {
+                    git: dep.git.clone().expect("git dep has git ref"),
+                    tag_or_rev: dep
+                        .tag
+                        .clone()
+                        .or_else(|| dep.rev.clone())
+                        .unwrap_or_else(|| "vendored".to_string()),
+                    commit_sha: raw.clone(),
+                },
                 format!("{GIT_DIGEST_PREFIX}{raw}"),
             )
         }
-    };
-    lock.upsert(LockedPackage {
-        name: name.to_string(),
-        version,
-        source,
-        digest,
-        // Cosign / SLSA / replace metadata is owned by `akua publish` and
-        // resolver-side replace handling; preserve whatever the prior
-        // entry recorded so re-vendoring doesn't lose them.
-        signature: prior.as_ref().and_then(|p| p.signature.clone()),
-        attestation: prior.as_ref().and_then(|p| p.attestation.clone()),
-        dependencies: prior
-            .as_ref()
-            .map(|p| p.dependencies.clone())
-            .unwrap_or_default(),
-        replaced: prior.as_ref().and_then(|p| p.replaced.clone()),
-        yanked: prior.as_ref().and_then(|p| p.yanked),
-        kyverno_source_digest: prior.as_ref().and_then(|p| p.kyverno_source_digest.clone()),
-        converter_version: prior.as_ref().and_then(|p| p.converter_version.clone()),
-    });
-    lock.save(workspace).map_err(VendorError::Lock)?;
-    Ok(())
+    }
 }
 
 pub fn list(workspace: &Path) -> Result<VendorListOutput, VendorError> {

@@ -419,11 +419,9 @@ pub fn resolve_with_options(
         // "path requires `path`" invariant unambiguous.
         match (&dep.path, &dep.oci, &dep.git) {
             (Some(path), None, None) => {
-                // Vendor-first: if `.akua/vendor/<name>/` exists, render
-                // reads from there and the canonical path source can be
-                // absent (e.g. cnap install pipelines GC the cloned
-                // source tree after vendoring). When the vendor dir is
-                // absent we fall through to the path source as before.
+                // Vendor-first: install pipelines GC the canonical
+                // path source after `vendor add`, so we read from
+                // `.akua/vendor/<name>/` when present.
                 if let Some(chart) =
                     resolve_from_vendor(name, workspace_root, dep, vendor_kind_path(path))?
                 {
@@ -472,10 +470,6 @@ pub const VENDOR_DIR: &str = ".akua/vendor";
 
 /// Which flavor of vendored dep we're materializing. Carries the
 /// canonical-source metadata [`ResolvedSource`] needs post-hash.
-/// `.akua/vendor/<name>/` is the universal cache layer — every dep
-/// kind, including `path`, is allowed to vendor. Render reads from
-/// the vendored tree when present + lockfile pin matches; otherwise
-/// falls through to the canonical source.
 enum VendorKind<'a> {
     Path { declared: &'a str },
     Oci { oci: &'a str, version: String },
@@ -540,11 +534,9 @@ fn resolve_from_vendor(
             *commit_sha = raw.clone();
             chart.sha256 = format!("{}{}", crate::lock_file::GIT_DIGEST_PREFIX, raw);
         }
-        ResolvedSource::Path { .. } => {
-            // Path source carries no embedded digest — `chart.sha256`
-            // already holds the vendored-tree hash and that's what the
-            // lockfile records. Nothing to patch.
-        }
+        // Path source has no embedded digest to patch — chart.sha256
+        // already holds the vendored-tree hash.
+        ResolvedSource::Path { .. } => {}
         _ => {}
     }
     Ok(Some(chart))
@@ -943,29 +935,39 @@ fn scan_top_level_import_roots(source: &str) -> Vec<String> {
 }
 
 pub fn merge_into_lock(lock: &mut crate::lock_file::AkuaLock, resolved: &ResolvedCharts) {
-    use crate::lock_file::LockedPackage;
     for chart in resolved.entries.values() {
-        let (source, version, replaced) = chart.source.to_locked_fields();
-        let prior = lock.packages.iter().find(|p| p.name == chart.name);
-
-        lock.upsert(LockedPackage {
-            name: chart.name.clone(),
-            version,
-            source,
-            digest: chart.sha256.clone(),
-            // Cosign signatures / SLSA attestations are populated by
-            // `akua publish` — preserve whatever the prior entry had
-            // on an update.
-            signature: prior.and_then(|p| p.signature.clone()),
-            attestation: prior.and_then(|p| p.attestation.clone()),
-            dependencies: prior.map(|p| p.dependencies.clone()).unwrap_or_default(),
-            replaced,
-            yanked: prior.and_then(|p| p.yanked),
-            kyverno_source_digest: prior.and_then(|p| p.kyverno_source_digest.clone()),
-            converter_version: prior.and_then(|p| p.converter_version.clone()),
-        });
+        upsert_locked_from_source(lock, &chart.name, &chart.source, &chart.sha256);
     }
     lock.sort();
+}
+
+/// Upsert one `LockedPackage` from a resolved source + digest, preserving
+/// publish-owned metadata (signature, attestation, yanked, …) from any
+/// prior entry. Shared between `merge_into_lock` (called by the resolver
+/// during `akua add` / `akua lock`) and `vendor::add_impl` (called when a
+/// dep is materialized into `.akua/vendor/<name>/`).
+pub fn upsert_locked_from_source(
+    lock: &mut crate::lock_file::AkuaLock,
+    name: &str,
+    source: &ResolvedSource,
+    digest: &str,
+) {
+    use crate::lock_file::LockedPackage;
+    let (source_str, version, replaced) = source.to_locked_fields();
+    let prior = lock.packages.iter().find(|p| p.name == name);
+    lock.upsert(LockedPackage {
+        name: name.to_string(),
+        version,
+        source: source_str,
+        digest: digest.to_string(),
+        signature: prior.and_then(|p| p.signature.clone()),
+        attestation: prior.and_then(|p| p.attestation.clone()),
+        dependencies: prior.map(|p| p.dependencies.clone()).unwrap_or_default(),
+        replaced,
+        yanked: prior.and_then(|p| p.yanked),
+        kyverno_source_digest: prior.and_then(|p| p.kyverno_source_digest.clone()),
+        converter_version: prior.and_then(|p| p.converter_version.clone()),
+    });
 }
 
 /// Human-readable tag for a dep source. Used by `UnsupportedSource`'s
@@ -1829,10 +1831,6 @@ alpha = { path = "./charts/alpha" }
     #[test]
     fn vendored_path_dep_resolves_from_vendor_tree() {
         let ws = tempfile::tempdir().unwrap();
-        // Vendor tree present, canonical path source absent.
-        // `.akua/vendor/<name>/` is the universal cache layer — the
-        // resolver reads from it regardless of dep kind, so the
-        // canonical source can be GC'd after vendoring.
         write_minimal_chart(&ws.path().join(".akua/vendor/local"));
         let manifest = minimal_manifest(r#"local = { path = "./vendored-source" }"#);
         let resolved = resolve(&manifest, ws.path()).expect("vendor-first works for path deps");
@@ -1850,8 +1848,6 @@ alpha = { path = "./charts/alpha" }
     #[test]
     fn vendored_path_wins_over_canonical_path_source() {
         let ws = tempfile::tempdir().unwrap();
-        // Both vendor tree AND canonical path source exist.
-        // Vendor wins — that's the point of caching.
         write_minimal_chart(&ws.path().join(".akua/vendor/local"));
         write_minimal_chart(&ws.path().join("canonical-source"));
         let manifest = minimal_manifest(r#"local = { path = "./canonical-source" }"#);

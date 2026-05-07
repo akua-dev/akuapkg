@@ -3,9 +3,6 @@
 //! the canonical `path` source GC'd, render still produces the expected
 //! ConfigMap because the resolver's vendor-first lookup is universal
 //! across dep types (path / oci / git).
-//!
-//! Skips cleanly if `helm-engine.wasm` or the render-worker module
-//! haven't been built yet.
 
 #![cfg(all(feature = "cosign-verify", feature = "dev-watch"))]
 
@@ -26,10 +23,6 @@ fn example_dir() -> PathBuf {
 fn renders_vendor_offline_against_golden() {
     let dir = example_dir();
 
-    // The example commits `.akua/vendor/upstream/` and `akua.lock` but
-    // NOT the canonical `upstream-chart/` source — this is the offline-
-    // render guarantee. If the resolver tried to read the canonical
-    // source it would fail; success here proves the vendor-first path.
     assert!(
         !dir.join("upstream-chart").exists(),
         "canonical source must be absent for this example to demonstrate offline render"
