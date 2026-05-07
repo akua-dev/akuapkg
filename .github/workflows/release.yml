@@ -61,6 +61,7 @@ permissions:
   contents: write   # github-release: create Releases
   packages: write   # docker: push to ghcr.io
   id-token: write   # npm publish: OIDC trusted publishing
+  actions: write    # trigger-publish: gh workflow run release-publish.yml
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
