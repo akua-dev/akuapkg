@@ -2,13 +2,18 @@ name: pages
 
 # Publishes akua.dev. Composition:
 #
-#   site/index.html      → /           (landing)
-#   scripts/install.sh   → /install    (served without extension, Bun-style)
-#   scripts/install.ps1  → /install.ps1 (Windows)
+#   site/index.html      → /                                (landing)
+#   site/errors/index    → /errors/                         (error code index)
+#   site/errors/<CODE>   → /errors/<CODE>                   (per-code error doc)
+#   scripts/install.sh   → /install                         (no extension, Bun-style)
+#   scripts/install.ps1  → /install.ps1                     (Windows)
 #
 # The curl one-liner users paste is `curl -fsSL https://akua.dev/install | sh`.
 # `curl | sh` doesn't care about Content-Type, so hosting the script at a
 # no-extension path is fine — and keeps the URL clean.
+#
+# Error pages are regenerated from `crates/akua-core/src/cli_contract/codes.rs`
+# at deploy time so the live site can't drift from the source-of-truth list.
 
 on:
   push:
@@ -17,6 +22,9 @@ on:
       - 'site/**'
       - 'scripts/install.sh'
       - 'scripts/install.ps1'
+      - 'scripts/gen-error-pages.ts'
+      - 'crates/akua-core/src/cli_contract/codes.rs'
+      - 'docs/errors/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -39,6 +47,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: jdx/mise-action@v4
+        with:
+          install: true
+          cache: true
+
+      - name: Regenerate error pages from codes.rs
+        # Source of truth is `cli_contract::codes`; the generated HTML
+        # under site/errors/ is committed for local preview but the
+        # deploy regenerates it so the live site can never drift.
+        run: mise exec -- bun scripts/gen-error-pages.ts
+
       - name: Assemble site
         run: |
           set -eu
@@ -50,6 +69,8 @@ jobs:
           test -s _site/index.html
           test -s _site/install
           test -s _site/install.ps1
+          test -s _site/errors/index.html
+          test -s _site/errors/E_PUBLISH_FAILED.html
 
       - uses: actions/configure-pages@v6
 

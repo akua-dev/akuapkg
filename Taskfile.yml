@@ -94,6 +94,11 @@ tasks:
       - task: lint
       - task: test
 
+  site:errors:gen:
+    desc: Regenerate site/errors/*.html from cli_contract::codes
+    cmds:
+      - bun scripts/gen-error-pages.ts
+
   release:validate:
     desc: Pre-tag smoke — render every green example and diff against committed goldens
     deps:
