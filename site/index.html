@@ -148,6 +148,18 @@
 			<h2>From source</h2>
 			<pre><span class="prompt">$</span> cargo install --git https://github.com/cnap-tech/akua akua-cli</pre>
 
+			<h2>SDK (TypeScript / JavaScript)</h2>
+			<p class="note" style="margin: 0 0 12px">
+				Same render / verify / sign / publish surface as the CLI, exposed as a typed npm package
+				with the helm + kustomize wasm engines bundled in. The native addon ships per-platform; no
+				`akua` binary on $PATH required.
+			</p>
+			<pre><span class="prompt">$</span> npm install @akua-dev/sdk</pre>
+			<pre><span class="prompt">$</span> pnpm add @akua-dev/sdk</pre>
+			<pre><span class="prompt">$</span> yarn add @akua-dev/sdk</pre>
+			<pre><span class="prompt">$</span> bun add @akua-dev/sdk</pre>
+			<pre><span class="prompt">$</span> deno add npm:@akua-dev/sdk</pre>
+
 			<p class="note" style="margin-top: 16px">
 				Pre-alpha. v0.1.0 ships four production-ready verbs; twenty-two more are wired behind the
 				same command surface. See the repo for what is and isn't done yet.
@@ -163,6 +175,9 @@
 					<a href="https://github.com/cnap-tech/akua/blob/main/docs/package-format.md"
 						>Package format</a
 					>
+				</li>
+				<li>
+					<a href="https://github.com/cnap-tech/akua/blob/main/docs/sdk.md">SDK reference</a>
 				</li>
 				<li><a href="/errors/">Error codes</a></li>
 				<li>

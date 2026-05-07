@@ -242,7 +242,63 @@ body {
   min-height: 100vh;
   padding: 48px 20px;
 }
-main { width: 100%; max-width: 720px; margin: 0 auto; }
+.layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 720px);
+  gap: 56px;
+  max-width: 1080px;
+  margin: 0 auto;
+  align-items: start;
+}
+.sidebar {
+  position: sticky;
+  top: 48px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  font-size: 13px;
+  padding-right: 8px;
+}
+.sidebar-title {
+  margin: 0 0 16px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.sidebar h3 {
+  margin: 18px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.sidebar h3:first-of-type { margin-top: 0; }
+.sidebar ul { list-style: none; padding: 0; margin: 0; }
+.sidebar li { margin: 0; }
+.sidebar a {
+  display: block;
+  padding: 4px 8px;
+  margin: 1px -8px;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--muted);
+  text-decoration: none;
+  border-radius: 4px;
+  word-break: break-all;
+}
+.sidebar a:hover { color: var(--fg); background: var(--code-bg); }
+.sidebar a.active {
+  color: var(--fg);
+  background: var(--code-bg);
+  border-left: 2px solid var(--accent);
+  padding-left: 6px;
+}
+main { width: 100%; max-width: 720px; min-width: 0; }
+@media (max-width: 880px) {
+  .layout { grid-template-columns: 1fr; gap: 0; }
+  .sidebar { display: none; }
+}
 header { margin-bottom: 36px; }
 header .crumbs {
   margin: 0 0 8px;
@@ -315,7 +371,12 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 .section-group h2 { margin-bottom: 14px; }
 </style>`.trim();
 
-function pageShell(title: string, description: string, body: string): string {
+function pageShell(
+	title: string,
+	description: string,
+	body: string,
+	sidebar: string,
+): string {
 	return `<!doctype html>
 <html lang="en">
 <head>
@@ -330,6 +391,8 @@ function pageShell(title: string, description: string, body: string): string {
 ${STYLE}
 </head>
 <body>
+<div class="layout">
+${sidebar}
 <main>
 ${body}
 <footer>
@@ -338,12 +401,45 @@ ${body}
   <a href="https://github.com/cnap-tech/akua">github.com/cnap-tech/akua</a>
 </footer>
 </main>
+</div>
 </body>
 </html>
 `;
 }
 
-function renderCodePage(entry: CodeEntry, richMarkdown: string | null): string {
+/**
+ * Same sidebar HTML on every page, except for the active-link highlight.
+ * Pass `currentCode = null` for the index page (nothing highlighted).
+ */
+function renderSidebar(entries: CodeEntry[], currentCode: string | null): string {
+	const grouped = new Map<string, CodeEntry[]>();
+	for (const e of entries) {
+		const arr = grouped.get(e.section) ?? [];
+		arr.push(e);
+		grouped.set(e.section, arr);
+	}
+	const sections = Array.from(grouped.entries())
+		.map(([section, items]) => {
+			const li = items
+				.map((e) => {
+					const cls = e.name === currentCode ? ' class="active"' : '';
+					return `<li><a href="/errors/${escape(e.name)}"${cls}>${escape(e.name)}</a></li>`;
+				})
+				.join('');
+			return `<h3>${escape(section)}</h3><ul>${li}</ul>`;
+		})
+		.join('\n');
+	return `<aside class="sidebar">
+<p class="sidebar-title"><a href="/errors/">All error codes</a></p>
+${sections}
+</aside>`;
+}
+
+function renderCodePage(
+	entry: CodeEntry,
+	richMarkdown: string | null,
+	sidebar: string,
+): string {
 	const summary = entry.summary || `Error code emitted by the akua CLI: ${entry.name}.`;
 	const summaryHtml = renderMarkdown(summary);
 
@@ -360,14 +456,14 @@ function renderCodePage(entry: CodeEntry, richMarkdown: string | null): string {
 ${bodyHtml}
 `;
 	const description = stripTags(summaryHtml).slice(0, 200).trim();
-	return pageShell(entry.name, description, inner);
+	return pageShell(entry.name, description, inner, sidebar);
 }
 
 function stripTags(html: string): string {
 	return html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
 }
 
-function renderIndexPage(entries: CodeEntry[]): string {
+function renderIndexPage(entries: CodeEntry[], sidebar: string): string {
 	const grouped = new Map<string, CodeEntry[]>();
 	for (const e of entries) {
 		const arr = grouped.get(e.section) ?? [];
@@ -406,6 +502,7 @@ ${groupsHtml}
 		'Error codes',
 		'Reference for every structured error code emitted by the akua CLI.',
 		inner,
+		sidebar,
 	);
 }
 
@@ -432,10 +529,14 @@ for (const entry of entries) {
 	const richMd = richDocsAvailable.has(entry.name)
 		? readFileSync(join(richDocsDir, `${entry.name}.md`), 'utf8')
 		: null;
-	const html = renderCodePage(entry, richMd);
+	const sidebar = renderSidebar(entries, entry.name);
+	const html = renderCodePage(entry, richMd, sidebar);
 	writeFileSync(join(outDir, `${entry.name}.html`), html);
 	written++;
 }
 
-writeFileSync(join(outDir, 'index.html'), renderIndexPage(entries));
+writeFileSync(
+	join(outDir, 'index.html'),
+	renderIndexPage(entries, renderSidebar(entries, null)),
+);
 console.log(`wrote ${written} code pages + index.html → site/errors/`);
