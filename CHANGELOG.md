@@ -15,6 +15,15 @@ minor bump in the SDK.
 
 ## [Unreleased]
 
+## [0.8.8] — 2026-05-07
+
+Host-keyed HTTPS basic auth for `vendor add`. The CLI and SDK now
+accept caller-supplied credentials keyed by URL prefix; akua does not
+auto-load `~/.netrc`, `~/.docker/config.json`, or any env var.
+Lockfile URLs are canonicalized at write time so credentials cannot
+leak through `akua.lock`. Manifest URLs with embedded `user:pass@` are
+rejected at parse time.
+
 ### Added
 
 - **Host-keyed HTTPS basic auth for `vendor add`** ([host_auth.rs](crates/akua-core/src/host_auth.rs)). The CLI gains repeatable `--auth <prefix>=<user>:<password>` and explicit `--auth-file <path>` flags; the SDK's `vendorAdd()` accepts an `auth?: Record<string, BasicAuth>` parameter. Resolution: longest-URL-prefix match (same rule as git's credential helper / `.npmrc`). Akua never reads ambient credential files (`~/.netrc`, `~/.docker/config.json`) or env vars — the SDK/CLI surface is the only auth source. Aimed at multi-tenant SDK consumers (e.g. cnap install bootstrap) where ambient lookups can leak credentials cross-tenant.

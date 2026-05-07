@@ -22,11 +22,14 @@
 //!   gapped mirrors.
 //! - Private HTTPS via the [`host_auth`](crate::host_auth) credential
 //!   map — caller passes `auth: Option<&HostAuthMap>` to [`fetch`];
-//!   the longest-prefix-matching credential is sent as
-//!   `Authorization: Basic <b64>` via gix's in-memory config
-//!   override (`http.extraHeader`). Akua never reads ambient
-//!   credential files (`~/.netrc`, `~/.docker/config.json`, env
-//!   vars) — multi-tenant SDK consumers require explicit auth.
+//!   on a 401 challenge gix invokes the closure-based credential
+//!   helper installed by [`clone_bare`], which runs
+//!   [`host_auth::lookup`] and returns the longest-prefix-matching
+//!   credential as a `gix::sec::identity::Account`. gix's HTTPS
+//!   transport then serializes that into `Authorization: Basic
+//!   <b64>` on the retry. Akua never reads ambient credential files
+//!   (`~/.netrc`, `~/.docker/config.json`, env vars) — multi-tenant
+//!   SDK consumers require explicit auth.
 //! - `ssh://` URLs intentionally not supported yet — needs an
 //!   SSH agent integration beyond this slice. Users on that path
 //!   can mirror to a local path or set up a self-hosted HTTPS
@@ -209,9 +212,45 @@ fn clone_bare(
         url: url.to_string(),
         detail: e.to_string(),
     })?;
-    let overrides = build_http_overrides(url, auth);
-    if !overrides.is_empty() {
-        prep = prep.with_in_memory_config_overrides(overrides);
+    if let Some(map) = auth {
+        // `Arc` over `clone()` because `configure_connection` and
+        // `set_credentials` are both `FnMut` — refcount bumps beat
+        // re-cloning the map per connection / per 401 retry.
+        let map: std::sync::Arc<HostAuthMap> = std::sync::Arc::new(map.clone());
+        prep = prep.configure_connection(move |conn| {
+            let map = std::sync::Arc::clone(&map);
+            conn.set_credentials(move |action| {
+                let gix::credentials::helper::Action::Get(ctx) = action else {
+                    return Ok(None);
+                };
+                // gix's HTTP transport populates `ctx.url`; the
+                // {host, path} fallback covers the external
+                // `git-credential` helper protocol, which akua
+                // doesn't invoke. Defensive but cheap.
+                let lookup_key: String = if let Some(u) = ctx.url.as_deref() {
+                    String::from_utf8_lossy(u).into_owned()
+                } else {
+                    let Some(h) = ctx.host.as_deref() else {
+                        return Ok(None);
+                    };
+                    match ctx.path.as_deref() {
+                        Some(p) => format!("https://{h}{}", String::from_utf8_lossy(p)),
+                        None => format!("https://{h}"),
+                    }
+                };
+                let Some(creds) = host_auth::lookup(&map, &lookup_key) else {
+                    return Ok(None);
+                };
+                Ok(Some(gix::credentials::protocol::Outcome {
+                    identity: gix::sec::identity::Account {
+                        username: creds.username.clone(),
+                        password: creds.password.clone(),
+                    },
+                    next: gix::credentials::protocol::Context::default().into(),
+                }))
+            });
+            Ok(())
+        });
     }
     let (repo, _) = prep
         .fetch_only(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
@@ -220,30 +259,6 @@ fn clone_bare(
             detail: e.to_string(),
         })?;
     Ok(repo)
-}
-
-/// Build the gix in-memory config override list for a fetch.
-///
-/// Returns an empty vec when no credential matches `url` — gix is
-/// then invoked unmodified and falls back to its default (anonymous)
-/// transport.
-///
-/// When a credential matches, emits a global `http.extraHeader` that
-/// gix's HTTP transport sends with every request for the duration
-/// of the clone. Per-URL granularity isn't needed because each clone
-/// targets exactly one remote URL; the lookup already selected the
-/// right credential by URL prefix.
-fn build_http_overrides(url: &str, auth: Option<&HostAuthMap>) -> Vec<String> {
-    let Some(map) = auth else {
-        return Vec::new();
-    };
-    let Some(creds) = host_auth::lookup(map, url) else {
-        return Vec::new();
-    };
-    vec![format!(
-        "http.extraHeader=Authorization: {}",
-        creds.to_authorization_header()
-    )]
 }
 
 fn open_bare(path: &Path, url: &str) -> Result<gix::Repository, GitFetchError> {
@@ -600,5 +615,190 @@ mod tests {
         assert!(
             fetch_from_cache(tmp.path(), "0000000000000000000000000000000000000000",).is_none()
         );
+    }
+
+    /// Auth integration tests for gix's HTTPS transport.
+    ///
+    /// gix probes anonymously first; on `401` it calls the credential
+    /// helper installed by `clone_bare` and retries with the returned
+    /// `Account`. The load-bearing assertion is `authed.assert_hits(1)`
+    /// — that retry only happens if our `set_credentials` closure ran
+    /// and gix serialized the credential as `Authorization: Basic
+    /// <b64>` on the retry. We mock the wire with `httpmock` so the
+    /// test stays hermetic; a fake `git-upload-pack` would dwarf the
+    /// signal.
+    mod auth {
+        use super::*;
+        use httpmock::prelude::*;
+        use std::collections::HashMap;
+
+        /// httpmock's custom-matcher slot is a `fn` pointer, not a
+        /// closure — so this predicate has to be a free function.
+        /// Without it the unauth mock would also match the
+        /// retry-with-credentials request.
+        fn no_authorization_header(req: &HttpMockRequest) -> bool {
+            !req.headers.as_ref().is_some_and(|hs| {
+                hs.iter()
+                    .any(|(k, _)| k.eq_ignore_ascii_case("authorization"))
+            })
+        }
+
+        fn auth_for(host: &str, user: &str, pass: &str) -> HostAuthMap {
+            HashMap::from([(
+                host.to_string(),
+                crate::host_auth::BasicAuth {
+                    username: user.to_string(),
+                    password: pass.to_string(),
+                },
+            )])
+        }
+
+        fn expected_header(user: &str, pass: &str) -> String {
+            crate::host_auth::BasicAuth {
+                username: user.to_string(),
+                password: pass.to_string(),
+            }
+            .to_authorization_header()
+        }
+
+        fn assert_clone_err(err: GitFetchError) {
+            assert!(
+                matches!(err, GitFetchError::Clone { .. }),
+                "expected Clone error, got {err:?}"
+            );
+        }
+
+        fn mock_unauth_401(server: &MockServer, path: &'static str) {
+            server.mock(|when, then| {
+                when.method(GET).path(path).matches(no_authorization_header);
+                then.status(401)
+                    .header("WWW-Authenticate", "Basic realm=\"akua-test\"");
+            });
+        }
+
+        #[test]
+        fn fetch_without_auth_against_protected_remote_yields_401() {
+            let server = MockServer::start();
+            mock_unauth_401(&server, "/repo.git/info/refs");
+
+            let tmp = tempfile::tempdir().unwrap();
+            let url = format!("{}/repo.git", server.base_url());
+
+            let err = fetch(
+                &url,
+                &RefSpec::Tag("v1".into()),
+                &tmp.path().join("cache"),
+                None,
+                None,
+            )
+            .unwrap_err();
+
+            assert_clone_err(err);
+        }
+
+        #[test]
+        fn fetch_with_matching_auth_sends_authorization_header() {
+            let server = MockServer::start();
+            let user = "alice";
+            let pass = "tok123";
+            let header = expected_header(user, pass);
+            mock_unauth_401(&server, "/repo.git/info/refs");
+            // 200 with a deliberately-malformed body — gix fails to
+            // parse the smart-http response, but only after the
+            // credential reached the wire.
+            let authed = server.mock(|when, then| {
+                when.method(GET)
+                    .path("/repo.git/info/refs")
+                    .header("Authorization", &header);
+                then.status(200)
+                    .header(
+                        "Content-Type",
+                        "application/x-git-upload-pack-advertisement",
+                    )
+                    .body("not a valid smart-http response");
+            });
+
+            let tmp = tempfile::tempdir().unwrap();
+            let auth = auth_for(&server.address().to_string(), user, pass);
+            let url = format!("{}/repo.git", server.base_url());
+
+            let err = fetch(
+                &url,
+                &RefSpec::Tag("v1".into()),
+                &tmp.path().join("cache"),
+                None,
+                Some(&auth),
+            )
+            .unwrap_err();
+
+            assert_clone_err(err);
+            authed.assert_hits(1);
+        }
+
+        #[test]
+        fn fetch_with_wrong_auth_still_yields_401() {
+            let server = MockServer::start();
+            let right_header = expected_header("alice", "right-token");
+            let authed = server.mock(|when, then| {
+                when.method(GET)
+                    .path("/repo.git/info/refs")
+                    .header("Authorization", &right_header);
+                then.status(200).body("authed");
+            });
+            mock_unauth_401(&server, "/repo.git/info/refs");
+
+            let tmp = tempfile::tempdir().unwrap();
+            let auth = auth_for(&server.address().to_string(), "alice", "WRONG-token");
+            let url = format!("{}/repo.git", server.base_url());
+
+            let err = fetch(
+                &url,
+                &RefSpec::Tag("v1".into()),
+                &tmp.path().join("cache"),
+                None,
+                Some(&auth),
+            )
+            .unwrap_err();
+
+            assert_clone_err(err);
+            authed.assert_hits(0);
+        }
+
+        #[test]
+        fn longest_prefix_credential_is_selected() {
+            let server = MockServer::start();
+            let host = server.address().to_string();
+            let mut auth = auth_for(&host, "general", "general-tok");
+            auth.extend(auth_for(
+                &format!("{host}/special"),
+                "specific",
+                "specific-tok",
+            ));
+
+            mock_unauth_401(&server, "/special/repo.git/info/refs");
+            let specific = server.mock(|when, then| {
+                when.method(GET)
+                    .path("/special/repo.git/info/refs")
+                    .header("Authorization", expected_header("specific", "specific-tok"));
+                then.status(200).body("specific-ok");
+            });
+
+            let tmp = tempfile::tempdir().unwrap();
+            let url = format!("{}/special/repo.git", server.base_url());
+
+            let _ = fetch(
+                &url,
+                &RefSpec::Tag("v1".into()),
+                &tmp.path().join("cache"),
+                None,
+                Some(&auth),
+            )
+            .unwrap_err();
+
+            // If the lookup picked the host-level (less specific)
+            // entry instead, this mock wouldn't match — the request
+            // would carry the `general` header.
+            specific.assert_hits(1);
+        }
     }
 }

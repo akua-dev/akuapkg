@@ -1,6 +1,6 @@
 {
   "name": "@akua-dev/native-linux-x64-gnu",
-  "version": "0.8.7",
+  "version": "0.8.8",
   "cpu": [
     "x64"
   ],
