@@ -22,9 +22,13 @@ on:
       - 'site/**'
       - 'scripts/install.sh'
       - 'scripts/install.ps1'
-      - 'scripts/gen-error-pages.ts'
+      - 'scripts/gen-*.ts'
+      - 'scripts/site/**'
       - 'crates/akua-core/src/cli_contract/codes.rs'
-      - 'docs/errors/**'
+      - 'docs/**'
+      - 'examples/**/README.md'
+      - 'examples/**/package.k'
+      - 'examples/**/rendered/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -52,11 +56,12 @@ jobs:
           install: true
           cache: true
 
-      - name: Regenerate error pages from codes.rs
-        # Source of truth is `cli_contract::codes`; the generated HTML
-        # under site/errors/ is committed for local preview but the
-        # deploy regenerates it so the live site can never drift.
-        run: mise exec -- bun scripts/gen-error-pages.ts
+      - name: Regenerate every site page from its source-of-truth
+        # Sources: codes.rs (errors), docs/cli.md (cli), docs/*.md
+        # (concepts), examples/* (examples). Committed HTML under site/
+        # is for local preview; deploy regenerates so the live site can
+        # never drift from the underlying data.
+        run: mise exec -- task site:gen
 
       - name: Assemble site
         run: |
@@ -65,10 +70,14 @@ jobs:
           cp -r site/. _site/
           cp scripts/install.sh _site/install
           cp scripts/install.ps1 _site/install.ps1
-          # sanity check — fail loud if the site is empty or missing the installer
+          # sanity check — fail loud if the site is empty or missing key pages
           test -s _site/index.html
           test -s _site/install
           test -s _site/install.ps1
+          test -s _site/start/index.html
+          test -s _site/cli/index.html
+          test -s _site/concepts/index.html
+          test -s _site/examples/index.html
           test -s _site/errors/index.html
           test -s _site/errors/E_PUBLISH_FAILED.html
 

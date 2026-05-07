@@ -94,6 +94,16 @@ tasks:
       - task: lint
       - task: test
 
+  site:gen:
+    desc: Regenerate every site/* page from its source-of-truth (codes.rs / cli.md / docs/* / examples/*)
+    cmds:
+      - bun scripts/gen-landing.ts
+      - bun scripts/gen-start-page.ts
+      - bun scripts/gen-error-pages.ts
+      - bun scripts/gen-cli-pages.ts
+      - bun scripts/gen-concept-pages.ts
+      - bun scripts/gen-example-pages.ts
+
   site:errors:gen:
     desc: Regenerate site/errors/*.html from cli_contract::codes
     cmds:

@@ -1,0 +1,990 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TypeScript SDK — akua</title>
+<meta name="description" content="Same surface as the CLI, exposed as `@akua-dev/sdk` with the helm + kustomize wasm engines bundled." />
+<meta name="color-scheme" content="dark" />
+<link rel="icon" type="image/png" href="/assets/logo.png" />
+<link rel="apple-touch-icon" href="/assets/logo.png" />
+<meta property="og:title" content="TypeScript SDK — akua" />
+<meta property="og:description" content="Same surface as the CLI, exposed as `@akua-dev/sdk` with the helm + kustomize wasm engines bundled." />
+<meta property="og:url" content="https://akua.dev/concepts/sdk" />
+<meta property="og:image" content="https://akua.dev/assets/logo.png" />
+<meta name="twitter:card" content="summary" />
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0a;
+  --fg: #e8e8ea;
+  --muted: #8a8a8d;
+  --line: #1b1b1d;
+  --line-strong: #2a2a2d;
+  --accent: #ee1c25;
+  --code-bg: #111113;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* ----- Top nav ----- */
+.topnav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(10, 10, 10, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.topnav-inner {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 14px 20px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--fg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.brand img { width: 28px; height: 28px; display: block; }
+.brand span { font-size: 17px; }
+.brand:hover { text-decoration: none; }
+.topnav-links {
+  display: flex;
+  gap: 22px;
+  margin-left: auto;
+  list-style: none;
+  padding: 0;
+}
+.topnav-links a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  transition: color 120ms ease;
+}
+.topnav-links a:hover, .topnav-links a.current { color: var(--fg); }
+
+/* ----- Page layout ----- */
+.layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 720px);
+  gap: 56px;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 48px 20px;
+  align-items: start;
+}
+.layout.no-sidebar { grid-template-columns: minmax(0, 720px); margin: 0 auto; }
+
+/* ----- Sidebar ----- */
+.sidebar {
+  position: sticky;
+  top: 76px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  font-size: 13px;
+  padding-right: 8px;
+}
+.sidebar-title {
+  margin: 0 0 16px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.sidebar-title a {
+  color: var(--muted);
+  text-decoration: none;
+}
+.sidebar-title a:hover { color: var(--fg); }
+.sidebar h3 {
+  margin: 18px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.sidebar h3:first-of-type { margin-top: 0; }
+.sidebar ul { list-style: none; padding: 0; margin: 0; }
+.sidebar li { margin: 0; }
+.sidebar a {
+  display: block;
+  padding: 4px 8px;
+  margin: 1px -8px;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--muted);
+  text-decoration: none;
+  border-radius: 4px;
+  word-break: break-all;
+}
+.sidebar a:hover { color: var(--fg); background: var(--code-bg); }
+.sidebar a.active {
+  color: var(--fg);
+  background: var(--code-bg);
+  border-left: 2px solid var(--accent);
+  padding-left: 6px;
+}
+
+/* ----- Content ----- */
+main { width: 100%; max-width: 720px; min-width: 0; }
+header { margin-bottom: 36px; }
+header .crumbs {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+header .crumbs a { color: var(--muted); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+header .crumbs a:hover { color: var(--fg); text-decoration-color: var(--accent); }
+header h1 {
+  margin: 0;
+  font: 600 32px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: -0.01em;
+}
+header .tagline { margin: 8px 0 0; color: var(--muted); font-size: 16px; }
+.section-tag {
+  display: inline-block;
+  margin: 0 0 16px;
+  padding: 2px 10px;
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+h2 { margin: 32px 0 12px; font-size: 18px; font-weight: 600; }
+h3 { margin: 24px 0 10px; font-size: 16px; font-weight: 600; }
+p { margin: 0 0 14px; }
+a { color: var(--fg); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--accent); }
+code {
+  font: 13px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+pre {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+ul, ol { margin: 0 0 16px; padding-left: 24px; }
+li { margin: 4px 0; }
+blockquote {
+  margin: 0 0 16px;
+  padding: 8px 14px;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+  background: var(--code-bg);
+  border-radius: 0 6px 6px 0;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 16px;
+  font-size: 14px;
+}
+th, td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+th { color: var(--muted); font-weight: 600; font-size: 13px; letter-spacing: 0.02em; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+
+/* ----- Generic page-element classes used by gen-* generators ----- */
+.code-list { list-style: none; padding: 0; margin: 0; }
+.code-list li { margin: 0 0 14px; padding: 0; }
+.code-list .name { font: 14px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.code-list .summary { color: var(--muted); font-size: 14px; margin-top: 4px; }
+.section-group { margin-bottom: 32px; }
+.section-group h2 { margin-bottom: 14px; }
+
+/* ----- Mobile ----- */
+@media (max-width: 880px) {
+  .layout { grid-template-columns: 1fr; gap: 0; }
+  .sidebar { display: none; }
+  .topnav-inner { gap: 16px; padding: 12px 16px; }
+  .topnav-links { gap: 14px; }
+  .topnav-links a { font-size: 13px; }
+}
+@media (max-width: 520px) {
+  .topnav-links { display: none; }
+}
+</style>
+</head>
+<body>
+<nav class="topnav">
+<div class="topnav-inner">
+  <a class="brand" href="/">
+    <img src="/assets/logo.png" alt="" />
+    <span>akua</span>
+  </a>
+  <ul class="topnav-links"><li><a href="/start/">Start</a></li><li><a href="/cli/">CLI</a></li><li><a href="/concepts/" class="current">Concepts</a></li><li><a href="/examples/">Examples</a></li><li><a href="/errors/">Errors</a></li></ul>
+</div>
+</nav>
+<div class="layout">
+<aside class="sidebar">
+<p class="sidebar-title"><a href="/concepts/">Concepts</a></p>
+<ul><li><a href="/concepts/package-format">Package format</a></li><li><a href="/concepts/lockfile-format">akua.toml + akua.lock</a></li><li><a href="/concepts/security-model">Security model</a></li><li><a href="/concepts/embedded-engines">Embedded engines</a></li><li><a href="/concepts/cli-contract">CLI contract</a></li><li><a href="/concepts/sdk" class="active">TypeScript SDK</a></li><li><a href="/concepts/agent-usage">Agent usage</a></li><li><a href="/concepts/debugging">Debugging the render pipeline</a></li></ul>
+</aside>
+<main>
+
+<header>
+  <p class="crumbs"><a href="/">akua</a> / <a href="/concepts/">concepts</a> / sdk</p>
+  <h1>TypeScript SDK</h1>
+  <p class="tagline">Same surface as the CLI, exposed as `@akua-dev/sdk` with the helm + kustomize wasm engines bundled.</p>
+</header>
+<p>Programmatic access to akua capabilities for Node.js and the browser. Mirrors the CLI surface where appropriate; differs where the context demands it.</p>
+<hr />
+<h2 id="install">Install</h2>
+<pre><code class="lang-sh">bun add @akua-dev/sdk
+# or
+npm install @akua-dev/sdk</code></pre>
+<p>Published to <a href="https://www.npmjs.com/package/-dev/sdk">npm</a>. ESM-only. Node 20+ or any modern browser.</p>
+<hr />
+<h2 id="single-entry-point">Single entry point</h2>
+<pre><code class="lang-ts">import { Akua } from '@akua-dev/sdk';</code></pre>
+<p>One import path for every runtime. The shipped artifact ships both a Node-loadable wasm bundle (via wasm-pack <code>--target nodejs</code>) and, once browser support lands, a browser-loadable bundle — the right one is picked automatically through <code>package.json</code> conditional exports (<code>&quot;node&quot;</code> / <code>&quot;browser&quot;</code> / <code>&quot;default&quot;</code>). Callers don't choose; the runtime does.</p>
+<p>Verbs split into two transport tiers. Pure-compute verbs run in-process via the bundled <code>akua-wasm</code> module — <strong>no <code>akua</code> binary required</strong>. Verbs that need network / OCI registry / cryptographic signing shell out to the CLI.</p>
+<p>Workspace-vendor verbs (<code>vendorAdd</code>, <code>vendorCheck</code>, <code>vendorList</code>) use the native addon path so they can read and mutate the workspace filesystem without spawning the CLI binary.</p>
+<h3 id="transport-table-v010">Transport table (v0.1.0)</h3>
+<table><thead><tr><th>Verb</th><th>Transport</th><th>Binary required?</th></tr></thead><tbody><tr><td><code>renderSource</code></td><td>WASM</td><td>no</td></tr><tr><td><code>check</code></td><td>WASM</td><td>no</td></tr><tr><td><code>lint</code></td><td>WASM</td><td>no</td></tr><tr><td><code>fmt</code></td><td>WASM</td><td>no</td></tr><tr><td><code>inspect</code> (package mode)</td><td>WASM</td><td>no</td></tr><tr><td><code>inspect</code> (tarball mode)</td><td>—</td><td>deferred to v0.2.0</td></tr><tr><td><code>tree</code></td><td>WASM</td><td>no</td></tr><tr><td><code>diff</code></td><td>WASM</td><td>no</td></tr><tr><td><code>render</code> (on-disk)</td><td>shell-out</td><td>yes</td></tr><tr><td><code>verify</code></td><td>shell-out</td><td>yes (cosign WASM deferred to v0.2.0)</td></tr><tr><td><code>version</code>, <code>whoami</code></td><td>shell-out</td><td>yes (describe the CLI binary)</td></tr><tr><td><code>add</code>, <code>publish</code>, <code>pull</code>, <code>push</code>, <code>pack</code>, <code>sign</code>, <code>lock</code>, <code>update</code>, <code>cache</code>, <code>auth</code>, <code>dev</code>, <code>repl</code></td><td>shell-out</td><td>yes (network / OCI / OS)</td></tr><tr><td><code>vendorAdd</code>, <code>vendorCheck</code>, <code>vendorList</code></td><td>native addon</td><td>no</td></tr></tbody></table>
+<p>See <a href="/concepts/security-model">security-model.md</a> for the sandbox-layers table and <a href="https://github.com/cnap-tech/akua/blob/main/docs/spikes/engines-on-wasm32-unknown-unknown.md">spikes/engines-on-wasm32-unknown-unknown.md</a> for why engine-using verbs + verify stay shell-out in v0.1.0.</p>
+<hr />
+<h2 id="design-principles">Design principles</h2>
+<ol><li><strong>One class per primitive.</strong> <code>Akua</code> is the root; everything hangs off it.</li><li><strong>Async everywhere.</strong> Every operation returns a Promise. No sync I/O.</li><li><strong>Typed end-to-end.</strong> Full TypeScript types for every input and output.</li><li><strong>Thin wrapper, not a framework.</strong> The SDK runs the same Rust core via WASM for pure-KCL verbs and shells out to the <code>akua</code> binary for verbs that need filesystem state the bundle doesn't hold. It doesn't reimplement either side.</li><li><strong>Results mirror <code>--json</code> output.</strong> If you know the CLI, you know the SDK's return shapes.</li><li><strong>Idempotent writes.</strong> Every write method accepts <code>idempotencyKey</code>; if omitted, one is generated.</li><li><strong>Streaming where the CLI streams.</strong> <code>dev()</code> and long-running operations return AsyncIterables.</li></ol>
+<hr />
+<h2 id="quickstart-node">Quickstart (Node)</h2>
+<pre><code class="lang-ts">import { Akua } from '@akua-dev/sdk';
+
+const akua = new Akua({
+  binary: 'akua',               // path; default: 'akua' (PATH)
+  registry: 'oci://ghcr.io/me', // default registry
+  token: process.env.AKUA_TOKEN // optional; otherwise uses system credential store
+});
+
+// render a package
+const result = await akua.render({
+  path: './my-pkg',
+  inputs: { appName: 'checkout', hostname: 'checkout.example.com' }
+});
+console.log(result.manifests, result.hash);  // e.g. 3, 'sha256:...'
+
+// publish
+const pub = await akua.publish({
+  path: './my-pkg',
+  to: 'oci://pkg.akua.dev/checkout',
+  tag: '1.0.0'
+});
+console.log(pub.digest);
+
+// deploy + wait
+const handle = await akua.deploy({ app: 'checkout', to: 'argo' });
+const status = await handle.waitReady({ timeout: '5m' });</code></pre>
+<hr />
+<h2 id="root-akua">Root — <code>Akua</code></h2>
+<pre><code class="lang-ts">class Akua {
+  constructor(opts?: AkuaOptions);
+
+  readonly package: PackageAPI;
+  readonly app: AppAPI;
+  readonly deploy: DeployAPI;
+  readonly secret: SecretAPI;
+  readonly policy: PolicyAPI;
+  readonly audit: AuditAPI;
+  readonly query: QueryAPI;
+  readonly infra: InfraAPI;
+  readonly rollout: RolloutAPI;
+  readonly registry: RegistryAPI;
+
+  // Authoring + build
+  init(opts: InitOptions): Promise&lt;InitResult&gt;;
+  add(opts: AddOptions): Promise&lt;AddResult&gt;;
+  render(opts: RenderOptions): Promise&lt;RenderResult&gt;;
+  diff(a: string, b: string, opts?: DiffOptions): Promise&lt;DiffResult&gt;;
+  attest(opts: AttestOptions): Promise&lt;AttestResult&gt;;
+  publish(opts: PublishOptions): Promise&lt;PublishResult&gt;;
+  pull(ref: string, opts?: PullOptions): Promise&lt;PullResult&gt;;
+  inspect(ref: string, opts?: InspectOptions): Promise&lt;InspectResult&gt;;
+  export(opts: ExportOptions): Promise&lt;ExportResult&gt;;
+  vendorAdd(name: string, opts?: VendorAddOptions): Promise&lt;VendorAddResult&gt;;
+  vendorCheck(opts?: VendorWorkspaceOptions): Promise&lt;VendorCheckResult&gt;;
+  vendorList(opts?: VendorWorkspaceOptions): Promise&lt;VendorListResult&gt;;
+
+  // Develop (matches CLI verbs: test, fmt, check, lint, bench, cov, eval, repl)
+  test(opts?: TestOptions): Promise&lt;TestResult&gt;;
+  fmt(opts?: FmtOptions): Promise&lt;FmtResult&gt;;
+  check(opts?: CheckOptions): Promise&lt;CheckResult&gt;;
+  lint(opts?: LintOptions): Promise&lt;LintResult&gt;;
+  bench(opts?: BenchOptions): Promise&lt;BenchResult&gt;;
+  cov(opts?: CovOptions): Promise&lt;CovResult&gt;;
+  eval(query: string, opts?: EvalOptions): Promise&lt;EvalResult&gt;;
+
+  // Deploy loop
+  dev(opts?: DevOptions): Promise&lt;DevSession&gt;;
+  verify(opts?: VerifyOptions): Promise&lt;VerifyResult&gt;;  // checks akua.toml ↔ akua.lock
+
+  // Session
+  login(opts: LoginOptions): Promise&lt;void&gt;;
+  logout(registry?: string): Promise&lt;void&gt;;
+  whoami(): Promise&lt;Identity&gt;;
+  version(): Promise&lt;VersionInfo&gt;;
+
+  // Discovery
+  help(verb?: string): Promise&lt;CommandTree&gt;;
+}</code></pre>
+<pre><code class="lang-ts">interface AkuaOptions {
+  binary?: string;             // path to akua binary (default: 'akua')
+  registry?: string;           // default OCI registry
+  token?: string;              // API token; if omitted, uses credential store
+  cacheDir?: string;           // override cache location
+  timeout?: string;            // default timeout for operations (e.g. '5m')
+  logLevel?: 'debug'|'info'|'warn'|'error';
+  engine?: 'auto' | 'embedded';  // engine selection default
+  signal?: AbortSignal;        // cancel long-running ops
+}</code></pre>
+<h3 id="universal-option-engine">Universal option — <code>engine</code></h3>
+<p>Methods that invoke an engine (render, test, lint, bench, policy.check, etc.) accept an <code>engine?: 'auto' | 'embedded'</code> override — today <code>auto</code> and <code>embedded</code> behave identically because akua only ships embedded engines. The field exists for forward-compatibility; future engines that admit a separate fast-path implementation (e.g. a native-code CEL interpreter alongside the WASM build) will read the option. No shell-out path is exposed by the SDK — see <a href="https://github.com/cnap-tech/akua/blob/main/docs/CLAUDE.md">CLAUDE.md</a>'s &quot;No shell-out, ever&quot; invariant and <a href="/concepts/embedded-engines">embedded-engines.md</a>.</p>
+<h3 id="universal-option-idempotencykey">Universal option — <code>idempotencyKey</code></h3>
+<p>Write methods (<code>publish</code>, <code>deploy.apply</code>, <code>secret.rotate</code>, etc.) accept <code>idempotencyKey?: string</code>. If the same key is presented twice, the second call is a no-op that returns the original result. See <a href="cli-contract.md#3-writes-are-idempotent">cli-contract.md §3</a>.</p>
+<hr />
+<h2 id="package-api">Package API</h2>
+<pre><code class="lang-ts">interface PackageAPI {
+  // Authoring + build
+  init(opts: InitOptions): Promise&lt;InitResult&gt;;
+  inspect(ref: string, opts?: InspectOptions): Promise&lt;PackageInfo&gt;;
+  diff(a: string, b: string, opts?: DiffOptions): Promise&lt;DiffResult&gt;;
+  render(opts: RenderOptions): Promise&lt;RenderResult&gt;;
+  attest(opts: AttestOptions): Promise&lt;AttestResult&gt;;
+  publish(opts: PublishOptions): Promise&lt;PublishResult&gt;;
+  pull(ref: string, opts?: PullOptions): Promise&lt;PullResult&gt;;
+  export(opts: PackageExportOptions): Promise&lt;PackageExportResult&gt;;
+
+  // Develop
+  test(opts?: PackageTestOptions): Promise&lt;TestResult&gt;;
+  check(opts?: CheckOptions): Promise&lt;CheckResult&gt;;       // syntax + type pass only
+  lint(opts?: LintOptions): Promise&lt;LintResult&gt;;          // kcl lint + cross-engine
+  fmt(opts?: FmtOptions): Promise&lt;FmtResult&gt;;
+}
+
+interface PackageExportOptions {
+  path?: string;
+  format: 'json-schema' | 'openapi' | 'yaml' | 'oci-bundle';
+  outFile?: string;
+  pretty?: boolean;
+  engine?: 'auto' | 'embedded';
+}
+
+interface PackageExportResult {
+  format: string;
+  bytes: number;
+  path?: string;
+  content?: string;   // when outFile is omitted
+}
+
+interface PackageTestOptions {
+  path?: string;
+  filter?: RegExp | string;
+  coverage?: boolean;
+  golden?: 'verify' | 'regenerate';
+  watch?: boolean;
+  engine?: 'auto' | 'embedded';
+}
+
+interface InitOptions {
+  name?: string;
+  template?: 'app' | 'app-with-db' | 'umbrella' | 'platform-std' | 'empty';
+  targetDir?: string;
+  noGit?: boolean;
+}
+
+interface InitResult {
+  name: string;
+  path: string;
+  template: string;
+  files: string[];
+}
+
+interface RenderOptions {
+  path?: string;               // package directory (default: cwd)
+  inputs?: Record&lt;string, unknown&gt;;
+  inputsFile?: string;
+  outDir?: string;
+  dryRun?: boolean;
+}
+
+interface RenderResult {
+  format: 'raw-manifests';
+  target: string;
+  manifests: number;
+  hash: string;                // sha256
+  files: string[];
+  policy?: PolicyVerdict;
+  attestationPath?: string;
+}
+
+interface PublishOptions {
+  path?: string;
+  to?: string;                 // OCI ref; default from package metadata
+  tag?: string;
+  sign?: boolean;              // default: true
+  attest?: boolean;            // default: true
+  public?: boolean;
+  idempotencyKey?: string;
+}
+
+interface PublishResult {
+  package: string;
+  version: string;
+  digest: string;
+  signed: boolean;
+  attestationDigest?: string;
+  sizeBytes: number;
+  uploadDurationMs: number;
+}
+
+interface DiffResult {
+  schema: {
+    added: string[];
+    removed: string[];
+    typeChanged: Array&lt;{ path: string; from: string; to: string }&gt;;
+    defaultChanged: Array&lt;{ path: string; from: unknown; to: unknown }&gt;;
+  };
+  sources: {
+    added: SourceRef[];
+    removed: SourceRef[];
+    versionChanged: Array&lt;{ name: string; from: string; to: string }&gt;;
+  };
+  manifests: { added: number; removed: number; modified: number };
+  policyCompat: 'allow' | 'deny' | 'needs-approval';
+}</code></pre>
+<hr />
+<h2 id="document-api">Document API</h2>
+<p>akua does not specify an App / Environment / Cluster / Secret vocabulary. The SDK therefore exposes <strong>generic document operations</strong> that work against whatever KCL schemas the workspace declares. If your workspace authors an <code>App</code> schema, <code>akua.doc.list({ kind: 'App' })</code> finds them; the SDK doesn't know what fields are inside.</p>
+<pre><code class="lang-ts">interface DocumentAPI {
+  // Discover user-authored KCL documents in the current workspace
+  list(opts?: ListOptions): Promise&lt;DocumentRef[]&gt;;
+
+  // Read a specific document by path, producing the typed KCL value
+  // the workspace's schema declares
+  get&lt;T = unknown&gt;(path: string): Promise&lt;T&gt;;
+
+  // Apply a document (kick off render + deploy according to its kind's
+  // handler, which the workspace configures)
+  apply(path: string, opts?: ApplyOptions): Promise&lt;DeployHandle&gt;;
+
+  // Export a KCL document as YAML/JSON (derived view)
+  export(path: string, opts: { format: 'yaml' | 'json' }): Promise&lt;string&gt;;
+}
+
+interface ListOptions {
+  kind?: string;                              // filter by declared KCL schema name
+  filter?: Record&lt;string, unknown&gt;;           // field predicates (e.g. { 'spec.env': 'production' })
+  under?: string;                             // directory scope
+}
+
+interface DocumentRef {
+  path: string;                               // workspace-relative path to the .k file
+  kind: string;                               // schema name declared in the KCL program
+  name: string;                               // the document's top-level name field (convention)
+}</code></pre>
+<p>Typed access requires the workspace to generate TypeScript types from its own schemas:</p>
+<pre><code class="lang-ts">// Generated from the workspace's own schemas/app.k
+import type { App } from './generated/schemas';
+
+const apps = await akua.doc.list({ kind: 'App', filter: { 'spec.env': 'production' } });
+for (const ref of apps) {
+  const app = await akua.doc.get&lt;App&gt;(ref.path);
+  // app is fully typed against the workspace's App schema
+}</code></pre>
+<p>Type generation is a workspace-local concern: <code>akua export schemas/app.k --format=typescript &gt; generated/app.ts</code>. akua does not ship an <code>App</code> TypeScript type because it does not specify an <code>App</code> schema.</p>
+<hr />
+<h2 id="deploy-api">Deploy API</h2>
+<pre><code class="lang-ts">interface DeployAPI {
+  apply(opts: DeployOptions): Promise&lt;DeployHandle&gt;;
+  status(handle: string): Promise&lt;DeployStatus&gt;;
+  history(opts?: { service?: string; last?: number }): Promise&lt;DeployRecord[]&gt;;
+  rollback(changeId: string, opts?: { dryRun?: boolean }): Promise&lt;DeployHandle&gt;;
+  cancel(handle: string): Promise&lt;void&gt;;
+}
+
+interface DeployOptions {
+  app?: string;
+  path?: string;
+  to: 'argo' | 'flux' | 'kro' | 'helm' | 'kubectl' | string;
+  inputs?: Record&lt;string, unknown&gt;;
+  idempotencyKey?: string;
+}
+
+interface DeployHandle {
+  id: string;
+  target: string;
+  status: () =&gt; Promise&lt;DeployStatus&gt;;
+  wait(opts?: { timeout?: string }): Promise&lt;DeployStatus&gt;;
+  waitReady(opts?: { timeout?: string }): Promise&lt;DeployStatus&gt;;
+  cancel(): Promise&lt;void&gt;;
+  stream(): AsyncIterable&lt;DeployEvent&gt;;
+}
+
+interface DeployStatus {
+  handle: string;
+  phase: 'pending' | 'applying' | 'reconciling' | 'healthy' | 'degraded' | 'failed';
+  health: 'healthy' | 'degraded' | 'unknown';
+  ready: number;
+  total: number;
+  startedAt: string;
+  lastEvent: string;
+  prUrl?: string;
+}</code></pre>
+<hr />
+<h2 id="secret-api">Secret API</h2>
+<pre><code class="lang-ts">interface SecretAPI {
+  list(opts?: { store?: string }): Promise&lt;SecretSummary[]&gt;;
+  get(name: string): Promise&lt;SecretRef&gt;;               // returns ref, never raw value
+  add(opts: SecretAddOptions): Promise&lt;SecretRef&gt;;
+  rotate(name: string, opts?: { idempotencyKey?: string }): Promise&lt;SecretRef&gt;;
+  grant(name: string, opts: GrantOptions): Promise&lt;void&gt;;
+  revoke(name: string, opts: { from: string }): Promise&lt;void&gt;;
+  trace(name: string): Promise&lt;SecretTrace&gt;;
+  delete(name: string): Promise&lt;void&gt;;                  // needs-approval in most tiers
+}
+
+interface SecretRef {
+  name: string;
+  store: string;
+  ref: string;                  // e.g. &quot;vault://secrets/x/api-key&quot;
+  rotation?: { policy: string; lastRotated: string; nextDue: string };
+}
+
+interface SecretTrace extends SecretRef {
+  grants: Array&lt;{ service: string; scope: 'read' | 'write'; grantedAt: string }&gt;;
+  lastAccess?: string;
+}</code></pre>
+<hr />
+<h2 id="policy-api">Policy API</h2>
+<pre><code class="lang-ts">interface PolicyAPI {
+  // Evaluation
+  check(opts: PolicyCheckOptions): Promise&lt;PolicyVerdict&gt;;
+
+  // Authoring
+  tiers(): Promise&lt;PolicyTierInfo[]&gt;;
+  show(tier: string): Promise&lt;PolicyDefinition&gt;;
+  diff(a: string, b: string): Promise&lt;PolicyDiff&gt;;
+  install(tier: string, opts?: { from?: string }): Promise&lt;void&gt;;
+  fork(tier: string, opts: { as: string }): Promise&lt;PolicyDefinition&gt;;
+  publish(tier: string, opts?: { idempotencyKey?: string }): Promise&lt;PublishResult&gt;;
+  export(tier: string, opts: { format: 'rego-bundle' | 'yaml' }): Promise&lt;string&gt;;
+
+  // Develop
+  test(opts?: PolicyTestOptions): Promise&lt;TestResult&gt;;
+  explain(query: string, opts?: PolicyExplainOptions): Promise&lt;PolicyTrace&gt;;
+  bench(opts?: PolicyBenchOptions): Promise&lt;BenchResult&gt;;
+  coverage(opts?: { min?: number; format?: 'json' | 'lcov' }): Promise&lt;CovResult&gt;;
+  fmt(opts?: FmtOptions): Promise&lt;FmtResult&gt;;
+  lint(opts?: LintOptions): Promise&lt;LintResult&gt;;  // Regal + cross-engine
+  eval(query: string, opts?: { input?: unknown }): Promise&lt;EvalResult&gt;;
+}
+
+interface PolicyTestOptions {
+  path?: string;
+  filter?: RegExp | string;
+  coverage?: boolean;
+  watch?: boolean;
+  engine?: 'auto' | 'embedded';
+}
+
+interface PolicyExplainOptions {
+  input?: unknown;            // the document to evaluate against
+  depth?: 'notes' | 'fails' | 'full' | 'debug';   // OPA --explain mode
+  data?: string;              // policy bundle directory
+}
+
+interface PolicyTrace {
+  query: string;
+  verdict: 'allow' | 'deny' | 'needs-approval';
+  steps: Array&lt;{
+    rule: string;
+    evaluated: boolean;
+    result?: unknown;
+    location?: { file: string; line: number };
+  }&gt;;
+}
+
+interface PolicyBenchOptions {
+  tier?: string;
+  input?: unknown;
+  iterations?: number;
+  p99MaxMs?: number;          // fail if p99 exceeds (CI gate)
+}
+
+interface PolicyCheckOptions {
+  tier?: string;
+  targetPath?: string;           // directory of rendered manifests
+  manifests?: unknown[];         // or pass them inline
+}
+
+interface PolicyVerdict {
+  tier: string;
+  verdict: 'allow' | 'deny' | 'needs-approval';
+  checks: Record&lt;string, 'pass' | 'warn' | 'fail'&gt;;
+  failing: Array&lt;{
+    rule: string;
+    resource: string;
+    reason: string;
+    suggestedFix?: string;
+  }&gt;;
+  approvers?: string[];
+}</code></pre>
+<hr />
+<h2 id="audit-api">Audit API</h2>
+<pre><code class="lang-ts">interface AuditAPI {
+  explain(id: string): Promise&lt;AuditExplanation&gt;;
+  trace(opts: TraceOptions): Promise&lt;AuditEvent[]&gt;;
+  search(opts: SearchOptions): Promise&lt;AuditEvent[]&gt;;
+  export(opts: ExportOptions): Promise&lt;ReadableStream&lt;Uint8Array&gt;&gt;;
+  who(resource: string): Promise&lt;PermissionList&gt;;
+}
+
+interface AuditExplanation {
+  incidentId: string;
+  trigger: { type: string; service?: string; at: string };
+  rootCause: {
+    changeId: string;
+    actor: string;
+    reason: string;
+    committedAt: string;
+  };
+  resolution?: {
+    action: 'rollback' | 'forward-fix' | 'accept';
+    changeId?: string;
+    actor?: string;
+    completedAt?: string;
+  };
+  durationMinutes: number;
+  learned?: string;
+}</code></pre>
+<hr />
+<h2 id="query-api">Query API</h2>
+<pre><code class="lang-ts">interface QueryAPI {
+  run(expr: string, opts?: QueryOptions): Promise&lt;QueryResult&gt;;
+  stream(expr: string, opts?: QueryOptions): AsyncIterable&lt;QueryResult&gt;;
+}
+
+interface QueryOptions {
+  backend?: 'prometheus' | 'loki' | 'tempo' | 'auto';
+  since?: string;                // duration, e.g. '1h'
+  until?: string;
+  step?: string;                 // for stream
+}
+
+interface QueryResult {
+  query: string;
+  backend: string;
+  result: {
+    value?: number;
+    values?: Array&lt;[timestamp: number, value: number]&gt;;
+    baseline?: number;
+    changePct?: number;
+    samples?: number;
+  };
+}</code></pre>
+<hr />
+<h2 id="rollout-api">Rollout API</h2>
+<pre><code class="lang-ts">interface RolloutAPI {
+  plan(spec: RolloutSpec): Promise&lt;RolloutPlan&gt;;
+  apply(spec: RolloutSpec, opts?: ApplyOptions): Promise&lt;RolloutHandle&gt;;
+  status(handle: string): Promise&lt;RolloutStatus&gt;;
+  pause(handle: string): Promise&lt;void&gt;;
+  resume(handle: string): Promise&lt;void&gt;;
+  abort(handle: string): Promise&lt;void&gt;;     // triggers rollback
+}
+
+interface RolloutSpec {
+  name: string;
+  changes: Array&lt;{ repo: string; path: string; patch: Record&lt;string, unknown&gt; }&gt;;
+  strategy?: 'parallel' | 'staged' | 'canary';
+  batchSize?: number;
+  soak?: string;
+  policyTier?: string;
+}
+
+interface RolloutHandle {
+  id: string;
+  status(): Promise&lt;RolloutStatus&gt;;
+  wait(opts?: { timeout?: string }): Promise&lt;RolloutStatus&gt;;
+  stream(): AsyncIterable&lt;RolloutEvent&gt;;
+}
+
+interface RolloutStatus {
+  handle: string;
+  phase: 'planning' | 'running' | 'paused' | 'complete' | 'aborted' | 'failed';
+  stages: Array&lt;{
+    name: string;
+    status: 'pending' | 'running' | 'soak' | 'complete' | 'failed';
+    completedAt?: string;
+  }&gt;;
+  currentStage?: string;
+  progress: { done: number; total: number };
+}</code></pre>
+<hr />
+<h2 id="dev-session-streaming">Dev session (streaming)</h2>
+<pre><code class="lang-ts">interface DevOptions {
+  path?: string;
+  target?: 'local' | 'dry-run' | `cluster:${string}`;
+  port?: number;
+  policy?: string;
+  fresh?: boolean;
+  inputs?: Record&lt;string, unknown&gt;;
+}
+
+interface DevSession {
+  url: string;                          // browser UI URL
+  target: string;
+  stop(): Promise&lt;void&gt;;
+  events(): AsyncIterable&lt;DevEvent&gt;;
+  on(event: 'render', handler: (e: RenderEvent) =&gt; void): () =&gt; void;
+  on(event: 'apply', handler: (e: ApplyEvent) =&gt; void): () =&gt; void;
+  on(event: 'policy', handler: (e: PolicyEvent) =&gt; void): () =&gt; void;
+  on(event: 'error', handler: (e: DevErrorEvent) =&gt; void): () =&gt; void;
+}
+
+interface DevEvent {
+  t: number;                            // unix ms
+  stage: 'parse' | 'validate' | 'render' | 'policy' | 'diff' | 'apply' | 'reconcile';
+  app?: string;
+  resource?: string;
+  durationMs?: number;
+  status: 'ok' | 'warn' | 'error';
+  outputHash?: string;
+  details?: Record&lt;string, unknown&gt;;
+}</code></pre>
+<h3 id="usage-example">Usage example</h3>
+<pre><code class="lang-ts">const session = await akua.dev({ path: './my-workspace' });
+console.log('browser UI:', session.url);
+
+// Events stream
+for await (const event of session.events()) {
+  if (event.stage === 'reconcile' &amp;&amp; event.status === 'ok') {
+    console.log(`${event.resource} reconciled in ${event.durationMs}ms`);
+  }
+  if (event.status === 'error') {
+    break;
+  }
+}
+
+await session.stop();</code></pre>
+<hr />
+<h2 id="registry-api">Registry API</h2>
+<pre><code class="lang-ts">interface RegistryAPI {
+  login(registry: string, opts: LoginOptions): Promise&lt;void&gt;;
+  logout(registry?: string): Promise&lt;void&gt;;
+  list(): Promise&lt;Array&lt;{ url: string; user: string; expiresAt?: string }&gt;&gt;;
+  verify(ref: string): Promise&lt;VerificationResult&gt;;
+}
+
+interface VerificationResult {
+  ref: string;
+  digest: string;
+  signed: boolean;
+  signer?: string;
+  signatureValid: boolean;
+  attestations: Array&lt;{
+    predicateType: string;
+    subject: { digest: string };
+    issuer?: string;
+  }&gt;;
+}</code></pre>
+<hr />
+<h2 id="shared-result-types">Shared result types</h2>
+<p>Types used by the develop-verb methods (<code>test</code>, <code>fmt</code>, <code>lint</code>, <code>check</code>, <code>bench</code>, <code>cov</code>, <code>eval</code>, <code>export</code>) across Package and Policy APIs.</p>
+<pre><code class="lang-ts">interface TestResult {
+  summary: { passed: number; failed: number; skipped: number; durationMs: number };
+  results: Array&lt;{
+    file: string;
+    test: string;
+    status: 'pass' | 'fail' | 'skip';
+    durationMs: number;
+    message?: string;
+  }&gt;;
+  coverage?: { overall: number; byRule: Record&lt;string, number&gt; };
+}
+
+interface FmtResult {
+  formatted: string[];        // files modified
+  unchanged: string[];        // files already correct
+}
+
+interface LintResult {
+  issues: Array&lt;{
+    file: string;
+    line: number;
+    col?: number;
+    rule: string;
+    severity: 'warn' | 'error';
+    message: string;
+    fix?: string;
+  }&gt;;
+  summary: { warn: number; error: number };
+}
+
+interface CheckResult {
+  valid: boolean;
+  summary: { files: number; errors: number; warnings: number; durationMs: number };
+  errors?: Array&lt;{ file: string; line: number; code: string; message: string; suggestion?: string }&gt;;
+}
+
+interface BenchResult {
+  benchmarks: Array&lt;{
+    name: string;
+    iterations: number;
+    totalMs: number;
+    meanUs: number;
+    p99Us: number;
+    rulesEvaluated?: number;
+  }&gt;;
+}
+
+interface CovResult {
+  overall: number;
+  byRule: Record&lt;string, number&gt;;
+  bySchema?: Record&lt;string, number&gt;;
+  uncovered: string[];
+}
+
+interface EvalResult {
+  lang: 'rego' | 'kcl';
+  query: string;
+  result: unknown;
+  durationMs: number;
+}
+
+interface ExportOptions {
+  // Top-level export — dispatches to PackageAPI.export / PolicyAPI.export /
+  // AppAPI.export / etc. based on the target.
+  target?: string;            // &quot;app:checkout&quot;, &quot;policy:tier/production&quot;, &quot;package:.&quot;
+  format: 'json-schema' | 'openapi' | 'yaml' | 'json' | 'rego-bundle' | 'oci-bundle';
+  outFile?: string;
+  pretty?: boolean;
+}
+
+interface ExportResult {
+  format: string;
+  bytes: number;
+  path?: string;
+  content?: string;
+}
+
+interface VerifyResult {
+  valid: boolean;                    // akua.toml ↔ akua.lock consistency
+  issues: Array&lt;{
+    dep: string;
+    issue: 'digest-mismatch' | 'signature-invalid' | 'unsigned' | 'missing';
+    details: string;
+  }&gt;;
+}</code></pre>
+<h2 id="identity-agent-context">Identity — agent context</h2>
+<p><code>whoami()</code> returns the current identity including any detected agent context:</p>
+<pre><code class="lang-ts">interface Identity {
+  identity: string;
+  registries: Array&lt;{ url: string; user: string; expiresAt?: string }&gt;;
+  scopes: string[];
+  agentContext?: {
+    detected: boolean;
+    agent?: string;             // 'claude-code' | 'cursor' | 'codex' | 'gemini-cli' | ...
+    sourceEnv?: string;         // the env var that triggered detection
+  };
+}</code></pre>
+<p>When an agent runs <code>akua whoami --json</code>, the <code>agentContext</code> field is populated from the env-var-based auto-detection (see <a href="cli-contract.md#15-agent-context-auto-detection">cli-contract.md §1.5</a>). Useful for agents verifying they're operating inside the expected runtime.</p>
+<h2 id="error-handling">Error handling</h2>
+<p>Every SDK method throws a typed <code>AkuaError</code> on failure:</p>
+<pre><code class="lang-ts">class AkuaError extends Error {
+  code: string;                         // e.g. 'E_SCHEMA_INVALID'
+  exitCode: number;                     // CLI exit code (1-6)
+  path?: string;
+  field?: string;
+  suggestion?: string;
+  docsUrl?: string;
+  cause?: unknown;
+}</code></pre>
+<p>Agents branch on <code>code</code> or <code>exitCode</code>:</p>
+<pre><code class="lang-ts">try {
+  await akua.deploy({ to: 'argo', app: 'checkout' });
+} catch (err) {
+  if (err instanceof AkuaError) {
+    if (err.exitCode === 3) {
+      // policy denied; check err.field for which rule
+    } else if (err.exitCode === 5) {
+      // needs approval; wait for human
+    } else {
+      throw err;
+    }
+  } else {
+    throw err;
+  }
+}</code></pre>
+<hr />
+<h2 id="browser">Browser</h2>
+<p>Same <code>Akua</code> class, same single <code>@akua-dev/sdk</code> import. When the browser build + engine bundling (see <a href="roadmap.md#phase-4b--akua-wasm-for-jsr-delivery-blocks-v010">docs/roadmap.md § Phase 4B</a>) land, the <code>&quot;browser&quot;</code> conditional export resolves to a bundler-target WASM build that loads the Rust core once, lazily, and runs render / diff / verify / inspect entirely in-page. No CLI shell-out — <code>execFile</code> isn't available in the browser, and SDK methods that would need it throw <code>E_WRITE_UNSUPPORTED_IN_BROWSER</code>.</p>
+<p>Expected availability in-browser once shipped:</p>
+<ul><li><code>akua.inspect</code>, <code>akua.diff</code>, <code>akua.renderSource</code>, <code>akua.render</code> (public OCI/HTTP sources only — CORS permitting), <code>akua.verify</code>, <code>akua.help</code></li></ul>
+<p>Expected to throw in-browser (no filesystem, no credential store, no cluster access):</p>
+<ul><li><code>akua.publish</code>, <code>akua.attest</code>, <code>akua.deploy</code>, <code>akua.rollout</code>, <code>akua.secret.<em></code>, <code>akua.audit.</em></code>, <code>akua.query.*</code>, <code>akua.login</code></li></ul>
+<p>For v0.1.0 the Node-loadable bundle ships first; browser is deferred to v0.2.0 per <a href="https://github.com/cnap-tech/akua/blob/main/docs/spikes/engines-on-wasm32-unknown-unknown.md">docs/spikes/engines-on-wasm32-unknown-unknown.md</a>. Adding the <code>&quot;browser&quot;</code> condition to <code>package.json</code> is a minor-version bump (additive, non-breaking) once the helm/kustomize engines are reachable from the browser runtime.</p>
+<hr />
+<h2 id="stability-contract">Stability contract</h2>
+<ul><li>Public types (<code>AkuaOptions</code>, all API interfaces, error shapes) are stable from v1.0.</li><li>Private types (prefixed with <code>_</code>) can change between minors.</li><li>New methods can be added without bumping major.</li><li>Method removal requires deprecation cycle.</li></ul>
+<hr />
+<h2 id="relationship-to-the-cli">Relationship to the CLI</h2>
+<p>The SDK is a thin wrapper. Internally it either:</p>
+<ul><li>Spawns the <code>akua</code> binary with <code>--json</code> and parses the result, or</li><li>(v0.3+) calls the Rust core via WASM directly in-process.</li></ul>
+<p>This means:</p>
+<ul><li>Every SDK feature has a CLI equivalent.</li><li>CLI behavior and SDK behavior are identical for the same input.</li><li>Contract changes to the CLI are reflected one-for-one in the SDK.</li></ul>
+<p>You can always reach for the CLI if the SDK is missing something. You can always reach for the SDK if scripting from Node is nicer than shell.</p>
+<hr />
+<h2 id="whats-not-in-the-sdk">What's not in the SDK</h2>
+<ul><li>UI components. The browser playground at <code>akua.dev</code> has its own UI layer; the SDK doesn't ship React components.</li><li>Reconciler-specific libraries. The SDK invokes <code>akua deploy</code>; it doesn't re-implement Argo's client or Flux's client.</li><li>Custom target drivers. Adding a new <code>--to=&lt;driver&gt;</code> target is a CLI plugin, not an SDK extension.</li></ul>
+<h2 id="spec-cross-references">Spec cross-references</h2>
+<p>The SDK's types mirror the underlying format specs. For the authoritative data shapes:</p>
+<ul><li><strong>Package</strong> (KCL program, the one akua-specified shape) — <a href="/concepts/package-format">package-format.md</a></li><li><strong>Policy</strong> (Rego host + pluggable engines) — <a href="https://github.com/cnap-tech/akua/blob/main/docs/policy-format.md">policy-format.md</a></li><li><strong>Lockfile</strong> (<code>akua.toml</code> + <code>akua.lock</code>) — <a href="/concepts/lockfile-format">lockfile-format.md</a></li><li><strong>CLI contract</strong> (invariants every method honors) — <a href="/concepts/cli-contract">cli-contract.md</a></li><li><strong>CLI reference</strong> (the verbs the SDK methods mirror) — <a href="https://github.com/cnap-tech/akua/blob/main/docs/cli.md">cli.md</a></li><li><strong>Embedded engines</strong> (<code>engine?: 'auto' | 'embedded'</code>) — <a href="/concepts/embedded-engines">embedded-engines.md</a></li><li><strong>Agent usage + auto-detection</strong> — <a href="/concepts/agent-usage">agent-usage.md</a></li></ul>
+<p>TypeScript types in <code>@akua-dev/sdk</code> are generated from the same akua-specified schemas the CLI consumes (Package, Policy, akua.toml — the shapes akua owns), so a field shape in the SDK always matches the file-format spec. When the spec evolves, the generated types follow on the next <code>@akua-dev/sdk</code> release.</p>
+
+<footer>
+  <a href="/">akua.dev</a> ·
+  <a href="https://github.com/cnap-tech/akua">github.com/cnap-tech/akua</a> ·
+  Apache-2.0
+</footer>
+</main>
+</div>
+</body>
+</html>
