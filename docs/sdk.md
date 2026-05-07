@@ -214,6 +214,32 @@ Methods that invoke an engine (render, test, lint, bench, policy.check, etc.) ac
 
 Write methods (`publish`, `deploy.apply`, `secret.rotate`, etc.) accept `idempotencyKey?: string`. If the same key is presented twice, the second call is a no-op that returns the original result. See [cli-contract.md §3](cli-contract.md#3-writes-are-idempotent).
 
+### Credentials — `auth`
+
+Methods that fetch from private remotes (today: `vendorAdd`) accept `auth?: Record<string, BasicAuth>` keyed by **URL prefix**:
+
+```ts
+await akua.vendorAdd('upstream', {
+  auth: {
+    // Single host:
+    'akua-git.cnap.tech': { username: orgId, password: token },
+
+    // Or per-org scoping — longest-prefix wins (same rule git's
+    // credential helper / .npmrc URL keys use):
+    'akua-git.cnap.tech/org-A': { username: 'org-A', password: tokenA },
+    'akua-git.cnap.tech/org-B': { username: 'org-B', password: tokenB },
+  }
+});
+```
+
+**Resolution.** Akua walks the `auth` map sorted by prefix length descending and selects the first match against the URL's `host[:port]/path` form. Bare host keys match anything on that host; path-scoped keys only match URLs starting with that path prefix (path-segment-aware — `example.com/org` does not match `example.com/organizations`).
+
+**Explicit-only.** Akua never reads ambient credential files (`~/.netrc`, `~/.docker/config.json`) or environment variables. The `auth` parameter is the sole credential source. This is deliberate: SDK consumers may be multi-tenant servers without strong process-level isolation, and akua's wasmtime sandbox extends the same explicit-input invariant to credentials.
+
+**Lockfile guarantee.** Regardless of the credential used to fetch, `akua.lock`'s `source` field stores the canonicalized URL with userinfo, default ports (`:443` https, `:80` http), `.git` suffix, and trailing `/` stripped. Credentials cannot leak into the lockfile or git history.
+
+**akua.toml.** Embedding credentials in a `git = "..."` URL (`https://user:pass@host/...`) is a manifest error ([E_MANIFEST_GIT_USERINFO](errors/E_MANIFEST_GIT_USERINFO.md)) — the lockfile would persist them. Use the `auth` parameter instead.
+
 ---
 
 ## Package API

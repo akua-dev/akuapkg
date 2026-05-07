@@ -74,6 +74,10 @@ serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 toml = { workspace = true }
 thiserror = { workspace = true }
+# host_auth uses this for `Authorization: Basic <b64>` header
+# encoding. Always-built (small, transitively pulled by oci-fetch
+# anyway) so the host_auth module can stay un-feature-gated.
+base64 = { version = "0.22" }
 
 # Render-path deps — available on all targets (wasm32 included).
 # Spike at docs/spikes/kcl-wasm-feasibility.md proved compile is
@@ -104,7 +108,6 @@ kustomize-engine-wasm = { path = "../kustomize-engine-wasm", optional = true, de
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"], optional = true }
 flate2 = { version = "1", optional = true }
 tar = { version = "0.4", optional = true }
-base64 = { version = "0.22" }
 # `blocking-http-transport-reqwest-rust-tls` reuses the reqwest stack
 # we already pull in for oci-fetch; `max-performance-safe` keeps
 # compile time reasonable (skips `zlib-ng` optional perf wins).

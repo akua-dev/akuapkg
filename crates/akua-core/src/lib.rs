@@ -68,10 +68,10 @@ pub mod duration_parse;
 pub mod export;
 #[cfg(feature = "git-fetch")]
 pub mod git_fetcher;
-pub mod host_auth;
 #[cfg(all(feature = "engine-kcl", feature = "engine-helm"))]
 pub mod helm;
 pub(crate) mod hex;
+pub mod host_auth;
 #[cfg(feature = "engine-kcl")]
 pub mod kcl_plugin;
 #[cfg(all(feature = "engine-kcl", feature = "engine-kustomize"))]

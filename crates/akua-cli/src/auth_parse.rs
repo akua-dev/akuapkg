@@ -15,9 +15,7 @@ use akua_core::host_auth::{BasicAuth, HostAuthMap};
 /// stderr message including the offending input.
 #[derive(Debug, thiserror::Error)]
 pub enum AuthParseError {
-    #[error(
-        "--auth value `{value}` is not in the form `<host-or-prefix>=<user>:<password>`"
-    )]
+    #[error("--auth value `{value}` is not in the form `<host-or-prefix>=<user>:<password>`")]
     InvalidPair { value: String },
 
     #[error("--auth value `{value}` has an empty url-prefix on the left of `=`")]
@@ -45,17 +43,21 @@ pub enum AuthParseError {
 /// `--auth` flag occurrence). The split is "first `=`" then "first
 /// `:`" so passwords containing `:` or `=` work without escaping.
 pub fn parse_auth_pair(value: &str) -> Result<(String, BasicAuth), AuthParseError> {
-    let (prefix, rest) = value.split_once('=').ok_or_else(|| AuthParseError::InvalidPair {
-        value: value.to_string(),
-    })?;
+    let (prefix, rest) = value
+        .split_once('=')
+        .ok_or_else(|| AuthParseError::InvalidPair {
+            value: value.to_string(),
+        })?;
     if prefix.is_empty() {
         return Err(AuthParseError::EmptyPrefix {
             value: value.to_string(),
         });
     }
-    let (username, password) = rest.split_once(':').ok_or_else(|| AuthParseError::InvalidPair {
-        value: value.to_string(),
-    })?;
+    let (username, password) = rest
+        .split_once(':')
+        .ok_or_else(|| AuthParseError::InvalidPair {
+            value: value.to_string(),
+        })?;
     if username.is_empty() {
         return Err(AuthParseError::EmptyUsername {
             value: value.to_string(),
@@ -115,10 +117,7 @@ pub fn load_auth_file(path: &Path) -> Result<HostAuthMap, AuthParseError> {
 
 /// Merge `--auth-file` defaults with `--auth` overrides. CLI flag
 /// values win on conflict (last-set semantics, same as helm/docker).
-pub fn merge_auth(
-    file: Option<HostAuthMap>,
-    flags: Option<HostAuthMap>,
-) -> Option<HostAuthMap> {
+pub fn merge_auth(file: Option<HostAuthMap>, flags: Option<HostAuthMap>) -> Option<HostAuthMap> {
     match (file, flags) {
         (None, None) => None,
         (Some(f), None) => Some(f),

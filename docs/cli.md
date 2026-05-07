@@ -208,6 +208,25 @@ Subcommands:
 
 `add` honors the universal write-contract flags: `--plan`, `--timeout`, and `--idempotency-key`. `check` and `list` are read-only.
 
+### Auth flags (private git remotes)
+
+`vendor add` accepts credentials at the call site for fetching private git deps. Akua never reads ambient credential files (`~/.netrc`, `~/.docker/config.json`, env vars) — the SDK and CLI surface are the only auth sources. See [E_MANIFEST_GIT_USERINFO](errors/E_MANIFEST_GIT_USERINFO.md) for why credentials in `akua.toml` URLs are rejected.
+
+| flag | description |
+|---|---|
+| `--auth <prefix>=<user>:<password>` | Repeatable. Credential for a private git remote, keyed by URL prefix. The prefix is matched longest-first against the dep's URL — same rule git's credential helper uses. Example: `--auth akua-git.cnap.tech/org-A=org-A:token`. |
+| `--auth-file <path>` | TOML file with a `[auth]` table keyed by URL prefix. `--auth` flags override file entries on conflict. The path must be explicit; akua never auto-discovers credential files. |
+
+`--auth-file` shape:
+
+```toml
+[auth]
+"akua-git.cnap.tech" = { username = "svc", password = "tok" }
+"akua-git.cnap.tech/org-A" = { username = "org-A", password = "tokA" }
+```
+
+Lockfile guarantee: regardless of the credential used to fetch, `akua.lock`'s `source` field stores the canonicalized URL with userinfo, default ports, and `.git` suffix stripped. Credentials never leak into `akua.lock`.
+
 See `examples/12-vendor-offline/` for the end-to-end offline-render contract demonstrated against a path dep with the canonical source deleted.
 
 ---

@@ -118,7 +118,9 @@ fn strip_scheme(url: &str) -> &str {
 /// path, if any. Path-portion `@`s (e.g. `/path/with@symbol`) are
 /// preserved.
 fn strip_userinfo(authority_and_path: &str) -> &str {
-    let path_start = authority_and_path.find('/').unwrap_or(authority_and_path.len());
+    let path_start = authority_and_path
+        .find('/')
+        .unwrap_or(authority_and_path.len());
     let authority = &authority_and_path[..path_start];
     if let Some(at_idx) = authority.rfind('@') {
         &authority_and_path[at_idx + 1..]

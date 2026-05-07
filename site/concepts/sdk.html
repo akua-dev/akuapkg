@@ -423,6 +423,23 @@ const status = await handle.waitReady({ timeout: '5m' });</code></pre>
 <p>Methods that invoke an engine (render, test, lint, bench, policy.check, etc.) accept an <code>engine?: 'auto' | 'embedded'</code> override — today <code>auto</code> and <code>embedded</code> behave identically because akua only ships embedded engines. The field exists for forward-compatibility; future engines that admit a separate fast-path implementation (e.g. a native-code CEL interpreter alongside the WASM build) will read the option. No shell-out path is exposed by the SDK — see <a href="https://github.com/cnap-tech/akua/blob/main/CLAUDE.md">CLAUDE.md</a>'s &quot;No shell-out, ever&quot; invariant and <a href="/concepts/embedded-engines">embedded-engines.md</a>.</p>
 <h3 id="universal-option--idempotencykey">Universal option — <code>idempotencyKey</code></h3>
 <p>Write methods (<code>publish</code>, <code>deploy.apply</code>, <code>secret.rotate</code>, etc.) accept <code>idempotencyKey?: string</code>. If the same key is presented twice, the second call is a no-op that returns the original result. See <a href="/concepts/cli-contract#3-writes-are-idempotent">cli-contract.md §3</a>.</p>
+<h3 id="credentials--auth">Credentials — <code>auth</code></h3>
+<p>Methods that fetch from private remotes (today: <code>vendorAdd</code>) accept <code>auth?: Record&lt;string, BasicAuth&gt;</code> keyed by <strong>URL prefix</strong>:</p>
+<pre><code class="lang-ts">await akua.vendorAdd('upstream', {
+  auth: {
+    // Single host:
+    'akua-git.cnap.tech': { username: orgId, password: token },
+
+    // Or per-org scoping — longest-prefix wins (same rule git's
+    // credential helper / .npmrc URL keys use):
+    'akua-git.cnap.tech/org-A': { username: 'org-A', password: tokenA },
+    'akua-git.cnap.tech/org-B': { username: 'org-B', password: tokenB },
+  }
+});</code></pre>
+<p><strong>Resolution.</strong> Akua walks the <code>auth</code> map sorted by prefix length descending and selects the first match against the URL's <code>host[:port]/path</code> form. Bare host keys match anything on that host; path-scoped keys only match URLs starting with that path prefix (path-segment-aware — <code>example.com/org</code> does not match <code>example.com/organizations</code>).</p>
+<p><strong>Explicit-only.</strong> Akua never reads ambient credential files (<code>~/.netrc</code>, <code>~/.docker/config.json</code>) or environment variables. The <code>auth</code> parameter is the sole credential source. This is deliberate: SDK consumers may be multi-tenant servers without strong process-level isolation, and akua's wasmtime sandbox extends the same explicit-input invariant to credentials.</p>
+<p><strong>Lockfile guarantee.</strong> Regardless of the credential used to fetch, <code>akua.lock</code>'s <code>source</code> field stores the canonicalized URL with userinfo, default ports (<code>:443</code> https, <code>:80</code> http), <code>.git</code> suffix, and trailing <code>/</code> stripped. Credentials cannot leak into the lockfile or git history.</p>
+<p><strong>akua.toml.</strong> Embedding credentials in a <code>git = &quot;...&quot;</code> URL (<code>https://user:pass@host/...</code>) is a manifest error (<a href="https://github.com/cnap-tech/akua/blob/main/docs/errors/E_MANIFEST_GIT_USERINFO.md">E_MANIFEST_GIT_USERINFO</a>) — the lockfile would persist them. Use the <code>auth</code> parameter instead.</p>
 <hr />
 <h2 id="package-api">Package API</h2>
 <pre><code class="lang-ts">interface PackageAPI {

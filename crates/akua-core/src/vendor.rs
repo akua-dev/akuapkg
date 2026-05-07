@@ -704,11 +704,17 @@ fn resolve_git_source(
     let cache_root = cache_inventory::default_cache_root("git");
     let expected_commit = expected_digest_from_lock(workspace, name, "git")
         .and_then(|d| d.strip_prefix("git:").map(str::to_string));
-    let fetched = git_fetcher::fetch(git, &ref_spec, &cache_root, expected_commit.as_deref(), auth)
-        .map_err(|source| VendorError::GitFetch {
-            name: name.to_string(),
-            source,
-        })?;
+    let fetched = git_fetcher::fetch(
+        git,
+        &ref_spec,
+        &cache_root,
+        expected_commit.as_deref(),
+        auth,
+    )
+    .map_err(|source| VendorError::GitFetch {
+        name: name.to_string(),
+        source,
+    })?;
     Ok(SourceResolution {
         kind: "git",
         source_ref: format!("{git}@{}", ref_spec.label()),

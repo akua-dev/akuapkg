@@ -176,7 +176,10 @@ impl ResolvedSource {
             ResolvedSource::Git {
                 git, tag_or_rev, ..
             } => (
-                format!("git+{}@{tag_or_rev}", crate::host_auth::canonicalize_url(git)),
+                format!(
+                    "git+{}@{tag_or_rev}",
+                    crate::host_auth::canonicalize_url(git)
+                ),
                 tag_or_rev.clone(),
                 None,
             ),
@@ -185,7 +188,10 @@ impl ResolvedSource {
                 tag_or_rev,
                 replace_path,
             } => (
-                format!("git+{}@{tag_or_rev}", crate::host_auth::canonicalize_url(git)),
+                format!(
+                    "git+{}@{tag_or_rev}",
+                    crate::host_auth::canonicalize_url(git)
+                ),
                 tag_or_rev.clone(),
                 Some(Replaced {
                     path: replace_path.clone(),

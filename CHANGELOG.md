@@ -13,6 +13,17 @@ minor bump in the SDK.
 > single-file/total-package cap is incompatible with the bundled napi
 > addon (~129 MB compressed across the per-platform packages).
 
+## [Unreleased]
+
+### Added
+
+- **Host-keyed HTTPS basic auth for `vendor add`** ([host_auth.rs](crates/akua-core/src/host_auth.rs)). The CLI gains repeatable `--auth <prefix>=<user>:<password>` and explicit `--auth-file <path>` flags; the SDK's `vendorAdd()` accepts an `auth?: Record<string, BasicAuth>` parameter. Resolution: longest-URL-prefix match (same rule as git's credential helper / `.npmrc`). Akua never reads ambient credential files (`~/.netrc`, `~/.docker/config.json`) or env vars — the SDK/CLI surface is the only auth source. Aimed at multi-tenant SDK consumers (e.g. cnap install bootstrap) where ambient lookups can leak credentials cross-tenant.
+- **Lockfile URL canonicalization**. `akua.lock`'s `source` field now stores the canonicalized URL — userinfo stripped, default ports stripped (`:443` https, `:80` http), trailing `.git` and `/` stripped. Idempotent. Even a malformed credentialed URL reaching the lockfile-write path cannot leak credentials.
+
+### Changed
+
+- **Manifest hardening**: `akua.toml` rejects `git = "https://user:pass@..."` URLs at parse time with new code [`E_MANIFEST_GIT_USERINFO`](docs/errors/E_MANIFEST_GIT_USERINFO.md). Hostile-to-secrets-in-VCS by default; the lockfile-canonicalization rule above is the second-line defense.
+
 ## [0.8.7] — 2026-05-07
 
 Workspace-vendor surfacing: the CLI now exposes `akua vendor add`,

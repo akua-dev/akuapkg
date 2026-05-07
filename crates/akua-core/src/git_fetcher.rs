@@ -572,8 +572,14 @@ mod tests {
         let cache = tmp.path().join("cache");
         let url = file_url(&origin);
         let expected = "0000000000000000000000000000000000000000"; // wrong SHA
-        let err =
-            fetch(&url, &RefSpec::Tag("v1.0".into()), &cache, Some(expected), None).unwrap_err();
+        let err = fetch(
+            &url,
+            &RefSpec::Tag("v1.0".into()),
+            &cache,
+            Some(expected),
+            None,
+        )
+        .unwrap_err();
         assert!(matches!(err, GitFetchError::LockCommitMismatch { .. }));
     }
 
