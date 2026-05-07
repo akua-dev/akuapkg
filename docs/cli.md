@@ -6,8 +6,8 @@ For the universal contract every verb honors (JSON output, exit codes, idempoten
 
 > **Status marker.** Sections marked ✅ describe verbs available in the shipping binary. Sections marked 🚧 describe verbs from the target surface that aren't wired yet. If a verb isn't marked, assume 🚧.
 >
-> **Shipped today (26 verbs):**
-> `init` · `whoami` · `version` · `verify` · `render` · `add` · `dev` · `test` · `tree` · `pull` · `publish` · `sign` · `update` · `lock` · `push` · `repl` · `pack` · `remove` · `diff` · `check` · `inspect` · `lint` · `fmt` · `cache` · `auth` · `export`
+> **Shipped today (27 verbs):**
+> `init` · `whoami` · `version` · `verify` · `render` · `add` · `vendor` · `dev` · `test` · `tree` · `pull` · `publish` · `sign` · `update` · `lock` · `push` · `repl` · `pack` · `remove` · `diff` · `check` · `inspect` · `lint` · `fmt` · `cache` · `auth` · `export`
 >
 > Run `akua --help` at the command line for the authoritative live list.
 
@@ -57,9 +57,9 @@ AUTHOR              PUBLISH             DEPLOY              OPERATE
 ------              -------             ------              -------
 akua init           akua attest         akua deploy         akua secret
 akua add            akua publish        akua rollout        akua policy
-akua render         akua pull           akua dev            akua audit
-akua diff           akua inspect                            akua query
-akua export                                                 akua infra
+akua vendor         akua pull           akua dev            akua audit
+akua render         akua inspect                            akua query
+akua diff           akua export                              akua infra
 
 DEVELOP             SESSION             META
 -------             -------             ----
@@ -74,7 +74,7 @@ akua repl
 akua eval
 ```
 
-Thirty verbs. Grouped by purpose. Each covered below.
+Thirty-four verbs. Grouped by purpose. Each covered below.
 
 > **Quick disambiguation — `render` vs `export` vs `inspect` vs `diff`:**
 >
@@ -190,6 +190,23 @@ For `chart` and `rgd`: generates a typed KCL subpackage under `./sources/<name>/
   "files_added": ["sources/cnpg-cluster/chart.k", "sources/cnpg-cluster/values.schema.k"]
 }
 ```
+
+---
+
+## `akua vendor` ✅
+
+Materialize and inspect the workspace vendor tree at `.akua/vendor/`.
+
+```
+akua vendor <subcommand> [flags]
+```
+
+Subcommands:
+- `add <name>` — copy the declared dependency into `.akua/vendor/<name>/`. The dependency must already exist in `[dependencies]`; otherwise the command fails with a suggestion to declare `path = ".akua/vendor/<name>"` in `akua.toml`.
+- `check` — compare the on-disk vendor trees against `akua.toml` + `akua.lock`. Drift exits with code `1`.
+- `list` — enumerate on-disk vendor trees, including orphaned entries.
+
+`add` honors the universal write-contract flags: `--plan`, `--timeout`, and `--idempotency-key`. `check` and `list` are read-only.
 
 ---
 

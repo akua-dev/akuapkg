@@ -13,6 +13,25 @@ minor bump in the SDK.
 > single-file/total-package cap is incompatible with the bundled napi
 > addon (~129 MB compressed across the per-platform packages).
 
+## [0.8.7-rc4] — 2026-05-07
+
+Workspace-vendor surfacing: the CLI now exposes `akua vendor add`,
+`akua vendor check`, and `akua vendor list`; the SDK mirrors those
+entry points. This release is documentation-forward from a user point
+of view — it turns the existing vendoring path into a first-class
+surface and updates the shipped verb counts accordingly.
+
+### Added
+
+- `akua vendor` with `add`, `check`, and `list` subcommands.
+- `@akua-dev/sdk` vendor methods: `vendorAdd`, `vendorCheck`, and
+  `vendorList`.
+
+### Changed
+
+- Shipped verb counts in the CLI reference, architecture overview, and
+  roadmap were bumped from 26 to 27.
+
 ## [0.8.6] — 2026-05-05
 
 Internal-only release: coverage uplifts, testability refactors, and a

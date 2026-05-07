@@ -34,7 +34,7 @@ Three stages, each independently pluggable. See [`docs/package-format.md`](./pac
 
 | consumer | surface | when used |
 |---|---|---|
-| **CLI** — `akua` binary | 26 shipped verbs + ~10 planned (see [`cli.md`](./cli.md)) | developers, CI, agents in sandboxes |
+| **CLI** — `akua` binary | 27 shipped verbs + ~10 planned (see [`cli.md`](./cli.md)) | developers, CI, agents in sandboxes |
 | **SDK** — `@akua-dev/sdk` | same capabilities, Node/Bun-native | backend services that embed akua in-process |
 | **Browser** — playground at `akua.dev` + local `akua dev` UI | subset that compiles to WebAssembly | authoring, review, live-preview |
 
