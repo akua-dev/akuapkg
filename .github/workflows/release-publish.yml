@@ -212,6 +212,12 @@ jobs:
         with:
           node-version: '24'
 
+      # The sdk-staged tarball already contains dist/ pre-built, but
+      # the package's `prepublishOnly` script runs `bun run build` on
+      # every `npm publish` — so the runner needs bun on PATH or the
+      # publish exits 127.
+      - uses: oven-sh/setup-bun@v2
+
       - name: Download release asset (sdk-staged)
         # `gh release download` infers the repo from the cwd's git
         # config — pass --repo explicitly so the job doesn't need a
