@@ -11,6 +11,7 @@
 
 #![deny(clippy::all)]
 
+use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::Path;
 
@@ -328,22 +329,47 @@ pub fn verify(args: NapiWorkspaceArgs) -> Result<serde_json::Value> {
 // vendor — workspace vendor-tree sync / inspection
 // ---------------------------------------------------------------------------
 
+/// HTTP basic-auth credential (mirrors
+/// [`akua_core::host_auth::BasicAuth`]).
+#[napi(object)]
+pub struct NapiBasicAuth {
+    pub username: String,
+    pub password: String,
+}
+
 #[napi(object)]
 pub struct NapiVendorAddArgs {
     pub workspace: String,
     pub name: String,
     pub plan: Option<bool>,
+    /// Credentials for private git remotes, keyed by URL prefix
+    /// (longest match wins). Akua never reads ambient credential
+    /// files; this is the only way to authenticate from the SDK.
+    pub auth: Option<HashMap<String, NapiBasicAuth>>,
 }
 
 #[napi]
 pub fn vendor_add(args: NapiVendorAddArgs) -> Result<serde_json::Value> {
     let workspace = Path::new(&args.workspace);
     let name = args.name;
+    let auth: Option<akua_core::host_auth::HostAuthMap> = args.auth.map(|m| {
+        m.into_iter()
+            .map(|(k, v)| {
+                (
+                    k,
+                    akua_core::host_auth::BasicAuth {
+                        username: v.username,
+                        password: v.password,
+                    },
+                )
+            })
+            .collect()
+    });
     let output = if args.plan.unwrap_or(false) {
-        core_vendor::plan_add(workspace, &name, None)
+        core_vendor::plan_add(workspace, &name, auth.as_ref())
             .map_err(|e| into_napi(e.to_structured(), e.exit_code()))?
     } else {
-        core_vendor::add(workspace, &name, None)
+        core_vendor::add(workspace, &name, auth.as_ref())
             .map_err(|e| into_napi(e.to_structured(), e.exit_code()))?
     };
     let ctx = Context::json();

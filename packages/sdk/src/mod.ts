@@ -86,11 +86,46 @@ export interface TreeOptions {
 	workspace?: string;
 }
 
+/**
+ * HTTP basic-auth credential pair. Sent as `Authorization: Basic
+ * <base64(user:pass)>` to the matching git remote during vendor.
+ */
+export interface BasicAuth {
+	username: string;
+	password: string;
+}
+
 export interface VendorAddOptions {
 	/** Workspace root (dir containing `akua.toml`). Default: `.`. */
 	workspace?: string;
 	/** Preview the add without writing the vendor tree. */
 	plan?: boolean;
+	/**
+	 * Credentials for private git remotes, keyed by URL prefix
+	 * (longest match wins — same rule as git's credential helper /
+	 * `.npmrc`). Akua never reads ambient credential files (`~/.netrc`,
+	 * `~/.docker/config.json`, env vars) — multi-tenant SDK consumers
+	 * require explicit auth.
+	 *
+	 * Examples:
+	 * ```ts
+	 * // Single host:
+	 * await akua.vendorAdd('upstream', {
+	 *   auth: {
+	 *     'akua-git.cnap.tech': { username: orgId, password: token }
+	 *   }
+	 * });
+	 *
+	 * // Per-org scoping (longest-prefix wins):
+	 * await akua.vendorAdd('upstream', {
+	 *   auth: {
+	 *     'akua-git.cnap.tech/org-A': { username: 'org-A', password: tokenA },
+	 *     'akua-git.cnap.tech/org-B': { username: 'org-B', password: tokenB }
+	 *   }
+	 * });
+	 * ```
+	 */
+	auth?: Record<string, BasicAuth>;
 }
 
 export interface VendorWorkspaceOptions {
@@ -395,6 +430,7 @@ export class Akua {
 				workspace: opts.workspace ?? '.',
 				name,
 				plan: opts.plan,
+				auth: opts.auth,
 			}),
 		);
 		return validateAs<VendorAddOutput>('VendorAddOutput', result);

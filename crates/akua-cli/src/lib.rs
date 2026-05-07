@@ -6,6 +6,7 @@
 // every variant adds noise for zero gain on a cold error path.
 #![allow(clippy::result_large_err)]
 
+pub mod auth_parse;
 pub mod contract;
 pub mod observability;
 pub mod render_worker;

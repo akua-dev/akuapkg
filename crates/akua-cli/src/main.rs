@@ -6,7 +6,7 @@
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use clap::{ArgGroup, Args, Parser, Subcommand};
+use clap::{ArgAction, ArgGroup, Args, Parser, Subcommand};
 
 use akua_cli::contract::{emit_error, Context, UniversalArgs};
 #[cfg(feature = "dev-watch")]
@@ -623,6 +623,20 @@ enum VendorSub {
         /// Workspace root containing akua.toml.
         #[arg(long, default_value = ".")]
         workspace: PathBuf,
+
+        /// Credential for a private git remote, in the form
+        /// `<url-prefix>=<user>:<password>`. Repeatable. The prefix
+        /// is matched longest-first against the dep's URL — same
+        /// rule git's credential helper uses. Akua never reads
+        /// ambient credential files (`~/.netrc`, etc.); auth has
+        /// to be explicit.
+        #[arg(long = "auth", value_name = "<prefix>=<user>:<password>", action = ArgAction::Append)]
+        auth: Vec<String>,
+
+        /// Path to a TOML file with a `[auth]` table keyed by URL
+        /// prefix. `--auth` flags override file entries on conflict.
+        #[arg(long = "auth-file", value_name = "PATH")]
+        auth_file: Option<PathBuf>,
     },
 
     /// Compare the vendor tree against manifest + lock.
@@ -935,14 +949,10 @@ fn dispatch(command: Commands) -> ExitCode {
                     args,
                     name,
                     workspace,
+                    auth,
+                    auth_file,
                 },
-        } => run_vendor(
-            &args,
-            vendor_verb::VendorAction::Add {
-                workspace: &workspace,
-                name: &name,
-            },
-        ),
+        } => run_vendor_add(&args, &workspace, &name, &auth, auth_file.as_deref()),
         Commands::Vendor {
             sub: VendorSub::Check { args, workspace },
         } => run_vendor(
@@ -1035,12 +1045,60 @@ fn run_pack(
 
 fn run_vendor(args: &UniversalArgs, action: vendor_verb::VendorAction<'_>) -> ExitCode {
     let ctx = resolve_ctx(args);
-    let verb_args = vendor_verb::VendorArgs { action };
+    let verb_args = vendor_verb::VendorArgs { action, auth: None };
     let mut stdout = io::stdout().lock();
     match vendor_verb::run(&ctx, &verb_args, &mut stdout) {
         Ok(code) => code,
         Err(e) => emit_structured(&ctx, &e.to_structured(), e.exit_code()),
     }
+}
+
+fn run_vendor_add(
+    args: &UniversalArgs,
+    workspace: &std::path::Path,
+    name: &str,
+    auth_pairs: &[String],
+    auth_file: Option<&std::path::Path>,
+) -> ExitCode {
+    let ctx = resolve_ctx(args);
+    let auth = match resolve_auth(auth_pairs, auth_file) {
+        Ok(a) => a,
+        Err(e) => {
+            return emit_structured(
+                &ctx,
+                &akua_core::cli_contract::StructuredError::new(
+                    akua_core::cli_contract::codes::E_INVALID_FLAG,
+                    e.to_string(),
+                )
+                .with_default_docs(),
+                ExitCode::UserError,
+            );
+        }
+    };
+    let verb_args = vendor_verb::VendorArgs {
+        action: vendor_verb::VendorAction::Add { workspace, name },
+        auth,
+    };
+    let mut stdout = io::stdout().lock();
+    match vendor_verb::run(&ctx, &verb_args, &mut stdout) {
+        Ok(code) => code,
+        Err(e) => emit_structured(&ctx, &e.to_structured(), e.exit_code()),
+    }
+}
+
+/// Merge `--auth-file` and `--auth` flags into a single
+/// [`HostAuthMap`]. Flag values override file entries on conflict
+/// (matches helm/docker convention). Akua never auto-loads
+/// credential files — both inputs are user-explicit.
+fn resolve_auth(
+    auth_pairs: &[String],
+    auth_file: Option<&std::path::Path>,
+) -> Result<Option<akua_core::host_auth::HostAuthMap>, akua_cli::auth_parse::AuthParseError> {
+    let from_file = auth_file
+        .map(akua_cli::auth_parse::load_auth_file)
+        .transpose()?;
+    let from_flags = akua_cli::auth_parse::parse_auth_pairs(auth_pairs.iter())?;
+    Ok(akua_cli::auth_parse::merge_auth(from_file, from_flags))
 }
 
 fn run_lock(args: &UniversalArgs, workspace: &std::path::Path, check: bool) -> ExitCode {
