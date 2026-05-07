@@ -184,10 +184,10 @@ export interface RenderSourceOptions {
 }
 
 /**
- * Thin wrapper around the `akua` CLI. Each method shells out to a verb,
- * parses the `--json` output, and returns a value typed by the ts-rs
- * generated types. Failures throw the right `AkuaError` subclass based
- * on exit code + parsed StructuredError.
+ * In-process akua client. Each method calls the `@akua-dev/native` napi
+ * addon and returns a value typed by the ts-rs generated types. No
+ * `akua` binary required, no subprocess. Failures throw the right
+ * `AkuaError` subclass based on the parsed StructuredError.
  */
 export class Akua {
 	constructor(_opts: AkuaOptions = {}) {
