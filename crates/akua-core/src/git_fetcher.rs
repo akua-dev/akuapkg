@@ -219,6 +219,10 @@ fn clone_bare(
         let map: std::sync::Arc<HostAuthMap> = std::sync::Arc::new(map.clone());
         prep = prep.configure_connection(move |conn| {
             let map = std::sync::Arc::clone(&map);
+            // The closure's signature is fixed by gix's `set_credentials` API,
+            // so the 152-byte `gix::credentials::protocol::Error` Err variant
+            // can't be boxed at our level. Scoped allow rather than crate-wide.
+            #[allow(clippy::result_large_err)]
             conn.set_credentials(move |action| {
                 let gix::credentials::helper::Action::Get(ctx) = action else {
                     return Ok(None);
