@@ -37,7 +37,9 @@
   <br>
 
 <p align="center">
-  <img alt="akua demo" src="docs/hero.gif" />
+  <a href="docs/assets/hero.mp4" title="Watch the 1080p MP4 (52 s)">
+    <img src="docs/assets/hero.gif" alt="akua — Typed. Signed. Sandboxed." width="900" />
+  </a>
 </p>
 
 ---
