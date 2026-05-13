@@ -37,7 +37,9 @@
   <br>
 
 <p align="center">
-  <img alt="akua demo" src="docs/hero.gif" />
+  <video src="docs/assets/hero.mp4" alt="akua — Typed. Signed. Sandboxed." autoplay loop muted playsinline width="900">
+    <img src="docs/assets/hero.gif" alt="akua — Typed. Signed. Sandboxed." />
+  </video>
 </p>
 
 ---
