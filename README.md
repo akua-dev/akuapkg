@@ -37,9 +37,9 @@
   <br>
 
 <p align="center">
-  <video src="docs/assets/hero.mp4" alt="akua — Typed. Signed. Sandboxed." autoplay loop muted playsinline width="900">
-    <img src="docs/assets/hero.gif" alt="akua — Typed. Signed. Sandboxed." />
-  </video>
+  <a href="docs/assets/hero.mp4" title="Watch the 1080p MP4 (52 s)">
+    <img src="docs/assets/hero.gif" alt="akua — Typed. Signed. Sandboxed." width="900" />
+  </a>
 </p>
 
 ---
