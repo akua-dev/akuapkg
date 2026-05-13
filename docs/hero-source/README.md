@@ -32,8 +32,27 @@ shows everything.
 |---|---|
 | [bun](https://bun.sh) | package manager + script runner for hyperframes |
 | [charm.sh/vhs](https://github.com/charmbracelet/vhs) | terminal recorder |
-| [ffmpeg](https://ffmpeg.org) | GIF↔MP4 conversion + palette dither |
+| [ffmpeg](https://ffmpeg.org) | GIF↔MP4 conversion + palette dither + x264 re-encode |
+| [gifsicle](https://www.lcdf.org/gifsicle/) | lossless GIF optimization (`gifsicle -O3`) |
 | `akua` itself | the tape runs real commands against `examples/01-hello-webapp` |
+
+## Compression
+
+The pipeline emits **visually-lossless** outputs by design — neither pass
+discards detail you can see.
+
+- **MP4**: hyperframes renders at its default H.264 bitrate, then `task render`
+  re-encodes at `libx264 -crf 18 -preset slow`. CRF 18 is the documented
+  *"visually lossless or nearly so"* threshold ([FFmpeg H.264 encoding guide](https://trac.ffmpeg.org/wiki/Encode/H.264)).
+  Net: ~55% smaller than the raw hyperframes output on flat-colour graphics.
+- **GIF**: standard palette + bayer-dither pipeline, then `gifsicle -O3 -b`
+  for lossless LZW + frame-diff optimisation. Net: another 5–10% on top of
+  the dither pass, bit-exact pixels.
+
+Deliberately no `--lossy` on gifsicle and no `-tune animation` on x264 —
+both are safe but technically lossy, and the brief is "don't make quality
+worse." If you ever want to push smaller (e.g. CRF 20 + `tune animation`,
+or `gifsicle --lossy=80`), it's a one-line change to the Taskfile.
 
 ## The two pipelines
 

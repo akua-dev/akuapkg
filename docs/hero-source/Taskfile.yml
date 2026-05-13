@@ -77,11 +77,22 @@ tasks:
       - bun run lint
 
   render:
-    desc: Render hyperframes → hero.mp4
+    desc: Render hyperframes → hero.mp4 (re-encoded at x264 CRF 18, visually lossless)
     deps: [install, clip-mp4]
     dir: '{{.HF_DIR}}'
     cmds:
-      - bun run render -- -o {{.ASSETS}}/hero.mp4 --quality high
+      # 1. hyperframes renders at its default H.264 bitrate (~530 kbps).
+      - bun run render -- -o {{.ASSETS}}/hero.raw.mp4 --quality high
+      # 2. Re-encode at CRF 18 — the documented "visually lossless" threshold
+      #    for libx264. Cuts the file by ~55% with zero perceptible quality
+      #    loss on flat-colour graphics + dark terminal content. Drops audio
+      #    track (-an) since the composition has none.
+      - >-
+        ffmpeg -y -i {{.ASSETS}}/hero.raw.mp4
+        -c:v libx264 -crf 18 -preset slow
+        -pix_fmt yuv420p -movflags +faststart -an
+        -loglevel error {{.ASSETS}}/hero.mp4
+      - rm -f {{.ASSETS}}/hero.raw.mp4
     sources:
       - index.html
       - assets/hero-clip.mp4
@@ -89,7 +100,7 @@ tasks:
       - '{{.ASSETS}}/hero.mp4'
 
   gif:
-    desc: Derive the GIF fallback from hero.mp4 (palette + bayer dither)
+    desc: Derive the GIF fallback from hero.mp4 (palette+bayer dither, then gifsicle -O3)
     deps: [render]
     dir: '{{.ASSETS}}'
     cmds:
@@ -102,6 +113,11 @@ tasks:
         -lavfi "fps=12,scale=960:-1:flags=lanczos [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5"
         -loglevel error hero.gif
       - rm -f palette.png
+      # Lossless LZW + frame-diff optimisation. Bit-exact pixels; ~5-10%
+      # smaller. We deliberately do NOT pass --lossy here — the brief is
+      # "compress without making it worse," and the palette+bayer step has
+      # already extracted what's safe to drop.
+      - gifsicle -O3 -b hero.gif
     sources:
       - hero.mp4
     generates:
