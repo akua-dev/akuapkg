@@ -1,5 +1,10 @@
 # akua hero — static frames handoff
 
+> Historical artifact: the original designer's brief and statics. The
+> motion piece evolved from here (now 7 scenes, 58 s, embedded video in
+> scene 4 instead of a placeholder GIF). For current paths and the
+> production pipeline see [`../../README.md`](../../README.md).
+
 Six 1920×1080 PNG frames for the ~30s README hero motion piece, plus the
 source HTML they were rendered from.
 

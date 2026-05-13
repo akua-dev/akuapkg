@@ -18,7 +18,9 @@ Set Padding 28
 Hide
 Type "unset AGENT CLAUDECODE CURSOR_CLI GEMINI_CLI AKUA_AGENT && export AKUA_NO_AGENT_DETECT=1"
 Enter
-Type "cp -r /Users/robin/Developer/cnap-tech/akua/examples/01-hello-webapp $(mktemp -d)/blog && cd $_ && clear"
+# $EXAMPLE_DIR is injected by the Taskfile (`task tape`) as
+# {{.REPO_ROOT}}/examples/01-hello-webapp so the tape is portable.
+Type "cp -r $EXAMPLE_DIR $(mktemp -d)/blog && cd $_ && clear"
 Enter
 Sleep 400ms
 Show

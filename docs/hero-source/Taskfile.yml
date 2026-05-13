@@ -45,6 +45,8 @@ tasks:
   tape:
     desc: Re-record the terminal session → hero-clip.gif
     dir: '{{.VHS_DIR}}'
+    env:
+      EXAMPLE_DIR: '{{.REPO_ROOT}}/examples/01-hello-webapp'
     cmds:
       - vhs hero-clip.tape
       - cp hero-clip.gif {{.ASSETS}}/hero-clip.gif

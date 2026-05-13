@@ -7,7 +7,7 @@ re-cut, or re-themed without re-deriving the inputs.
 ```
 hero-source/
 ├── Taskfile.yml         pipeline (bun + vhs + ffmpeg)
-├── hyperframes/         HTML/CSS/GSAP composition (6 scenes, 58 s)
+├── hyperframes/         HTML/CSS/GSAP composition (7 scenes, 58 s)
 ├── vhs/                 charm.sh/vhs tape — terminal session for scene 4
 └── design/              Claude Design handoff: brief, statics, tokens
 ```
@@ -72,7 +72,7 @@ or `gifsicle --lossy=80`), it's a one-line change to the Taskfile.
       sign + attest, docker buildx, argocd, verifyImages).
    3. Nine → one. Tri-color invariant stripe lands.
    4. Live CLI — the embedded `hero-clip.mp4` plays inside a terminal
-      frame. **Centerpiece**, 30 s of the 58 s runtime.
+      frame. Longest scene, 30 s of the 58 s runtime.
    5. Compiled GitOps: KCL Package → akua render → signed OCI →
       PR diff → admission re-verify.
    6. Agent-first: detected agents + `--json` / typed exit codes /
