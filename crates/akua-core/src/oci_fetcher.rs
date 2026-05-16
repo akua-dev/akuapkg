@@ -9,6 +9,8 @@
 //!   `kpm push` and consumed transparently by `import <name>` in a
 //!   Package's KCL source. See `examples/10-kcl-ecosystem/` for a
 //!   worked example.
+//! - **Akua packages** — `application/vnd.akua.package.content.v1.tar+gzip`,
+//!   the format emitted by `akua publish` and pulled by `akua pull`.
 //!
 //! ## Protocol summary
 //!
@@ -46,6 +48,7 @@ use sha2::{Digest, Sha256};
 
 use crate::hex::hex_encode;
 use crate::oci_auth::{self, Credentials, CredsStore};
+use crate::oci_media_types::AKUA_PACKAGE_LAYER_MEDIA_TYPE;
 use crate::oci_transport::{
     build_client, get_with_auth, parse_ref, registry_scheme, OciRef, TokenCache, TransportError,
 };
@@ -176,7 +179,7 @@ pub enum OciFetchError {
         detail: String,
     },
 
-    #[error("manifest for `{oci_ref}:{version}` has no recognised package layer — expected helm `{HELM_CHART_LAYER_MEDIA_TYPE}` or KCL `{KCL_LAYER_MEDIA_TYPE}` with `org.kcllang.package.*` / `org.kclpkg.package.*` / `dev.akua.package.*` annotations")]
+    #[error("manifest for `{oci_ref}:{version}` has no recognised package layer — expected helm `{HELM_CHART_LAYER_MEDIA_TYPE}`, akua `{AKUA_PACKAGE_LAYER_MEDIA_TYPE}`, or KCL `{KCL_LAYER_MEDIA_TYPE}` with `org.kcllang.package.*` / `org.kclpkg.package.*` / `dev.akua.package.*` annotations")]
     NoChartLayer { oci_ref: String, version: String },
 
     #[error("pulled blob digest `{actual}` doesn't match layer-declared `{declared}`")]
@@ -244,6 +247,17 @@ fn detect_package(manifest: &OciManifest) -> Option<DetectedLayer<'_>> {
     {
         return Some(DetectedLayer {
             kind: PackageKind::HelmChart,
+            layer,
+            format: ArchiveFormat::GzipTar,
+        });
+    }
+    if let Some(layer) = manifest
+        .layers
+        .iter()
+        .find(|l| l.media_type == AKUA_PACKAGE_LAYER_MEDIA_TYPE)
+    {
+        return Some(DetectedLayer {
+            kind: PackageKind::KclModule,
             layer,
             format: ArchiveFormat::GzipTar,
         });
@@ -1132,6 +1146,54 @@ mod tests {
         (serde_json::to_vec(&manifest).unwrap(), layer_digest)
     }
 
+    fn akua_package_tarball() -> Vec<u8> {
+        let mut buf = Vec::new();
+        let gz = flate2::write::GzEncoder::new(&mut buf, flate2::Compression::default());
+        let mut tar_b = tar::Builder::new(gz);
+
+        let toml_body =
+            b"[package]\nname = \"webapp\"\nversion = \"0.1.0\"\nedition = \"akua.dev/v1alpha1\"\n";
+        let mut hdr = tar::Header::new_gnu();
+        hdr.set_size(toml_body.len() as u64);
+        hdr.set_mode(0o644);
+        hdr.set_cksum();
+        tar_b
+            .append_data(&mut hdr, "akua.toml", &toml_body[..])
+            .unwrap();
+
+        let kcl_body =
+            b"resources = [{apiVersion = \"v1\", kind = \"ConfigMap\", metadata.name = \"x\"}]\n";
+        let mut hdr = tar::Header::new_gnu();
+        hdr.set_size(kcl_body.len() as u64);
+        hdr.set_mode(0o644);
+        hdr.set_cksum();
+        tar_b
+            .append_data(&mut hdr, "package.k", &kcl_body[..])
+            .unwrap();
+
+        tar_b.into_inner().unwrap().finish().unwrap();
+        buf
+    }
+
+    fn build_akua_manifest(tarball: &[u8]) -> (Vec<u8>, String) {
+        let layer_digest = format!("sha256:{}", hex_encode(&Sha256::digest(tarball)));
+        let manifest = serde_json::json!({
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": {
+                "mediaType": crate::oci_media_types::AKUA_PACKAGE_CONFIG_MEDIA_TYPE,
+                "size": 2,
+                "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            },
+            "layers": [{
+                "mediaType": crate::oci_media_types::AKUA_PACKAGE_LAYER_MEDIA_TYPE,
+                "size": tarball.len(),
+                "digest": layer_digest,
+            }],
+        });
+        (serde_json::to_vec(&manifest).unwrap(), layer_digest)
+    }
+
     fn mock_oci_ref(server: &MockServer, repo: &str) -> String {
         format!("oci://127.0.0.1:{}/{}", server.port(), repo)
     }
@@ -1175,6 +1237,43 @@ mod tests {
         assert!(fetched.root_dir.join("Chart.yaml").is_file());
         // Cache uses `<root>/sha256/<hex>/<chart>/`.
         assert!(fetched.root_dir.to_string_lossy().contains("sha256/"));
+    }
+
+    #[test]
+    fn fetch_with_opts_pulls_akua_published_package_through_mock_registry() {
+        let server = MockServer::start();
+        let repo = "team/webapp";
+        let version = "0.1.0";
+        let tarball = akua_package_tarball();
+        let (manifest_bytes, layer_digest) = build_akua_manifest(&tarball);
+
+        server.mock(|when, then| {
+            when.method(GET)
+                .path(format!("/v2/{repo}/manifests/{version}"));
+            then.status(200)
+                .header("content-type", "application/vnd.oci.image.manifest.v1+json")
+                .body(manifest_bytes);
+        });
+        server.mock(|when, then| {
+            when.method(GET)
+                .path(format!("/v2/{repo}/blobs/{layer_digest}"));
+            then.status(200).body(tarball.clone());
+        });
+
+        let cache = tempfile::tempdir().unwrap();
+        let creds = oci_auth::CredsStore::empty();
+        let opts = FetchOpts {
+            expected_digest: None,
+            creds: &creds,
+            cosign_public_key_pem: None,
+        };
+        let fetched = fetch_with_opts(&mock_oci_ref(&server, repo), version, cache.path(), &opts)
+            .expect("fetch must accept akua-published packages");
+
+        assert_eq!(fetched.kind, PackageKind::KclModule);
+        assert_eq!(fetched.blob_digest, layer_digest);
+        assert!(fetched.root_dir.join("akua.toml").is_file());
+        assert!(fetched.root_dir.join("package.k").is_file());
     }
 
     /// Cache fast-path: when `expected_digest` is set AND the cache

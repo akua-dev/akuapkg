@@ -117,9 +117,8 @@ fn write_text<W: Write>(w: &mut W, out: &PullOutput) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use akua_core::oci_pusher::{
-        compute_publish_digests, AKUA_PACKAGE_LAYER_MEDIA_TYPE, OCI_MANIFEST_MEDIA_TYPE,
-    };
+    use akua_core::oci_media_types::{AKUA_PACKAGE_LAYER_MEDIA_TYPE, OCI_MANIFEST_MEDIA_TYPE};
+    use akua_core::oci_pusher::compute_publish_digests;
     use akua_core::package_tar;
     use httpmock::prelude::*;
     use std::fs;

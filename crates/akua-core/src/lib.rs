@@ -83,6 +83,8 @@ pub mod oci_auth;
 #[cfg(feature = "oci-fetch")]
 pub mod oci_fetcher;
 #[cfg(feature = "oci-fetch")]
+pub mod oci_media_types;
+#[cfg(feature = "oci-fetch")]
 pub mod oci_puller;
 #[cfg(feature = "oci-fetch")]
 pub mod oci_pusher;
