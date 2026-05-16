@@ -362,7 +362,7 @@ fn attest_published_artifact(
 mod tests {
     use super::*;
     use crate::test_helpers::workspace_with;
-    use akua_core::oci_pusher::OCI_MANIFEST_MEDIA_TYPE;
+    use akua_core::oci_media_types::OCI_MANIFEST_MEDIA_TYPE;
     use httpmock::prelude::*;
 
     /// Workspace with a `[signing]` block pointing at a freshly-written

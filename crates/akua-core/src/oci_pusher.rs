@@ -25,20 +25,13 @@ use sha2::{Digest, Sha256};
 
 use crate::hex::hex_encode;
 use crate::oci_auth::{self, CredsStore};
+use crate::oci_media_types::{
+    AKUA_PACKAGE_CONFIG_MEDIA_TYPE, AKUA_PACKAGE_LAYER_MEDIA_TYPE, OCI_MANIFEST_MEDIA_TYPE,
+};
 use crate::oci_transport::{
     apply_bearer, build_client, fetch_token, parse_ref, registry_scheme, BearerChallenge, OciRef,
     TokenCache, TransportError,
 };
-
-/// Media types akua uses for its own published artifacts. Distinct
-/// from helm + docker media types so consumers can reject unrelated
-/// artifact classes on pull.
-pub const AKUA_PACKAGE_LAYER_MEDIA_TYPE: &str = "application/vnd.akua.package.content.v1.tar+gzip";
-pub const AKUA_PACKAGE_CONFIG_MEDIA_TYPE: &str = "application/vnd.akua.package.config.v1+json";
-
-/// OCI image manifest media type — what `PUT /v2/.../manifests/...`
-/// sets as its Content-Type + what consumers `Accept:` on pull.
-pub const OCI_MANIFEST_MEDIA_TYPE: &str = "application/vnd.oci.image.manifest.v1+json";
 
 /// Result of a successful push. The manifest digest is what cosign
 /// signs and what consumers pin in their `akua.lock`.

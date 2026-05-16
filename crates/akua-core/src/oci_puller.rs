@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 
 use crate::hex::hex_encode;
 use crate::oci_auth::{self, CredsStore};
-use crate::oci_pusher::{AKUA_PACKAGE_LAYER_MEDIA_TYPE, OCI_MANIFEST_MEDIA_TYPE};
+use crate::oci_media_types::{AKUA_PACKAGE_LAYER_MEDIA_TYPE, OCI_MANIFEST_MEDIA_TYPE};
 use crate::oci_transport::{
     build_client, get_with_auth, parse_ref, registry_scheme, TokenCache, TransportError,
 };
@@ -163,7 +163,7 @@ pub fn pull_attestation(
         &parsed.registry,
         registry_creds.as_ref(),
         &mut token,
-        |req| req.header("Accept", crate::oci_pusher::OCI_MANIFEST_MEDIA_TYPE),
+        |req| req.header("Accept", crate::oci_media_types::OCI_MANIFEST_MEDIA_TYPE),
     ) {
         Ok(bytes) => {
             let manifest: Manifest = serde_json::from_slice(&bytes)?;
