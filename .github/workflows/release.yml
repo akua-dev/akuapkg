@@ -232,21 +232,22 @@ jobs:
           shared-key: native-${{ matrix.target }}
           cache-on-failure: true
 
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install napi deps
+        working-directory: crates/akua-napi
+        run: bun install --frozen-lockfile
+
       - name: Bump package.json version from the tag
         shell: bash
         run: |
           set -eu
           version="${{ needs.detect-version.outputs.version }}"
           echo "Building @akua-dev/native@${version}"
-          jq --arg v "$version" '.version = $v' \
+          jq --arg v "$version" \
+            '.version = $v | .dependencies["@akua-dev/native-engines"] = $v' \
             crates/akua-napi/package.json > crates/akua-napi/package.json.tmp
           mv crates/akua-napi/package.json.tmp crates/akua-napi/package.json
-
-      - uses: oven-sh/setup-bun@v2
-
-      - name: Install napi deps
-        working-directory: crates/akua-napi
-        run: bun install --frozen-lockfile
 
       - uses: jdx/mise-action@v4
         with:
@@ -399,6 +400,9 @@ jobs:
       - name: Drift guard (fail if Rust source and bindings diverge)
         run: mise exec -- task sdk:check
 
+      - name: Build SDK (bun bundle + tsc declarations)
+        run: mise exec -- task sdk:build
+
       - name: Bump package.json version + native dep pin from the tag
         run: |
           set -eu
@@ -408,9 +412,6 @@ jobs:
             '.version = $v | .dependencies["@akua-dev/native"] = $v' \
             packages/sdk/package.json > packages/sdk/package.json.tmp
           mv packages/sdk/package.json.tmp packages/sdk/package.json
-
-      - name: Build SDK (bun bundle + tsc declarations)
-        run: mise exec -- task sdk:build
 
       - name: Pack dry-run (manifest sanity)
         working-directory: packages/sdk

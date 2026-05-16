@@ -94,17 +94,18 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
+      - name: Install napi deps
+        working-directory: crates/akua-napi
+        run: bun install --frozen-lockfile
+
       - name: Bump package.json version from the tag
         run: |
           set -eu
           version="${{ needs.detect-version.outputs.version }}"
-          jq --arg v "$version" '.version = $v' \
+          jq --arg v "$version" \
+            '.version = $v | .dependencies["@akua-dev/native-engines"] = $v' \
             crates/akua-napi/package.json > crates/akua-napi/package.json.tmp
           mv crates/akua-napi/package.json.tmp crates/akua-napi/package.json
-
-      - name: Install napi deps
-        working-directory: crates/akua-napi
-        run: bun install --frozen-lockfile
 
       - name: Download release assets (native + wasm)
         env:

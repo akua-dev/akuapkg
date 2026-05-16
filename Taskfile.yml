@@ -91,6 +91,7 @@ tasks:
     deps:
       - fmt:check
     cmds:
+      - task: release:check-workflows
       - task: lint
       - task: test
 
@@ -138,6 +139,11 @@ tasks:
           --test examples_install_as_package
           --test examples_export
           -- --include-ignored
+
+  release:check-workflows:
+    desc: Check release workflow step ordering invariants
+    cmds:
+      - bash scripts/check-release-workflows.sh
 
   # ---- Release builds ------------------------------------------------------
 
