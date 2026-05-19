@@ -958,6 +958,18 @@ resources = [{
             "apiVersion: v2\nname: demo\nversion: 0.1.0\n",
         )
         .unwrap();
+        std::fs::create_dir(chart.path().join("templates")).unwrap();
+        std::fs::write(
+            chart.path().join("templates/configmap.yaml"),
+            r#"apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: host-config
+data:
+  host: {{ .Values.host | quote }}
+"#,
+        )
+        .unwrap();
         std::fs::write(
             chart.path().join("values.schema.json"),
             r#"{
@@ -1000,18 +1012,14 @@ resources = nginx.template(nginx.TemplateOpts {
         let (_tmp, path) = write_fixture(fixture);
         let pkg = PackageK::load(&path).expect("load");
 
-        let err = pkg
+        let rendered = pkg
             .render_with_charts(&empty_inputs(), &resolved)
-            .expect_err("helm plugin stub should be reached");
+            .expect("helm plugin stub should be reached");
 
-        let PackageKError::KclEval(message) = err else {
-            panic!("expected KclEval, got {err:?}");
-        };
-        assert!(
-            message.contains("helm.template:")
-                && (message.contains("engine not available")
-                    || message.contains("helm-engine.wasm not built")),
-            "unexpected error: {message}"
+        assert_eq!(rendered.resources.len(), 1);
+        assert_eq!(
+            rendered.resources[0]["data"]["host"],
+            Value::String("example.com".into())
         );
     }
 
