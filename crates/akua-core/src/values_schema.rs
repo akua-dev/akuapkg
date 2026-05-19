@@ -183,7 +183,7 @@ impl SchemaGen {
         out.push_str(&format!("    {prop_name}{opt_marker}: {ty}{assignment}\n"));
 
         if let Some(desc) = prop_schema.description.as_deref() {
-            out.push_str(&format_docstring(desc, 8));
+            out.push_str(&format_docstring(desc, 4));
             out.push('\n');
         }
     }
@@ -390,6 +390,31 @@ mod tests {
         }"#;
         let out = generate_from_bytes(input).unwrap();
         assert!(out.source.contains("note?: str"), "{}", out.source);
+    }
+
+    #[test]
+    fn descriptions_generate_parseable_kcl_docstrings() {
+        let input = br#"{
+            "type": "object",
+            "description": "Chart values.",
+            "properties": {
+                "host": {
+                    "type": "string",
+                    "description": "Public hostname."
+                }
+            },
+            "required": ["host"]
+        }"#;
+
+        let out = generate_from_bytes(input).unwrap();
+        let issues = crate::package_k::lint_kcl_source("values.k", &out.source).unwrap();
+
+        assert!(
+            issues.is_empty(),
+            "source:\n{}\nissues: {:?}",
+            out.source,
+            issues
+        );
     }
 
     #[test]

@@ -948,6 +948,74 @@ resources = [{
     }
 
     #[test]
+    fn typed_chart_values_reach_helm_template_wrapper() {
+        use crate::chart_resolver::{ResolvedChart, ResolvedCharts};
+        use std::collections::BTreeMap;
+
+        let chart = tempfile::TempDir::new().expect("chart dir");
+        std::fs::write(
+            chart.path().join("Chart.yaml"),
+            "apiVersion: v2\nname: demo\nversion: 0.1.0\n",
+        )
+        .unwrap();
+        std::fs::write(
+            chart.path().join("values.schema.json"),
+            r#"{
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "Public hostname."
+                    }
+                },
+                "required": ["host"]
+            }"#,
+        )
+        .unwrap();
+
+        let mut entries = BTreeMap::new();
+        entries.insert(
+            "nginx".to_string(),
+            ResolvedChart {
+                name: "nginx".to_string(),
+                abs_path: chart.path().canonicalize().unwrap(),
+                sha256: "sha256:deadbeef".to_string(),
+                kind: crate::chart_resolver::PackageKind::HelmChart,
+                source: crate::chart_resolver::ResolvedSource::Path {
+                    declared: "./charts/nginx".to_string(),
+                },
+            },
+        );
+        let resolved = ResolvedCharts { entries };
+
+        let fixture = r#"
+import charts.nginx as nginx
+
+resources = nginx.template(nginx.TemplateOpts {
+    values = nginx.Values {
+        host = "example.com"
+    }
+})
+"#;
+        let (_tmp, path) = write_fixture(fixture);
+        let pkg = PackageK::load(&path).expect("load");
+
+        let err = pkg
+            .render_with_charts(&empty_inputs(), &resolved)
+            .expect_err("helm plugin stub should be reached");
+
+        let PackageKError::KclEval(message) = err else {
+            panic!("expected KclEval, got {err:?}");
+        };
+        assert!(
+            message.contains("helm.template:")
+                && (message.contains("engine not available")
+                    || message.contains("helm-engine.wasm not built")),
+            "unexpected error: {message}"
+        );
+    }
+
+    #[test]
     fn render_without_charts_still_works() {
         // Back-compat: no-dep Package must not require charts wiring.
         let (_tmp, path) = write_fixture(MINIMAL_FIXTURE);

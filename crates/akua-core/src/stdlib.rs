@@ -166,17 +166,25 @@ fn build_chart_module(
     // Options-schema-style call form (matches `akua.helm.template`) —
     // KCL's lambda parser is happiest when the parameter is a named
     // schema rather than a dict-with-defaults.
-    let opts_default = if values_type == "Values" {
-        "Values {}"
+    let has_typed_values = values_type == "Values";
+    let opts_default = if has_typed_values { "" } else { " = {}" };
+    let lambda_default = if has_typed_values {
+        ""
     } else {
-        "{}"
+        " = TemplateOpts {}"
     };
     body.push_str(&format!(
-        "schema TemplateOpts:\n    values: {values_type} = {opts_default}\n    release: str = \"release\"\n    namespace: str = \"default\"\n\n"
+        "schema TemplateOpts:\n    values: {values_type}{opts_default}\n    release: str = \"release\"\n    namespace: str = \"default\"\n\n"
     ));
-    body.push_str(
-        "template = lambda opts: TemplateOpts = TemplateOpts {} -> [{str:}] {\n    _helm.template(_helm.Template {\n        chart = path\n        values = opts.values\n        release = opts.release\n        namespace = opts.namespace\n    })\n}\n",
-    );
+    if has_typed_values {
+        body.push_str(&format!(
+            "template = lambda opts: TemplateOpts{lambda_default} -> [{{str:}}] {{\n    _flat = {{**opts.values}}\n    _helm.template(_helm.Template {{\n        chart = path\n        values = _flat\n        release = opts.release\n        namespace = opts.namespace\n    }})\n}}\n",
+        ));
+    } else {
+        body.push_str(&format!(
+            "template = lambda opts: TemplateOpts{lambda_default} -> [{{str:}}] {{\n    _helm.template(_helm.Template {{\n        chart = path\n        values = opts.values\n        release = opts.release\n        namespace = opts.namespace\n    }})\n}}\n",
+        ));
+    }
     body
 }
 
@@ -392,7 +400,12 @@ mod tests {
         // via the TemplateOpts wrapper.
         assert!(body.contains("schema TemplateOpts:"), "{}", body);
         assert!(body.contains("values: Values"), "{}", body);
-        assert!(body.contains("Values {}"), "{}", body);
+        assert!(!body.contains("Values {}"), "{}", body);
+        assert!(body.contains("_flat = {**opts.values}"), "{}", body);
+        assert!(body.contains("values = _flat"), "{}", body);
+
+        let issues = crate::package_k::lint_kcl_source("nginx.k", &body).unwrap();
+        assert!(issues.is_empty(), "module:\n{body}\nissues: {issues:?}");
     }
 
     #[test]
