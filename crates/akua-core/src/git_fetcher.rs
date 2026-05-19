@@ -296,6 +296,7 @@ fn refresh_bare(
     Ok(())
 }
 
+#[allow(clippy::result_large_err)]
 fn set_connection_credentials<'a, T>(
     conn: &mut gix::remote::Connection<'a, '_, T>,
     map: std::sync::Arc<HostAuthMap>,
