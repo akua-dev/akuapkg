@@ -319,7 +319,9 @@ fn add_impl(
     // `vendor check` compares against the lockfile pin; without it a
     // GC'd canonical source breaks drift detection.
     if write {
-        upsert_vendor_lock_entry(workspace, name, dep, &digest)?;
+        let lock_digest = source.lock_digest.as_deref().unwrap_or(&digest);
+        let vendor_digest = (lock_digest != digest).then_some(digest.as_str());
+        upsert_vendor_lock_entry(workspace, name, dep, lock_digest, vendor_digest)?;
     }
 
     Ok(VendorAddOutput {
@@ -342,45 +344,52 @@ fn upsert_vendor_lock_entry(
     workspace: &Path,
     name: &str,
     dep: &Dependency,
-    tree_digest: &str,
+    lock_digest: &str,
+    vendor_digest: Option<&str>,
 ) -> Result<(), VendorError> {
     let mut lock = match AkuaLock::load(workspace) {
         Ok(l) => l,
         Err(LockLoadError::Missing { .. }) => AkuaLock::empty(),
         Err(e) => return Err(VendorError::Lock(e)),
     };
-    let (source, digest) = vendor_lock_source(dep, tree_digest);
+    let (source, digest) = vendor_lock_source(dep, lock_digest);
     upsert_locked_from_source(&mut lock, name, &source, &digest);
+    if let Some(vendor_digest) = vendor_digest {
+        let (_, version, _) = source.to_locked_fields();
+        if let Some(slot) = lock.find_slot(name, &version) {
+            lock.packages[slot].vendor_digest = Some(vendor_digest.to_string());
+        }
+    }
     lock.save(workspace).map_err(VendorError::Lock)?;
     Ok(())
 }
 
 /// Project the dep + vendored-tree hash into the
 /// `(ResolvedSource, digest)` pair `upsert_locked_from_source` expects.
-/// Git deps rewrite the digest to `git:<hex>` per the lockfile
-/// convention; path/oci deps keep the `sha256:<hex>` form `hash_dir`
-/// produced.
-fn vendor_lock_source(dep: &Dependency, tree_digest: &str) -> (ResolvedSource, String) {
+/// Git deps normalize the resolved commit to `git:<sha>` per the
+/// lockfile convention; path/oci deps keep the `sha256:<hex>` form
+/// `hash_dir` produced.
+fn vendor_lock_source(dep: &Dependency, lock_digest: &str) -> (ResolvedSource, String) {
     let spec = dep.spec();
     match spec {
         DependencySpec::Path { declared } => (
             ResolvedSource::Path {
                 declared: declared.to_string(),
             },
-            tree_digest.to_string(),
+            lock_digest.to_string(),
         ),
         DependencySpec::Oci { oci, version } => (
             ResolvedSource::Oci {
                 oci: oci.to_string(),
                 version: version.to_string(),
-                blob_digest: tree_digest.to_string(),
+                blob_digest: lock_digest.to_string(),
             },
-            tree_digest.to_string(),
+            lock_digest.to_string(),
         ),
         DependencySpec::Git { git, .. } => {
-            let raw = tree_digest
-                .strip_prefix("sha256:")
-                .unwrap_or(tree_digest)
+            let raw = lock_digest
+                .strip_prefix(GIT_DIGEST_PREFIX)
+                .unwrap_or(lock_digest)
                 .to_string();
             (
                 ResolvedSource::Git {
@@ -423,14 +432,18 @@ pub fn check(workspace: &Path) -> Result<VendorCheckOutput, VendorError> {
         let path = vendor_root.join(&expected.name);
         match disk_map.get(expected.name.as_str()) {
             Some(actual) => {
-                let mismatch = actual.digest != expected.digest;
+                let expected_vendor_digest = expected
+                    .vendor_digest
+                    .clone()
+                    .unwrap_or_else(|| expected.digest.clone());
+                let mismatch = actual.digest != expected_vendor_digest;
                 drift |= mismatch;
                 entries.push(VendorCheckEntry {
                     name: expected.name.clone(),
                     path,
                     source_kind: Some(expected.source_kind.to_string()),
                     source_ref: Some(expected.source_ref),
-                    expected_digest: Some(expected.digest),
+                    expected_digest: Some(expected_vendor_digest),
                     actual_digest: Some(actual.digest.clone()),
                     orphan: false,
                     missing_vendor: false,
@@ -438,6 +451,10 @@ pub fn check(workspace: &Path) -> Result<VendorCheckOutput, VendorError> {
                 });
             }
             None => {
+                let expected_vendor_digest = expected
+                    .vendor_digest
+                    .clone()
+                    .unwrap_or_else(|| expected.digest.clone());
                 drift = true;
                 missing.push(expected.name.clone());
                 entries.push(VendorCheckEntry {
@@ -445,7 +462,7 @@ pub fn check(workspace: &Path) -> Result<VendorCheckOutput, VendorError> {
                     path,
                     source_kind: Some(expected.source_kind.to_string()),
                     source_ref: Some(expected.source_ref),
-                    expected_digest: Some(expected.digest),
+                    expected_digest: Some(expected_vendor_digest),
                     actual_digest: None,
                     orphan: false,
                     missing_vendor: true,
@@ -499,6 +516,7 @@ struct ExpectedDep {
     source_kind: &'static str,
     source_ref: String,
     digest: String,
+    vendor_digest: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -512,6 +530,7 @@ struct SourceResolution {
     kind: &'static str,
     source_ref: String,
     root: PathBuf,
+    lock_digest: Option<String>,
 }
 
 fn expected_entries(workspace: &Path) -> Result<ExpectedSet, VendorError> {
@@ -533,6 +552,7 @@ fn expected_entries(workspace: &Path) -> Result<ExpectedSet, VendorError> {
                 source_kind,
                 source_ref,
                 digest: locked.digest.clone(),
+                vendor_digest: locked.vendor_digest.clone(),
             });
             continue;
         }
@@ -552,6 +572,7 @@ fn expected_entries(workspace: &Path) -> Result<ExpectedSet, VendorError> {
             source_kind: source.kind,
             source_ref: source.source_ref,
             digest,
+            vendor_digest: None,
         });
     }
 
@@ -567,6 +588,7 @@ fn expected_entries(workspace: &Path) -> Result<ExpectedSet, VendorError> {
                 source_kind,
                 source_ref,
                 digest: pkg.digest,
+                vendor_digest: pkg.vendor_digest,
             });
         }
     }
@@ -637,6 +659,7 @@ fn resolve_source(
             kind: "path",
             source_ref: declared.to_string(),
             root: resolve_path_dep(workspace, name, declared)?,
+            lock_digest: None,
         }),
         DependencySpec::Oci { oci, version } => resolve_oci_source(workspace, name, oci, version),
         DependencySpec::Git { git, tag, rev } => {
@@ -671,6 +694,7 @@ fn resolve_oci_source(
         kind: "oci",
         source_ref: format!("{oci}@{version}"),
         root: fetched.root_dir,
+        lock_digest: None,
     })
 }
 
@@ -703,7 +727,7 @@ fn resolve_git_source(
     };
     let cache_root = cache_inventory::default_cache_root("git");
     let expected_commit = expected_digest_from_lock(workspace, name, "git")
-        .and_then(|d| d.strip_prefix("git:").map(str::to_string));
+        .and_then(|d| d.strip_prefix(GIT_DIGEST_PREFIX).map(str::to_string));
     let fetched = git_fetcher::fetch(
         git,
         &ref_spec,
@@ -718,6 +742,7 @@ fn resolve_git_source(
     Ok(SourceResolution {
         kind: "git",
         source_ref: format!("{git}@{}", ref_spec.label()),
+        lock_digest: Some(format!("{GIT_DIGEST_PREFIX}{}", fetched.commit_sha)),
         root: fetched.chart_dir,
     })
 }
@@ -858,6 +883,18 @@ local = { path = "./charts/local" }
 "#
     }
 
+    fn git_manifest() -> &'static str {
+        r#"
+[package]
+name = "vendor-test"
+version = "0.1.0"
+edition = "akua.dev/v1alpha1"
+
+[dependencies]
+upstream = { git = "https://example.com/acme/app", tag = "v1.0.0" }
+"#
+    }
+
     fn make_source_tree(root: &Path) {
         write(
             root,
@@ -981,6 +1018,45 @@ local = { path = "./charts/local" }
         assert_eq!(entry.digest, out.digest);
     }
 
+    #[test]
+    fn check_accepts_git_lock_commit_with_vendor_tree_digest() {
+        let ws = workspace(git_manifest());
+        let vendor_path = ws.path().join(".akua/vendor/upstream");
+        make_source_tree(&vendor_path);
+        let (vendor_digest, _) = hash_dir(&vendor_path).expect("hash vendor");
+        let manifest = AkuaManifest::load(ws.path()).expect("manifest");
+        let dep = manifest.dependencies.get("upstream").expect("dep");
+        let commit = "0123456789abcdef0123456789abcdef01234567";
+        let git_digest = format!("{GIT_DIGEST_PREFIX}{commit}");
+
+        upsert_vendor_lock_entry(
+            ws.path(),
+            "upstream",
+            dep,
+            &git_digest,
+            Some(&vendor_digest),
+        )
+        .expect("lock");
+
+        let lock = AkuaLock::load(ws.path()).expect("load lock");
+        let entry = lock.find("upstream").expect("lock entry");
+        assert_eq!(entry.digest, git_digest);
+        assert_eq!(entry.vendor_digest.as_deref(), Some(vendor_digest.as_str()));
+
+        let out = check(ws.path()).expect("check");
+        assert!(!out.drift);
+        let entry = out
+            .entries
+            .iter()
+            .find(|entry| entry.name == "upstream")
+            .expect("check entry");
+        assert_eq!(
+            entry.expected_digest.as_deref(),
+            Some(vendor_digest.as_str())
+        );
+        assert_eq!(entry.actual_digest.as_deref(), Some(vendor_digest.as_str()));
+    }
+
     /// Re-running `vendor add` against an unchanged source produces a
     /// byte-identical lockfile — the lock-write must be idempotent.
     #[test]
@@ -1002,6 +1078,8 @@ local = { path = "./charts/local" }
         use crate::chart_resolver::ResolvedSource;
 
         const TREE_DIGEST: &str = "sha256:deadbeef";
+        const GIT_COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
+        const GIT_DIGEST: &str = "git:0123456789abcdef0123456789abcdef01234567";
 
         fn dep_path(declared: &str) -> Dependency {
             Dependency {
@@ -1058,9 +1136,9 @@ local = { path = "./charts/local" }
         }
 
         #[test]
-        fn git_dep_with_tag_rewrites_digest_to_git_prefix() {
+        fn git_dep_with_tag_uses_resolved_commit_digest() {
             let dep = dep_git("https://github.com/foo/bar", Some("v1.0.0"), None);
-            let (source, digest) = vendor_lock_source(&dep, TREE_DIGEST);
+            let (source, digest) = vendor_lock_source(&dep, GIT_DIGEST);
             match source {
                 ResolvedSource::Git {
                     git,
@@ -1069,11 +1147,11 @@ local = { path = "./charts/local" }
                 } => {
                     assert_eq!(git, "https://github.com/foo/bar");
                     assert_eq!(tag_or_rev, "v1.0.0");
-                    assert_eq!(commit_sha, "deadbeef");
+                    assert_eq!(commit_sha, GIT_COMMIT);
                 }
                 other => panic!("expected ResolvedSource::Git, got {other:?}"),
             }
-            assert_eq!(digest, "git:deadbeef");
+            assert_eq!(digest, GIT_DIGEST);
         }
 
         #[test]
@@ -1096,18 +1174,14 @@ local = { path = "./charts/local" }
             }
         }
 
-        /// The git digest rewrite handles a tree hash that's already
-        /// prefixed (`sha256:abc`) AND one that isn't (`abc`). `hash_dir`
-        /// always returns `sha256:`-prefixed today, but the strip-or-pass
-        /// logic guards against future drift.
         #[test]
-        fn git_dep_strips_existing_sha256_prefix_before_rewriting() {
+        fn git_dep_accepts_raw_or_prefixed_commit_digest() {
             let dep = dep_git("https://github.com/foo/bar", Some("v1"), None);
-            let (_, digest) = vendor_lock_source(&dep, "sha256:abc");
-            assert_eq!(digest, "git:abc");
+            let (_, digest) = vendor_lock_source(&dep, GIT_DIGEST);
+            assert_eq!(digest, GIT_DIGEST);
 
-            let (_, digest_unprefixed) = vendor_lock_source(&dep, "abc");
-            assert_eq!(digest_unprefixed, "git:abc");
+            let (_, digest_unprefixed) = vendor_lock_source(&dep, GIT_COMMIT);
+            assert_eq!(digest_unprefixed, GIT_DIGEST);
         }
     }
 

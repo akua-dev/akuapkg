@@ -950,6 +950,7 @@ pub fn upsert_locked_from_source(
         version,
         source: source_str,
         digest: digest.to_string(),
+        vendor_digest: carry.and_then(|p| p.vendor_digest.clone()),
         signature: carry.and_then(|p| p.signature.clone()),
         attestation: carry.and_then(|p| p.attestation.clone()),
         dependencies: carry.map(|p| p.dependencies.clone()).unwrap_or_default(),
@@ -1735,6 +1736,7 @@ alpha = { path = "./charts/alpha" }
             version: "local".to_string(),
             source: "path+file://./charts/nginx".to_string(),
             digest: live_digest.clone(),
+            vendor_digest: None,
             signature: Some("cosign:sigstore:prior-publish".to_string()),
             attestation: Some("slsa:prior".to_string()),
             dependencies: vec!["transitive@1.0.0".to_string()],
@@ -1774,6 +1776,7 @@ alpha = { path = "./charts/alpha" }
             version: "local".to_string(),
             source: "path+file://./charts/nginx".to_string(),
             digest: "sha256:0000".to_string(), // stale — won't match live
+            vendor_digest: Some("sha256:vendor-prior".to_string()),
             signature: Some("cosign:sigstore:prior-publish".to_string()),
             attestation: Some("slsa:prior".to_string()),
             dependencies: vec!["transitive@1.0.0".to_string()],
@@ -1792,6 +1795,7 @@ alpha = { path = "./charts/alpha" }
         assert_eq!(entry.attestation, None);
         assert!(entry.dependencies.is_empty());
         assert_eq!(entry.yanked, None);
+        assert_eq!(entry.vendor_digest, None);
         assert_eq!(entry.kyverno_source_digest, None);
         assert_eq!(entry.converter_version, None);
     }

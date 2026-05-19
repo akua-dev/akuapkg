@@ -146,7 +146,8 @@ signature = "cosign:sigstore:bitnamicharts"
 | `name` | yes | matches the `[dependencies]` key in `akua.toml` |
 | `version` | yes | exact resolved semver (not a range) |
 | `source` | yes | full source ref: `oci://…`, `git+https://…`, or `path+file://…` |
-| `digest` | yes | content-addressable hash: `sha256:` for OCI; sha256 over tarball for git |
+| `digest` | yes | content-addressable source hash: `sha256:` for OCI/path deps; `git:<commit-sha>` for git deps |
+| `vendor_digest` | no | `sha256:` hash of the vendored on-disk tree when it differs from `digest`; used by `akua vendor check` for git deps without losing the commit pin |
 | `signature` | conditional | cosign signature. Keyless: `cosign:sigstore:<issuer>`. Keyed: `cosign:key:<identity>`. Required unless `[package].strictSigning = false` in `akua.toml` |
 | `dependencies` | no | `["name@version", …]` — transitive edges for graph walks |
 | `attestation` | no | SLSA attestation digest; present when the dep's author publishes one alongside |
@@ -197,7 +198,7 @@ Updates to the highest allowed version per `akua.toml` constraints; rewrites the
 
 ### `akua vendor` (optional)
 
-Materializes a dependency's bytes into `.akua/vendor/<name>/` and pins the tree digest in `akua.lock`. The resolver prefers the vendored copy across all dep kinds (`path` / `oci` / `git`), so the canonical source can be deleted post-vendor and `akua render` still succeeds offline. Required for air-gapped builds, optional otherwise.
+Materializes a dependency's bytes into `.akua/vendor/<name>/` and pins the source digest in `akua.lock`. The resolver prefers the vendored copy across all dep kinds (`path` / `oci` / `git`), so the canonical source can be deleted post-vendor and `akua render` still succeeds offline. For git deps, `digest` stays `git:<commit-sha>` and `vendor_digest` stores the vendored tree hash for local drift checks. Required for air-gapped builds, optional otherwise.
 
 **Bytes-tied lockfile metadata.** Cosign signatures, SLSA attestations, transitive dependency lists, `yanked`, and Kyverno-converter fields all bind to a specific digest. When a re-vendor or version bump produces a new digest, those fields are dropped on upsert rather than written as `(digest=B, sig=sig(A))` entries that no consumer can verify. The `source` / `version` / `digest` triple is always rewritten; everything else is conditional on `prior.digest == new.digest`.
 

@@ -51,9 +51,16 @@ pub struct LockedPackage {
     /// Full source ref: `oci://…`, `git+https://…`, or `path+file://…`.
     pub source: String,
 
-    /// Content-addressable hash: `sha256:` for OCI; sha256 over tarball
-    /// for git.
+    /// Content-addressable source hash: `sha256:` for OCI/path deps;
+    /// `git:<commit-sha>` for git deps.
     pub digest: String,
+
+    /// Hash of the vendored on-disk tree, when different from
+    /// [`digest`](Self::digest). Git deps use their commit SHA as the
+    /// source digest, but `vendor check` still needs the tree hash to
+    /// detect local drift without contacting the remote.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vendor_digest: Option<String>,
 
     /// Cosign signature. Keyless: `cosign:sigstore:<issuer>`. Keyed:
     /// `cosign:key:<identity>`. May be absent only when the consuming
@@ -535,6 +542,7 @@ digest  = "md5:deadbeef"
             version: "1.0".to_string(),
             source: "oci://b".to_string(),
             digest: "sha256:00".to_string(),
+            vendor_digest: None,
             signature: None,
             dependencies: vec![],
             attestation: None,
@@ -548,6 +556,7 @@ digest  = "md5:deadbeef"
             version: "2.0".to_string(),
             source: "oci://a".to_string(),
             digest: "sha256:11".to_string(),
+            vendor_digest: None,
             signature: None,
             dependencies: vec![],
             attestation: None,
@@ -561,6 +570,7 @@ digest  = "md5:deadbeef"
             version: "1.0".to_string(),
             source: "oci://a".to_string(),
             digest: "sha256:22".to_string(),
+            vendor_digest: None,
             signature: None,
             dependencies: vec![],
             attestation: None,
