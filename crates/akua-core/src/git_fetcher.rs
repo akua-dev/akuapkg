@@ -83,6 +83,9 @@ pub enum GitFetchError {
     #[error("cloning `{url}`: {detail}")]
     Clone { url: String, detail: String },
 
+    #[error("refreshing cached git repo `{url}`: {detail}")]
+    Refresh { url: String, detail: String },
+
     #[error("ref `{ref_name}` not found in `{url}`")]
     RefNotFound { url: String, ref_name: String },
 
@@ -135,17 +138,30 @@ pub fn fetch(
     // shape the on-disk cache directory.
     let bare_path = bare_repo_path(cache_root, &host_auth::canonicalize_url(url));
 
-    // Fast path: bare repo already cloned → just resolve the ref.
-    // Slow path: clone fresh.
-    let bare = if bare_path.join("HEAD").is_file() {
-        open_bare(&bare_path, url)?
+    // Fast path: bare repo already cloned → resolve the ref locally.
+    // If the requested ref/object isn't present, refresh the cached
+    // bare repo once and retry. This keeps force-pushed locked refs
+    // safe (the later expected-commit check still applies) while
+    // recovering from stale caches that predate a commit.
+    let (bare, refreshed) = if bare_path.join("HEAD").is_file() {
+        (open_bare(&bare_path, url)?, false)
     } else {
-        clone_bare(url, &bare_path, auth)?
+        (clone_bare(url, &bare_path, auth)?, true)
     };
 
-    let commit = resolve_ref(&bare, url, ref_spec)?;
+    let mut commit = match resolve_ref(&bare, url, ref_spec) {
+        Err(GitFetchError::RefNotFound { .. }) if !refreshed => {
+            refresh_bare(&bare, url, auth)?;
+            resolve_ref(&bare, url, ref_spec)?
+        }
+        other => other?,
+    };
 
     if let Some(expected) = expected_commit {
+        if commit != expected && !refreshed {
+            refresh_bare(&bare, url, auth)?;
+            commit = resolve_ref(&bare, url, ref_spec)?;
+        }
         if commit != expected {
             return Err(GitFetchError::LockCommitMismatch {
                 url: url.to_string(),
@@ -218,41 +234,7 @@ fn clone_bare(
         // re-cloning the map per connection / per 401 retry.
         let map: std::sync::Arc<HostAuthMap> = std::sync::Arc::new(map.clone());
         prep = prep.configure_connection(move |conn| {
-            let map = std::sync::Arc::clone(&map);
-            // The closure's signature is fixed by gix's `set_credentials` API,
-            // so the 152-byte `gix::credentials::protocol::Error` Err variant
-            // can't be boxed at our level. Scoped allow rather than crate-wide.
-            #[allow(clippy::result_large_err)]
-            conn.set_credentials(move |action| {
-                let gix::credentials::helper::Action::Get(ctx) = action else {
-                    return Ok(None);
-                };
-                // gix's HTTP transport populates `ctx.url`; the
-                // {host, path} fallback covers the external
-                // `git-credential` helper protocol, which akua
-                // doesn't invoke. Defensive but cheap.
-                let lookup_key: String = if let Some(u) = ctx.url.as_deref() {
-                    String::from_utf8_lossy(u).into_owned()
-                } else {
-                    let Some(h) = ctx.host.as_deref() else {
-                        return Ok(None);
-                    };
-                    match ctx.path.as_deref() {
-                        Some(p) => format!("https://{h}{}", String::from_utf8_lossy(p)),
-                        None => format!("https://{h}"),
-                    }
-                };
-                let Some(creds) = host_auth::lookup(&map, &lookup_key) else {
-                    return Ok(None);
-                };
-                Ok(Some(gix::credentials::protocol::Outcome {
-                    identity: gix::sec::identity::Account {
-                        username: creds.username.clone(),
-                        password: creds.password.clone(),
-                    },
-                    next: gix::credentials::protocol::Context::default().into(),
-                }))
-            });
+            set_connection_credentials(conn, std::sync::Arc::clone(&map));
             Ok(())
         });
     }
@@ -263,6 +245,99 @@ fn clone_bare(
             detail: e.to_string(),
         })?;
     Ok(repo)
+}
+
+fn refresh_bare(
+    repo: &gix::Repository,
+    url: &str,
+    auth: Option<&HostAuthMap>,
+) -> Result<(), GitFetchError> {
+    let remote = repo
+        .remote_at(url)
+        .map_err(|e| GitFetchError::Refresh {
+            url: url.to_string(),
+            detail: e.to_string(),
+        })?
+        .with_refspecs(
+            [
+                "+refs/heads/*:refs/remotes/origin/*",
+                "+refs/tags/*:refs/tags/*",
+            ],
+            gix::remote::Direction::Fetch,
+        )
+        .map_err(|e| GitFetchError::Refresh {
+            url: url.to_string(),
+            detail: e.to_string(),
+        })?
+        .with_fetch_tags(gix::remote::fetch::Tags::None);
+    let mut conn =
+        remote
+            .connect(gix::remote::Direction::Fetch)
+            .map_err(|e| GitFetchError::Refresh {
+                url: url.to_string(),
+                detail: e.to_string(),
+            })?;
+    if let Some(map) = auth {
+        set_connection_credentials(&mut conn, std::sync::Arc::new(map.clone()));
+    }
+    conn.prepare_fetch(
+        gix::progress::Discard,
+        gix::remote::ref_map::Options::default(),
+    )
+    .map_err(|e| GitFetchError::Refresh {
+        url: url.to_string(),
+        detail: e.to_string(),
+    })?
+    .receive(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
+    .map_err(|e| GitFetchError::Refresh {
+        url: url.to_string(),
+        detail: e.to_string(),
+    })?;
+    Ok(())
+}
+
+#[allow(clippy::result_large_err)]
+fn set_connection_credentials<'a, T>(
+    conn: &mut gix::remote::Connection<'a, '_, T>,
+    map: std::sync::Arc<HostAuthMap>,
+) where
+    T: gix::protocol::transport::client::Transport,
+{
+    conn.set_credentials(move |action| credentials_for_action(action, &map));
+}
+
+#[allow(clippy::result_large_err)]
+fn credentials_for_action(
+    action: gix::credentials::helper::Action,
+    map: &HostAuthMap,
+) -> gix::credentials::protocol::Result {
+    let gix::credentials::helper::Action::Get(ctx) = action else {
+        return Ok(None);
+    };
+    // gix's HTTP transport populates `ctx.url`; the {host, path}
+    // fallback covers the external `git-credential` helper protocol,
+    // which akua doesn't invoke. Defensive but cheap.
+    let lookup_key: String = if let Some(u) = ctx.url.as_deref() {
+        String::from_utf8_lossy(u).into_owned()
+    } else {
+        let Some(h) = ctx.host.as_deref() else {
+            return Ok(None);
+        };
+        match ctx.path.as_deref() {
+            Some(p) => format!("https://{h}{}", String::from_utf8_lossy(p)),
+            None => format!("https://{h}"),
+        }
+    };
+    let Some(creds) = host_auth::lookup(map, &lookup_key) else {
+        return Ok(None);
+    };
+    Ok(Some(gix::credentials::protocol::Outcome {
+        identity: gix::sec::identity::Account {
+            username: creds.username.clone(),
+            password: creds.password.clone(),
+        },
+        next: gix::credentials::protocol::Context::default().into(),
+    }))
 }
 
 fn open_bare(path: &Path, url: &str) -> Result<gix::Repository, GitFetchError> {
@@ -432,7 +507,16 @@ mod tests {
     /// (which would violate CLAUDE.md's no-shell-out anyway).
     fn make_bare_repo(path: &Path, files: &[(&str, &str)], tag: Option<&str>) -> String {
         let repo = gix::init_bare(path).expect("init bare");
+        commit_to_bare_repo(&repo, files, None, "initial commit", tag)
+    }
 
+    fn commit_to_bare_repo(
+        repo: &gix::Repository,
+        files: &[(&str, &str)],
+        parent: Option<&str>,
+        message: &str,
+        tag: Option<&str>,
+    ) -> String {
         // Build a tree from the files.
         let mut tree = gix::objs::Tree::empty();
         for (name, content) in files {
@@ -457,13 +541,16 @@ mod tests {
             email: "test@akua.dev".into(),
             time: gix::date::Time::new(1700000000, 0),
         };
+        let parents = parent
+            .map(|sha| vec![gix::ObjectId::from_hex(sha.as_bytes()).expect("parent hex")])
+            .unwrap_or_default();
         let commit = gix::objs::Commit {
             tree: tree_id,
-            parents: Default::default(),
+            parents: parents.into(),
             author: sig.into(),
             committer: sig.into(),
             encoding: None,
-            message: "initial commit".into(),
+            message: message.into(),
             extra_headers: Vec::new(),
         };
         let commit_id = repo.write_object(&commit).expect("write commit");
@@ -495,6 +582,16 @@ mod tests {
         }
 
         commit_id.to_string()
+    }
+
+    fn append_bare_commit(
+        path: &Path,
+        parent: &str,
+        files: &[(&str, &str)],
+        tag: Option<&str>,
+    ) -> String {
+        let repo = gix::open(path).expect("open bare");
+        commit_to_bare_repo(&repo, files, Some(parent), "update", tag)
     }
 
     fn file_url(path: &Path) -> String {
@@ -573,6 +670,81 @@ mod tests {
         let a = fetch(&url, &RefSpec::Tag("v1.0".into()), &cache, None, None).expect("first");
         let b = fetch(&url, &RefSpec::Tag("v1.0".into()), &cache, None, None).expect("second");
         assert_eq!(a.chart_dir, b.chart_dir);
+    }
+
+    #[test]
+    fn cached_bare_repo_refreshes_when_requested_rev_is_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let origin = tmp.path().join("origin.git");
+        let first_commit = make_bare_repo(
+            &origin,
+            &[("Chart.yaml", "apiVersion: v2\nname: demo\nversion: 0.1.0\n")],
+            None,
+        );
+        let cache = tmp.path().join("cache");
+        let url = file_url(&origin);
+
+        fetch(
+            &url,
+            &RefSpec::Rev(first_commit.clone()),
+            &cache,
+            None,
+            None,
+        )
+        .expect("first fetch");
+
+        let second_commit = append_bare_commit(
+            &origin,
+            &first_commit,
+            &[("Chart.yaml", "apiVersion: v2\nname: demo\nversion: 0.2.0\n")],
+            None,
+        );
+
+        let fetched = fetch(
+            &url,
+            &RefSpec::Rev(second_commit.clone()),
+            &cache,
+            None,
+            None,
+        )
+        .expect("second");
+        assert_eq!(fetched.commit_sha, second_commit);
+        let chart = std::fs::read_to_string(fetched.chart_dir.join("Chart.yaml")).unwrap();
+        assert!(chart.contains("version: 0.2.0"));
+    }
+
+    #[test]
+    fn cached_bare_repo_refreshes_when_locked_tag_moved() {
+        let tmp = tempfile::tempdir().unwrap();
+        let origin = tmp.path().join("origin.git");
+        let first_commit = make_bare_repo(
+            &origin,
+            &[("Chart.yaml", "apiVersion: v2\nname: demo\nversion: 0.1.0\n")],
+            Some("v1.0"),
+        );
+        let cache = tmp.path().join("cache");
+        let url = file_url(&origin);
+
+        fetch(&url, &RefSpec::Tag("v1.0".into()), &cache, None, None).expect("first fetch");
+
+        let second_commit = append_bare_commit(
+            &origin,
+            &first_commit,
+            &[("Chart.yaml", "apiVersion: v2\nname: demo\nversion: 0.2.0\n")],
+            Some("v1.0"),
+        );
+
+        let fetched = fetch(
+            &url,
+            &RefSpec::Tag("v1.0".into()),
+            &cache,
+            Some(&second_commit),
+            None,
+        )
+        .expect("locked tag fetch");
+        assert_eq!(fetched.commit_sha, second_commit);
+        let chart = std::fs::read_to_string(fetched.chart_dir.join("Chart.yaml")).unwrap();
+        assert!(chart.contains("version: 0.2.0"));
     }
 
     #[test]

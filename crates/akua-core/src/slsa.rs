@@ -236,6 +236,7 @@ mod tests {
             version: "local".to_string(),
             source: "path+file://./vendor/nginx".to_string(),
             digest: "sha256:abc123".to_string(),
+            vendor_digest: None,
             signature: None,
             dependencies: vec![],
             attestation: None,
