@@ -108,10 +108,11 @@ kustomize-engine-wasm = { path = "../kustomize-engine-wasm", optional = true, de
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"], optional = true }
 flate2 = { version = "1", optional = true }
 tar = { version = "0.4", optional = true }
-# `blocking-http-transport-reqwest-rust-tls` reuses the reqwest stack
-# we already pull in for oci-fetch; `max-performance-safe` keeps
-# compile time reasonable (skips `zlib-ng` optional perf wins).
-gix = { version = "0.66", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "max-performance-safe", "worktree-mutation"], optional = true }
+# `blocking-http-transport-curl` makes gitoxide apply Git-compatible TLS
+# settings such as `GIT_SSL_CAINFO`, `GIT_SSL_NO_VERIFY`, and
+# `http.sslCAInfo`; the reqwest Rustls backend models those options but does
+# not apply them to the TLS client in gix 0.66.
+gix = { version = "0.66", default-features = false, features = ["blocking-http-transport-curl", "max-performance-safe", "worktree-mutation"], optional = true }
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std", "pem", "pkcs8"], optional = true }
 pkcs8 = { version = "0.10", default-features = false, features = ["pem", "pkcs5", "encryption", "alloc"], optional = true }
 pem = { version = "3", optional = true }
