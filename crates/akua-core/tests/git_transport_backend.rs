@@ -23,13 +23,28 @@ fn git_fetch_uses_curl_transport_for_tls_configuration() {
     assert!(
         features
             .iter()
-            .any(|feature| feature.as_str() == Some("blocking-http-transport-curl")),
-        "gix HTTP transport must use curl so gitoxide applies GIT_SSL_CAINFO/http.sslCAInfo"
+            .any(|feature| feature.as_str() == Some("blocking-http-transport-curl-rustls")),
+        "gix HTTP transport must use curl-rustls so gitoxide applies GIT_SSL_CAINFO/http.sslCAInfo without target OpenSSL dependencies"
     );
     assert!(
         features
             .iter()
             .all(|feature| feature.as_str() != Some("blocking-http-transport-reqwest-rust-tls")),
         "reqwest-rust-tls transport does not honor the E2E git TLS trust path"
+    );
+
+    let git_fetch_features = manifest
+        .get("features")
+        .expect("features table")
+        .get("git-fetch")
+        .expect("git-fetch feature")
+        .as_array()
+        .expect("git-fetch feature list");
+
+    assert!(
+        git_fetch_features
+            .iter()
+            .any(|feature| feature.as_str() == Some("curl/static-ssl")),
+        "git-fetch must enable vendored OpenSSL for curl so release cross-builds do not depend on target system OpenSSL packages"
     );
 }
