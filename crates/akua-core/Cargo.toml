@@ -56,7 +56,7 @@ oci-fetch = ["dep:reqwest", "dep:flate2", "dep:tar"]
 # and the feature is opt-in for ops who actually use git charts.
 # Public HTTPS + file:// URLs supported; ssh:// + private-repo auth
 # are follow-ups.
-git-fetch = ["dep:gix"]
+git-fetch = ["dep:gix", "dep:curl", "curl/static-ssl"]
 # Cosign keyed signature verification. Pairs with oci-fetch: when a
 # public key is configured, the pull path also pulls the chart's
 # cosign `.sig` sidecar and verifies the signature before handing
@@ -108,11 +108,14 @@ kustomize-engine-wasm = { path = "../kustomize-engine-wasm", optional = true, de
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"], optional = true }
 flate2 = { version = "1", optional = true }
 tar = { version = "0.4", optional = true }
-# `blocking-http-transport-curl` makes gitoxide apply Git-compatible TLS
+# `blocking-http-transport-curl-rustls` makes gitoxide apply Git-compatible TLS
 # settings such as `GIT_SSL_CAINFO`, `GIT_SSL_NO_VERIFY`, and
 # `http.sslCAInfo`; the reqwest Rustls backend models those options but does
-# not apply them to the TLS client in gix 0.66.
-gix = { version = "0.66", default-features = false, features = ["blocking-http-transport-curl", "max-performance-safe", "worktree-mutation"], optional = true }
+# not apply them to the TLS client in gix 0.66. gix-transport enables curl's
+# default OpenSSL feature, so `git-fetch` also enables `curl/static-ssl` to make
+# release builds use vendored OpenSSL instead of target system OpenSSL packages.
+gix = { version = "0.66", default-features = false, features = ["blocking-http-transport-curl-rustls", "max-performance-safe", "worktree-mutation"], optional = true }
+curl = { version = "0.4", optional = true, features = ["static-ssl"] }
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std", "pem", "pkcs8"], optional = true }
 pkcs8 = { version = "0.10", default-features = false, features = ["pem", "pkcs5", "encryption", "alloc"], optional = true }
 pem = { version = "3", optional = true }
