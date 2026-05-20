@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Pre-push hook — `task fmt:check` + `task lint` before letting code
-# leave the laptop. Skip with `git push --no-verify` if you must.
+# Pre-push hook — keep the default gate non-mutating. The full local CI gate
+# builds sandbox artifacts and may clone/patch third-party engine sources, so
+# it is opt-in instead of running on every push.
 #
 # Install: `task hooks:install` (sets `core.hooksPath = .githooks`).
 
@@ -11,8 +12,17 @@ if ! command -v task >/dev/null 2>&1; then
   exit 1
 fi
 
+if [[ "${PRE_PUSH_FULL:-}" == "1" ]]; then
+  echo "pre-push: full local gate requested via PRE_PUSH_FULL=1"
+  task ci
+  exit 0
+fi
+
 echo "pre-push: fmt:check"
 task fmt:check
 
-echo "pre-push: lint"
-task lint
+cat >&2 <<'EOF'
+pre-push: skipped full local gate by default.
+pre-push: run `task ci` before merge/release, or push with
+pre-push: `PRE_PUSH_FULL=1 git push` to run it from this hook.
+EOF

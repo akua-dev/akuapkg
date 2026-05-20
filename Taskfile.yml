@@ -49,6 +49,11 @@ tasks:
       - git config core.hooksPath .githooks
       - echo "git hooks → .githooks (run \`git config --unset core.hooksPath\` to disable)"
 
+  hooks:check-pre-push:
+    desc: Check that pre-push stays a lightweight non-mutating default gate
+    cmds:
+      - bash scripts/check-pre-push-hook.sh
+
   fmt:
     desc: Format Rust code
     cmds:
@@ -92,6 +97,7 @@ tasks:
       - fmt:check
     cmds:
       - task: release:check-workflows
+      - task: hooks:check-pre-push
       - task: lint
       - task: test
 
