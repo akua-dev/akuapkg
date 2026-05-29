@@ -1,5 +1,5 @@
 //! Inventory + housekeeping for the content-addressed caches that
-//! `oci_fetcher` + `git_fetcher` populate.
+//! `oci_fetcher`, `git_fetcher`, and `helm_repo_fetcher` populate.
 //!
 //! Layouts on disk:
 //!
@@ -10,6 +10,9 @@
 //!   clones, one per remote.
 //! - `$XDG_CACHE_HOME/akua/git/checkouts/<commit-sha>/` — worktree
 //!   per commit.
+//! - `$XDG_CACHE_HOME/akua/helm/<hex>/<chart-name>/` — unpacked Helm
+//!   chart tarball, content-addressed by the `.tgz` sha256 digest.
+//!   Populated by `helm_repo_fetcher::extract_and_hash`.
 //!
 //! Ops on ephemeral CI runners want: how big is it? What's in it?
 //! Can I reclaim disk? This module answers those three questions
@@ -24,13 +27,14 @@ use serde::Serialize;
 /// enough for typical cache sizes.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct CacheEntry {
-    /// `"oci-blob"`, `"git-repo"`, or `"git-checkout"`.
+    /// `"oci-blob"`, `"git-repo"`, `"git-checkout"`, or `"helm-chart"`.
     pub kind: &'static str,
     /// Content-addressed identifier:
     /// - OCI blob → `"sha256:<hex>"`
     /// - Git repo → sanitized URL directory name (stable across
     ///   invocations)
     /// - Git checkout → `"git:<40-hex>"`
+    /// - Helm chart → `"helm:<hex>"` (bare sha256 hex of the `.tgz`)
     pub id: String,
     pub path: PathBuf,
     pub size_bytes: u64,
@@ -42,6 +46,7 @@ pub struct CacheEntry {
 pub struct CacheInventory {
     pub oci_root: PathBuf,
     pub git_root: PathBuf,
+    pub helm_root: PathBuf,
     pub entries: Vec<CacheEntry>,
     pub total_bytes: u64,
 }
@@ -62,19 +67,37 @@ pub enum CacheError {
 pub fn list() -> Result<CacheInventory, CacheError> {
     let oci_root = default_cache_root("oci");
     let git_root = default_cache_root("git");
-    list_at(&oci_root, &git_root)
+    let helm_root = default_cache_root("helm");
+    list_at_roots(&oci_root, &git_root, &helm_root)
 }
 
 /// Same as [`list`] but with explicit roots — used by tests.
+///
+/// Prefer [`list_at_roots`] for new callers; this two-arg form is kept
+/// for backwards compatibility and delegates to the three-arg form using
+/// a temp-scoped helm root that points nowhere useful — callers that care
+/// about helm entries should pass the helm root explicitly.
 pub fn list_at(oci_root: &Path, git_root: &Path) -> Result<CacheInventory, CacheError> {
+    let helm_root = default_cache_root("helm");
+    list_at_roots(oci_root, git_root, &helm_root)
+}
+
+/// Same as [`list`] but with all three explicit roots — used by tests.
+pub fn list_at_roots(
+    oci_root: &Path,
+    git_root: &Path,
+    helm_root: &Path,
+) -> Result<CacheInventory, CacheError> {
     let mut entries = Vec::new();
     collect_oci(oci_root, &mut entries)?;
     collect_git(git_root, &mut entries)?;
+    collect_helm(helm_root, &mut entries)?;
     entries.sort_by(|a, b| a.path.cmp(&b.path));
     let total_bytes = entries.iter().map(|e| e.size_bytes).sum();
     Ok(CacheInventory {
         oci_root: oci_root.to_path_buf(),
         git_root: git_root.to_path_buf(),
+        helm_root: helm_root.to_path_buf(),
         entries,
         total_bytes,
     })
@@ -87,19 +110,32 @@ pub struct CacheClearReport {
     pub freed_bytes: u64,
 }
 
-/// Wipe caches. `ClearScope` picks OCI, git, or both. Safe on
+/// Wipe caches. `ClearScope` picks OCI, git, helm, or all. Safe on
 /// absent roots — removes nothing and reports zeros.
 pub fn clear(scope: ClearScope) -> Result<CacheClearReport, CacheError> {
     let oci_root = default_cache_root("oci");
     let git_root = default_cache_root("git");
-    clear_at(scope, &oci_root, &git_root)
+    let helm_root = default_cache_root("helm");
+    clear_at_roots(scope, &oci_root, &git_root, &helm_root)
 }
 
-/// Same as [`clear`] but with explicit roots — used by tests.
+/// Same as [`clear`] but with explicit oci + git roots — used by tests
+/// that predate helm support. Helm root is taken from the default.
 pub fn clear_at(
     scope: ClearScope,
     oci_root: &Path,
     git_root: &Path,
+) -> Result<CacheClearReport, CacheError> {
+    let helm_root = default_cache_root("helm");
+    clear_at_roots(scope, oci_root, git_root, &helm_root)
+}
+
+/// Same as [`clear`] but with all three explicit roots — used by tests.
+pub fn clear_at_roots(
+    scope: ClearScope,
+    oci_root: &Path,
+    git_root: &Path,
+    helm_root: &Path,
 ) -> Result<CacheClearReport, CacheError> {
     let mut report = CacheClearReport {
         removed: 0,
@@ -114,6 +150,11 @@ pub fn clear_at(
         let mut entries = Vec::new();
         collect_git(git_root, &mut entries)?;
         reap(git_root, &entries, &mut report)?;
+    }
+    if scope.includes_helm() {
+        let mut entries = Vec::new();
+        collect_helm(helm_root, &mut entries)?;
+        reap(helm_root, &entries, &mut report)?;
     }
     Ok(report)
 }
@@ -142,25 +183,31 @@ fn reap(
 /// Which cache branches to reap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClearScope {
-    Both,
+    /// Wipe all three caches (OCI + git + helm).
+    All,
     OciOnly,
     GitOnly,
+    HelmOnly,
 }
 
 impl ClearScope {
-    fn includes_oci(self) -> bool {
-        matches!(self, ClearScope::Both | ClearScope::OciOnly)
+    pub fn includes_oci(self) -> bool {
+        matches!(self, ClearScope::All | ClearScope::OciOnly)
     }
-    fn includes_git(self) -> bool {
-        matches!(self, ClearScope::Both | ClearScope::GitOnly)
+    pub fn includes_git(self) -> bool {
+        matches!(self, ClearScope::All | ClearScope::GitOnly)
+    }
+    pub fn includes_helm(self) -> bool {
+        matches!(self, ClearScope::All | ClearScope::HelmOnly)
     }
 
     /// Stable JSON label. Pinned by consumers.
     pub fn as_str(self) -> &'static str {
         match self {
-            ClearScope::Both => "both",
+            ClearScope::All => "all",
             ClearScope::OciOnly => "oci",
             ClearScope::GitOnly => "git",
+            ClearScope::HelmOnly => "helm",
         }
     }
 }
@@ -260,6 +307,38 @@ fn collect_git_subdir(
     Ok(())
 }
 
+// --- Helm inventory -------------------------------------------------------
+
+/// Helm cache layout (written by `helm_repo_fetcher::extract_and_hash`):
+/// `<root>/<hex>/<chart-name>/`. One entry per `<hex>` directory;
+/// the chart-name subdirectory is part of the path but the identifier
+/// is the bare hex (the sha256 of the pulled `.tgz`).
+fn collect_helm(root: &Path, out: &mut Vec<CacheEntry>) -> Result<(), CacheError> {
+    let Ok(rd) = std::fs::read_dir(root) else {
+        return Ok(());
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let Some(hex) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let size_bytes = dir_size(&path).map_err(|source| CacheError::Io {
+            path: path.clone(),
+            source,
+        })?;
+        out.push(CacheEntry {
+            kind: "helm-chart",
+            id: format!("helm:{hex}"),
+            path,
+            size_bytes,
+        });
+    }
+    Ok(())
+}
+
 // --- Size walk ------------------------------------------------------------
 
 /// Recursive sum of file sizes under `dir`. Symlinks skipped (same
@@ -307,7 +386,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let oci = tmp.path().join("oci");
         let git = tmp.path().join("git");
-        let inv = list_at(&oci, &git).unwrap();
+        let helm = tmp.path().join("helm");
+        let inv = list_at_roots(&oci, &git, &helm).unwrap();
         assert!(inv.entries.is_empty());
         assert_eq!(inv.total_bytes, 0);
     }
@@ -317,6 +397,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let oci = tmp.path().join("oci");
         let git = tmp.path().join("git");
+        let helm = tmp.path().join("helm");
         write(
             &oci.join("sha256/abc123/nginx/Chart.yaml"),
             b"apiVersion: v2\n",
@@ -324,7 +405,7 @@ mod tests {
         write(&oci.join("sha256/abc123/nginx/values.yaml"), b"foo: bar\n");
         write(&oci.join("sha256/def456/other/file"), b"x");
 
-        let inv = list_at(&oci, &git).unwrap();
+        let inv = list_at_roots(&oci, &git, &helm).unwrap();
         assert_eq!(inv.entries.len(), 2);
         let abc = inv
             .entries
@@ -344,10 +425,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let oci = tmp.path().join("oci");
         let git = tmp.path().join("git");
+        let helm = tmp.path().join("helm");
         write(&git.join("repos/github.com_foo_bar.git/HEAD"), b"ref\n");
         write(&git.join("checkouts/deadbeef/Chart.yaml"), b"x\n");
 
-        let inv = list_at(&oci, &git).unwrap();
+        let inv = list_at_roots(&oci, &git, &helm).unwrap();
         assert!(inv.entries.iter().any(|e| e.kind == "git-repo"));
         assert!(inv
             .entries
@@ -360,10 +442,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let oci = tmp.path().join("oci");
         let git = tmp.path().join("git");
+        let helm = tmp.path().join("helm");
         write(&oci.join("sha256/abc/chart/x"), b"123456");
         write(&git.join("checkouts/abc/x"), b"789");
 
-        let report = clear_at(ClearScope::Both, &oci, &git).unwrap();
+        let report = clear_at_roots(ClearScope::All, &oci, &git, &helm).unwrap();
         assert_eq!(report.removed, 2);
         assert!(report.freed_bytes > 0);
         assert!(!oci.exists());
@@ -375,10 +458,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let oci = tmp.path().join("oci");
         let git = tmp.path().join("git");
+        let helm = tmp.path().join("helm");
         write(&oci.join("sha256/abc/chart/x"), b"a");
         write(&git.join("checkouts/abc/x"), b"b");
 
-        clear_at(ClearScope::OciOnly, &oci, &git).unwrap();
+        clear_at_roots(ClearScope::OciOnly, &oci, &git, &helm).unwrap();
         assert!(!oci.exists());
         assert!(git.exists());
     }
@@ -388,7 +472,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let oci = tmp.path().join("oci");
         let git = tmp.path().join("git");
-        let report = clear_at(ClearScope::Both, &oci, &git).unwrap();
+        let helm = tmp.path().join("helm");
+        let report = clear_at_roots(ClearScope::All, &oci, &git, &helm).unwrap();
         assert_eq!(report.removed, 0);
         assert_eq!(report.freed_bytes, 0);
     }
@@ -400,5 +485,106 @@ mod tests {
         // the subdir is always the last component.
         let root = default_cache_root("oci");
         assert!(root.ends_with("oci"));
+    }
+
+    // --- helm tests (RED: fail until collect_helm + helm_root are wired) ---
+
+    #[test]
+    fn lists_helm_entries_with_size() {
+        let tmp = tempfile::tempdir().unwrap();
+        let oci = tmp.path().join("oci");
+        let git = tmp.path().join("git");
+        let helm = tmp.path().join("helm");
+        // Mirror the layout produced by extract_and_hash: <helm_root>/<hex>/<chart-name>/Chart.yaml
+        write(
+            &helm.join("abc123def456abc123def456abc123def456abc123def456abc123def456abc1/temporal/Chart.yaml"),
+            b"apiVersion: v2\nname: temporal\nversion: 0.62.0\n",
+        );
+        write(
+            &helm.join("abc123def456abc123def456abc123def456abc123def456abc123def456abc1/temporal/values.yaml"),
+            b"global: {}\n",
+        );
+
+        let inv = list_at_roots(&oci, &git, &helm).unwrap();
+        let helm_entry = inv
+            .entries
+            .iter()
+            .find(|e| e.kind == "helm-chart")
+            .expect("helm-chart entry must appear in inventory");
+        assert_eq!(
+            helm_entry.id,
+            "helm:abc123def456abc123def456abc123def456abc123def456abc123def456abc1"
+        );
+        assert!(helm_entry.size_bytes > 0, "size must be nonzero");
+        assert_eq!(
+            inv.total_bytes,
+            inv.entries.iter().map(|e| e.size_bytes).sum::<u64>()
+        );
+    }
+
+    #[test]
+    fn helm_root_present_in_inventory_struct() {
+        let tmp = tempfile::tempdir().unwrap();
+        let oci = tmp.path().join("oci");
+        let git = tmp.path().join("git");
+        let helm = tmp.path().join("helm");
+
+        let inv = list_at_roots(&oci, &git, &helm).unwrap();
+        assert_eq!(inv.helm_root, helm);
+    }
+
+    #[test]
+    fn clear_helm_only_leaves_oci_and_git_intact() {
+        let tmp = tempfile::tempdir().unwrap();
+        let oci = tmp.path().join("oci");
+        let git = tmp.path().join("git");
+        let helm = tmp.path().join("helm");
+        write(&oci.join("sha256/abc/chart/x"), b"a");
+        write(&git.join("checkouts/abc/x"), b"b");
+        write(&helm.join("deadbeef/redis/Chart.yaml"), b"c");
+
+        clear_at_roots(ClearScope::HelmOnly, &oci, &git, &helm).unwrap();
+        assert!(!helm.exists(), "helm cache must be removed");
+        assert!(oci.exists(), "oci cache must remain");
+        assert!(git.exists(), "git cache must remain");
+    }
+
+    #[test]
+    fn clear_all_includes_helm() {
+        let tmp = tempfile::tempdir().unwrap();
+        let oci = tmp.path().join("oci");
+        let git = tmp.path().join("git");
+        let helm = tmp.path().join("helm");
+        write(&oci.join("sha256/abc/chart/x"), b"123456");
+        write(&git.join("checkouts/abc/x"), b"789");
+        write(&helm.join("deadbeef/redis/Chart.yaml"), b"xyz");
+
+        let report = clear_at_roots(ClearScope::All, &oci, &git, &helm).unwrap();
+        // 1 oci-blob + 1 git-checkout + 1 helm-chart = 3 entries reaped
+        assert_eq!(report.removed, 3);
+        assert!(report.freed_bytes > 0);
+        assert!(!oci.exists());
+        assert!(!git.exists());
+        assert!(!helm.exists());
+    }
+
+    #[test]
+    fn list_includes_helm_in_default_list_call_shape() {
+        // list_at (two-arg) is the old interface; the three-arg list_at_roots
+        // is the extended one. Both must include helm in their output.
+        // This test exercises list_at_roots directly (list() calls default roots
+        // which we can't override in parallel tests).
+        let tmp = tempfile::tempdir().unwrap();
+        let oci = tmp.path().join("oci");
+        let git = tmp.path().join("git");
+        let helm = tmp.path().join("helm");
+        write(&helm.join("cafebabe/nginx/Chart.yaml"), b"apiVersion: v2\n");
+
+        let inv = list_at_roots(&oci, &git, &helm).unwrap();
+        assert!(
+            inv.entries.iter().any(|e| e.kind == "helm-chart"),
+            "helm-chart entries must appear"
+        );
+        assert_eq!(inv.helm_root, helm);
     }
 }

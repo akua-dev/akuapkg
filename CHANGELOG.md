@@ -15,6 +15,10 @@ minor bump in the SDK.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`akua cache` now inventories and clears the helm chart cache** (`$XDG_CACHE_HOME/akua/helm`) added with the helm-repo dep source. Previously the helm cache grew unmanaged: `akua cache list` did not show it and `akua cache clear` did not reclaim it. `--helm` scope flag added to `akua cache clear`; `akua cache path` and `akua cache list` now report the helm root alongside oci and git. The default clear (no scope flag) wipes all three caches.
+
 ## [0.8.17] — 2026-05-29
 
 ### Fixed

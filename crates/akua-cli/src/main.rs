@@ -670,14 +670,15 @@ enum VendorSub {
 
 #[derive(Subcommand, Clone, Debug)]
 enum CacheSub {
-    /// Enumerate every OCI blob + git repo/checkout with size.
+    /// Enumerate every OCI blob + git repo/checkout + helm chart with size.
     List {
         #[command(flatten)]
         args: UniversalArgs,
     },
-    /// Wipe the caches. Default clears both; narrow with `--oci` or
-    /// `--git`. No-op on absent caches.
-    #[command(group(ArgGroup::new("cache_scope").args(["oci", "git"])))]
+    /// Wipe the caches. Default clears all three; narrow with `--oci`,
+    /// `--git`, or `--helm`. Flags are mutually exclusive. No-op on absent
+    /// caches.
+    #[command(group(ArgGroup::new("cache_scope").args(["oci", "git", "helm"])))]
     Clear {
         #[command(flatten)]
         args: UniversalArgs,
@@ -689,6 +690,10 @@ enum CacheSub {
         /// Only wipe the git repo + checkout cache.
         #[arg(long)]
         git: bool,
+
+        /// Only wipe the helm chart cache.
+        #[arg(long)]
+        helm: bool,
     },
     /// Print the resolved cache roots.
     Path {
@@ -1250,11 +1255,17 @@ fn run_auth(sub: AuthSub) -> ExitCode {
 fn run_cache(sub: CacheSub) -> ExitCode {
     let (args, action) = match sub {
         CacheSub::List { args } => (args, cache_verb::CacheAction::List),
-        CacheSub::Clear { args, oci, git } => {
-            let scope = match (oci, git) {
-                (true, false) => akua_core::cache_inventory::ClearScope::OciOnly,
-                (false, true) => akua_core::cache_inventory::ClearScope::GitOnly,
-                _ => akua_core::cache_inventory::ClearScope::Both,
+        CacheSub::Clear {
+            args,
+            oci,
+            git,
+            helm,
+        } => {
+            let scope = match (oci, git, helm) {
+                (true, false, false) => akua_core::cache_inventory::ClearScope::OciOnly,
+                (false, true, false) => akua_core::cache_inventory::ClearScope::GitOnly,
+                (false, false, true) => akua_core::cache_inventory::ClearScope::HelmOnly,
+                _ => akua_core::cache_inventory::ClearScope::All,
             };
             (args, cache_verb::CacheAction::Clear { scope })
         }
@@ -1920,10 +1931,26 @@ mod tests {
         let cli = Cli::parse_from(["akua", "cache", "clear", "--oci"]);
         match cli.command {
             Commands::Cache {
-                sub: CacheSub::Clear { oci, git, .. },
+                sub: CacheSub::Clear { oci, git, helm, .. },
             } => {
                 assert!(oci);
                 assert!(!git);
+                assert!(!helm);
+            }
+            _ => panic!("expected cache clear"),
+        }
+    }
+
+    #[test]
+    fn parses_cache_clear_with_helm_scope() {
+        let cli = Cli::parse_from(["akua", "cache", "clear", "--helm"]);
+        match cli.command {
+            Commands::Cache {
+                sub: CacheSub::Clear { oci, git, helm, .. },
+            } => {
+                assert!(!oci);
+                assert!(!git);
+                assert!(helm);
             }
             _ => panic!("expected cache clear"),
         }
@@ -1932,6 +1959,14 @@ mod tests {
     #[test]
     fn cache_clear_rejects_both_scope_flags_together() {
         let err = Cli::try_parse_from(["akua", "cache", "clear", "--oci", "--git"])
+            .err()
+            .expect("should fail");
+        assert!(err.to_string().contains("cannot be used"));
+    }
+
+    #[test]
+    fn cache_clear_rejects_oci_and_helm_together() {
+        let err = Cli::try_parse_from(["akua", "cache", "clear", "--oci", "--helm"])
             .err()
             .expect("should fail");
         assert!(err.to_string().contains("cannot be used"));

@@ -2,10 +2,10 @@
 //! that `akua add` + `akua render` populate on disk.
 //!
 //! Subverbs:
-//! - `akua cache list` — enumerate OCI blobs + git repos/checkouts
-//!   under `$XDG_CACHE_HOME/akua/{oci,git}` with sizes.
-//! - `akua cache clear [--oci | --git]` — reclaim disk. Default wipes
-//!   both; flags narrow it. Safe on absent caches (no-op).
+//! - `akua cache list` — enumerate OCI blobs + git repos/checkouts +
+//!   helm charts under `$XDG_CACHE_HOME/akua/{oci,git,helm}` with sizes.
+//! - `akua cache clear [--oci | --git | --helm]` — reclaim disk. Default
+//!   wipes all three; flags narrow it. Safe on absent caches (no-op).
 //! - `akua cache path` — print the resolved cache roots. Useful for
 //!   scripting `du -sh` / mount-point pinning on CI runners.
 //!
@@ -50,6 +50,7 @@ pub struct ClearOutputBody {
     pub scope: &'static str,
     pub oci_root: PathBuf,
     pub git_root: PathBuf,
+    pub helm_root: PathBuf,
     pub removed: usize,
     pub freed_bytes: u64,
 }
@@ -58,6 +59,7 @@ pub struct ClearOutputBody {
 pub struct PathOutputBody {
     pub oci_root: PathBuf,
     pub git_root: PathBuf,
+    pub helm_root: PathBuf,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -89,6 +91,7 @@ pub fn run<W: Write>(
 ) -> Result<ExitCode, CacheVerbError> {
     let oci_root = cache_inventory::default_cache_root("oci");
     let git_root = cache_inventory::default_cache_root("git");
+    let helm_root = cache_inventory::default_cache_root("helm");
 
     let output = match args.action {
         CacheAction::List => {
@@ -101,6 +104,7 @@ pub fn run<W: Write>(
                 scope: scope.as_str(),
                 oci_root: oci_root.clone(),
                 git_root: git_root.clone(),
+                helm_root: helm_root.clone(),
                 removed: report.removed,
                 freed_bytes: report.freed_bytes,
             })
@@ -108,6 +112,7 @@ pub fn run<W: Write>(
         CacheAction::Path => CacheOutput::Path(PathOutputBody {
             oci_root: oci_root.clone(),
             git_root: git_root.clone(),
+            helm_root: helm_root.clone(),
         }),
     };
 
@@ -130,7 +135,8 @@ fn write_text<W: Write>(w: &mut W, output: &CacheOutput) -> std::io::Result<()> 
         }
         CacheOutput::Path(body) => {
             writeln!(w, "oci: {}", body.oci_root.display())?;
-            writeln!(w, "git: {}", body.git_root.display())
+            writeln!(w, "git: {}", body.git_root.display())?;
+            writeln!(w, "helm: {}", body.helm_root.display())
         }
     }
 }
@@ -140,6 +146,7 @@ fn write_list<W: Write>(w: &mut W, inv: &CacheInventory) -> std::io::Result<()> 
         writeln!(w, "no cache entries")?;
         writeln!(w, "oci: {}", inv.oci_root.display())?;
         writeln!(w, "git: {}", inv.git_root.display())?;
+        writeln!(w, "helm: {}", inv.helm_root.display())?;
         return Ok(());
     }
     writeln!(
@@ -213,6 +220,7 @@ mod tests {
         assert_eq!(parsed["action"], "path");
         assert!(parsed["oci_root"].as_str().unwrap().ends_with("oci"));
         assert!(parsed["git_root"].as_str().unwrap().ends_with("git"));
+        assert!(parsed["helm_root"].as_str().unwrap().ends_with("helm"));
     }
 
     #[test]
@@ -263,12 +271,14 @@ mod tests {
         let body = PathOutputBody {
             oci_root: PathBuf::from("/cache/oci"),
             git_root: PathBuf::from("/cache/git"),
+            helm_root: PathBuf::from("/cache/helm"),
         };
         let mut buf = Vec::new();
         write_text(&mut buf, &CacheOutput::Path(body)).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains("oci: /cache/oci"));
         assert!(s.contains("git: /cache/git"));
+        assert!(s.contains("helm: /cache/helm"));
     }
 
     #[test]
@@ -277,6 +287,7 @@ mod tests {
             scope: "oci",
             oci_root: PathBuf::from("/cache/oci"),
             git_root: PathBuf::from("/cache/git"),
+            helm_root: PathBuf::from("/cache/helm"),
             removed: 17,
             freed_bytes: 5 * 1024 * 1024,
         };
@@ -293,6 +304,7 @@ mod tests {
         let inv = CacheInventory {
             oci_root: PathBuf::from("/c/oci"),
             git_root: PathBuf::from("/c/git"),
+            helm_root: PathBuf::from("/c/helm"),
             entries: Vec::new(),
             total_bytes: 0,
         };
@@ -309,6 +321,7 @@ mod tests {
         let inv = CacheInventory {
             oci_root: PathBuf::from("/c/oci"),
             git_root: PathBuf::from("/c/git"),
+            helm_root: PathBuf::from("/c/helm"),
             entries: vec![
                 CacheEntry {
                     kind: "oci-blob",
@@ -332,5 +345,100 @@ mod tests {
         assert!(s.contains("6.0 KiB total"));
         assert!(s.contains("[oci-blob] sha256:abc"));
         assert!(s.contains("[git-repo] github.com/x/y@main"));
+    }
+
+    // --- helm verb-level tests (RED) ---
+
+    #[test]
+    fn path_subverb_emits_helm_root() {
+        let ctx = ctx_json();
+        let mut buf = Vec::new();
+        let code = run(
+            &ctx,
+            &CacheArgs {
+                action: CacheAction::Path,
+            },
+            &mut buf,
+        )
+        .expect("run");
+        assert_eq!(code, ExitCode::Success);
+        let parsed: serde_json::Value = serde_json::from_slice(&buf).expect("json");
+        assert_eq!(parsed["action"], "path");
+        assert!(
+            parsed["helm_root"].as_str().unwrap().ends_with("helm"),
+            "helm_root must end with 'helm', got: {:?}",
+            parsed["helm_root"]
+        );
+    }
+
+    #[test]
+    fn list_subverb_json_includes_helm_root() {
+        let ctx = ctx_json();
+        let mut buf = Vec::new();
+        run(
+            &ctx,
+            &CacheArgs {
+                action: CacheAction::List,
+            },
+            &mut buf,
+        )
+        .expect("run");
+        let parsed: serde_json::Value = serde_json::from_slice(&buf).expect("json");
+        assert_eq!(parsed["action"], "list");
+        assert!(parsed["helm_root"].is_string(), "helm_root must be in JSON");
+    }
+
+    #[test]
+    fn write_text_path_renders_helm_root() {
+        let body = PathOutputBody {
+            oci_root: PathBuf::from("/cache/oci"),
+            git_root: PathBuf::from("/cache/git"),
+            helm_root: PathBuf::from("/cache/helm"),
+        };
+        let mut buf = Vec::new();
+        write_text(&mut buf, &CacheOutput::Path(body)).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(
+            s.contains("helm: /cache/helm"),
+            "helm path must appear in text output"
+        );
+    }
+
+    #[test]
+    fn write_text_list_empty_inventory_includes_helm_root() {
+        let inv = CacheInventory {
+            oci_root: PathBuf::from("/c/oci"),
+            git_root: PathBuf::from("/c/git"),
+            helm_root: PathBuf::from("/c/helm"),
+            entries: Vec::new(),
+            total_bytes: 0,
+        };
+        let mut buf = Vec::new();
+        write_text(&mut buf, &CacheOutput::List(inv)).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(
+            s.contains("helm: /c/helm"),
+            "helm root must appear when listing empty cache"
+        );
+    }
+
+    #[test]
+    fn clear_helm_scope_json_includes_helm_root() {
+        let body = ClearOutputBody {
+            scope: "helm",
+            oci_root: PathBuf::from("/cache/oci"),
+            git_root: PathBuf::from("/cache/git"),
+            helm_root: PathBuf::from("/cache/helm"),
+            removed: 3,
+            freed_bytes: 2 * 1024 * 1024,
+        };
+        let mut buf = Vec::new();
+        write_text(&mut buf, &CacheOutput::Clear(body)).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(
+            s.contains("cleared helm cache"),
+            "scope must appear in clear output"
+        );
+        assert!(s.contains("3 entries"), "count must appear");
     }
 }
