@@ -113,7 +113,19 @@ pub fn install() {
         // inner Package itself calls pkg.render, the stack stays
         // balanced and the cycle check fires correctly.
         let pkg = PackageK::load(&target).map_err(|e| err_at(&target, e))?;
-        let rendered = pkg.render(&inputs_yaml).map_err(|e| err_at(&target, e))?;
+
+        // A composed sub-package needs its OWN external-package
+        // context: resolve the child's `akua.toml` so its
+        // `import charts.<x>` / `import <kcl-ecosystem>` deps register
+        // for the child eval. Without this the child rendered with an
+        // empty `ResolvedCharts` and any chart/ecosystem import failed
+        // with `CannotFindModule`, even though the child manifest
+        // declares the dep. No child manifest → empty charts, which
+        // preserves the pure-KCL sub-package path.
+        let child_charts = resolve_child_charts(&target).map_err(|e| err_at(&target, e))?;
+        let rendered = pkg
+            .render_with_charts(&inputs_yaml, &child_charts)
+            .map_err(|e| err_at(&target, e))?;
 
         // Convert back to serde_json — KCL's plugin contract returns
         // JSON, and the caller's `_up = pkg.render(...)` binding is
@@ -125,6 +137,63 @@ pub fn install() {
             .collect::<Result<_, _>>()?;
         Ok(serde_json::Value::Array(json_resources))
     });
+}
+
+/// Resolve a composed sub-package's own `[dependencies]` so its
+/// `import charts.<x>` (Helm) and KCL-ecosystem imports (`import k8s…`)
+/// resolve during the child eval.
+///
+/// `target` is the child's `package.k`; its sibling `akua.toml` is the
+/// child's manifest and `akua.lock` its pinned digests. The resolver's
+/// security posture (`reject_replace`, `offline`, cache, cosign, auth)
+/// is inherited from the parent render frame via
+/// [`kcl_plugin::current_resolver_context`] — a sub-package can't open
+/// a `replace`/`path` hole the root forbade, and can't reach the
+/// network if the root ran offline. The child's `expected_digests`
+/// come from the child's OWN lockfile, not the parent's.
+///
+/// No child `akua.toml` → empty [`ResolvedCharts`], preserving the
+/// pure-KCL sub-package path (a sub-package with no deps renders as
+/// before).
+fn resolve_child_charts(target: &Path) -> Result<crate::chart_resolver::ResolvedCharts, String> {
+    use crate::chart_resolver::{self, ResolverOptions};
+    use crate::{AkuaLock, AkuaManifest, LockedPackage, ManifestLoadError};
+
+    let workspace = target.parent().unwrap_or(Path::new("."));
+    let manifest = match AkuaManifest::load(workspace) {
+        Ok(m) => m,
+        // No manifest: pure-KCL / no-dep sub-package. Render with no
+        // external-package context, same as before this fix.
+        Err(ManifestLoadError::Missing { .. }) => {
+            return Ok(chart_resolver::ResolvedCharts::default())
+        }
+        Err(e) => return Err(format!("loading child akua.toml: {e}")),
+    };
+
+    // Child's own lockfile pins OCI digests; absence is fine (path-dep
+    // children, or unlocked workspaces — `akua verify` covers lock
+    // integrity separately).
+    let expected_digests = match AkuaLock::load(workspace) {
+        Ok(lock) => lock
+            .packages
+            .into_iter()
+            .filter(LockedPackage::is_oci)
+            .map(|p| (p.name, p.digest))
+            .collect(),
+        Err(_) => Default::default(),
+    };
+
+    let ctx = kcl_plugin::current_resolver_context();
+    let opts = ResolverOptions {
+        offline: ctx.offline,
+        cache_root: ctx.cache_root,
+        expected_digests,
+        cosign_public_key_pem: ctx.cosign_public_key_pem,
+        reject_replace: ctx.reject_replace,
+        auth: ctx.auth,
+    };
+    chart_resolver::resolve_with_options(&manifest, workspace, &opts)
+        .map_err(|e| format!("resolving child deps: {e}"))
 }
 
 /// Accept either a directory (append `package.k`) or a direct file path.
@@ -279,6 +348,73 @@ resources = [r for r in _all if r.kind == "ConfigMap"]"#,
         assert_eq!(
             rendered.resources[0]["metadata"]["name"],
             YamlValue::String("keep-me".into())
+        );
+    }
+
+    /// A composed sub-package must resolve its OWN `akua.toml` deps.
+    /// The child declares a path-dep helm chart and does
+    /// `import charts.mychart`; the root composes it via
+    /// `pkg.render({ path = "./child" })`. Before the keystone fix the
+    /// handler called `PackageK::render` (empty `ResolvedCharts`), so
+    /// the child's `import charts.mychart` failed with
+    /// `CannotFindModule`. The fix loads + resolves the child's
+    /// manifest and renders with those charts.
+    ///
+    /// Deterministic / offline: the dep is a workspace-local `path =`
+    /// chart, which resolves without any network.
+    #[test]
+    fn composed_subpackage_resolves_its_own_chart_deps() {
+        let tmp = TempDir::new().unwrap();
+        let child = tmp.path().join("child");
+        fs::create_dir_all(&child).unwrap();
+
+        // Child's path-dep helm chart.
+        let chart = child.join("mychart");
+        fs::create_dir_all(chart.join("templates")).unwrap();
+        write(
+            &chart,
+            "Chart.yaml",
+            "apiVersion: v2\nname: mychart\nversion: 0.1.0\n",
+        );
+        write(
+            &chart.join("templates"),
+            "cm.yaml",
+            "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: from-child-chart\n",
+        );
+
+        // Child manifest declares the chart as a path dep.
+        write(
+            &child,
+            "akua.toml",
+            "[package]\nname = \"child\"\nversion = \"0.1.0\"\nedition = \"akua.dev/v1alpha1\"\n\n[dependencies]\nmychart = { path = \"./mychart\" }\n",
+        );
+
+        // Child Package imports the chart via the typed alias.
+        write(
+            &child,
+            "package.k",
+            "import charts.mychart as c\n\nresources = c.template(c.TemplateOpts {})\n",
+        );
+
+        // Root composes the child by path.
+        let root_path = write(
+            tmp.path(),
+            "package.k",
+            r#"
+import kcl_plugin.pkg
+
+resources = pkg.render({ path = "./child" })"#,
+        );
+
+        let root = PackageK::load(&root_path).expect("load root");
+        let rendered = root
+            .render(&YamlValue::Mapping(Default::default()))
+            .expect("render root composing child with its own chart dep");
+
+        assert_eq!(rendered.resources.len(), 1, "child chart resource present");
+        assert_eq!(
+            rendered.resources[0]["metadata"]["name"],
+            YamlValue::String("from-child-chart".into())
         );
     }
 

@@ -50,6 +50,7 @@ fn renders_hello_webapp_with_resolved_chart_dep() {
         &resolved,
         false,
         akua_core::kcl_plugin::BudgetSnapshot::default(),
+        akua_core::kcl_plugin::ResolverContext::default(),
     ) {
         Ok(r) => r,
         Err(e) => {

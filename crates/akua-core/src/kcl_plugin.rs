@@ -181,6 +181,38 @@ struct RenderFrame {
     /// Empty for frames pushed without dep info (tests, inner-render
     /// scopes — nested deps resolution is a follow-up).
     resolved_pkgs: BTreeMap<String, PathBuf>,
+    /// Resolver context inherited from the outermost render entry, so a
+    /// composed sub-package (`pkg.render`) can resolve its OWN
+    /// `akua.toml` deps under the same security posture the root ran
+    /// with — `reject_replace` / `offline` are propagated, never
+    /// silently defaulted. See [`ResolverContext`].
+    resolver: ResolverContext,
+}
+
+/// Security-relevant slice of the resolver's options that must follow
+/// the render down through `pkg.render` composition. A child package
+/// can't open a `replace`/`path` hole the parent forbade, and can't
+/// reach the network if the parent ran offline. The child's
+/// `expected_digests` come from the CHILD's own `akua.lock` (loaded in
+/// the `pkg.render` handler), not from here — only the cross-cutting
+/// posture flags + host credentials propagate.
+#[derive(Clone, Debug, Default)]
+pub struct ResolverContext {
+    /// Propagated from the parent: the resolver may not touch the
+    /// network when `true`.
+    pub offline: bool,
+    /// Propagated from the parent: where fetched OCI/helm/git blobs
+    /// live on disk. `None` means the resolver's default cache.
+    pub cache_root: Option<PathBuf>,
+    /// Propagated from the parent: refuse `replace = { path = ... }`.
+    /// MUST inherit — a sub-package must not be able to escape the
+    /// replace gate the root deployment enforced.
+    pub reject_replace: bool,
+    /// Propagated from the parent: PEM cosign key for OCI dep
+    /// signature verification.
+    pub cosign_public_key_pem: Option<String>,
+    /// Propagated from the parent: credentials for private remotes.
+    pub auth: Option<crate::host_auth::HostAuthMap>,
 }
 
 /// Resource limits propagated through the render stack. Read by
@@ -268,6 +300,7 @@ impl RenderScope {
             strict,
             top_frame_budget(),
             BTreeMap::new(),
+            top_frame_resolver(),
         )
     }
 
@@ -301,6 +334,7 @@ impl RenderScope {
             strict,
             top_frame_budget(),
             resolved_pkgs,
+            top_frame_resolver(),
         )
     }
 
@@ -309,7 +343,14 @@ impl RenderScope {
     /// to install a wall-clock deadline; nested `pkg.render` calls
     /// inherit it automatically.
     pub fn enter_with_budget(package: &Path, budget: BudgetSnapshot) -> Self {
-        Self::enter_full(package, &[], false, budget, BTreeMap::new())
+        Self::enter_full(
+            package,
+            &[],
+            false,
+            budget,
+            BTreeMap::new(),
+            top_frame_resolver(),
+        )
     }
 
     /// Combined entry: resolved-charts-derived allowed_roots +
@@ -321,6 +362,7 @@ impl RenderScope {
         charts: &crate::chart_resolver::ResolvedCharts,
         strict: bool,
         budget: BudgetSnapshot,
+        resolver: ResolverContext,
     ) -> Self {
         let allowed_roots: Vec<PathBuf> = charts
             .entries
@@ -333,7 +375,14 @@ impl RenderScope {
             .filter(|(_, c)| c.abs_path.join("package.k").is_file())
             .map(|(name, c)| (name.clone(), c.abs_path.clone()))
             .collect();
-        Self::enter_full(package, &allowed_roots, strict, budget, resolved_pkgs)
+        Self::enter_full(
+            package,
+            &allowed_roots,
+            strict,
+            budget,
+            resolved_pkgs,
+            resolver,
+        )
     }
 
     fn enter_full(
@@ -342,6 +391,7 @@ impl RenderScope {
         strict: bool,
         budget: BudgetSnapshot,
         resolved_pkgs: BTreeMap<String, PathBuf>,
+        resolver: ResolverContext,
     ) -> Self {
         RENDER_STACK.with(|s| {
             s.borrow_mut().push(RenderFrame {
@@ -350,6 +400,7 @@ impl RenderScope {
                 strict,
                 budget,
                 resolved_pkgs,
+                resolver,
             });
         });
         Self { _private: () }
@@ -444,6 +495,29 @@ pub fn pre_check(target: &Path) -> RenderPreCheck {
 /// budget into the new frame.
 fn top_frame_budget() -> BudgetSnapshot {
     RENDER_STACK.with(|s| s.borrow().last().map(|f| f.budget).unwrap_or_default())
+}
+
+/// Top-of-stack resolver context, or the default (offline=false,
+/// reject_replace=false, no auth/cosign) when the stack is empty.
+/// Inner scopes inherit the parent's context so the security posture
+/// (`reject_replace` / `offline`) flows down through composition.
+fn top_frame_resolver() -> ResolverContext {
+    RENDER_STACK.with(|s| {
+        s.borrow()
+            .last()
+            .map(|f| f.resolver.clone())
+            .unwrap_or_default()
+    })
+}
+
+/// Resolver context of the top-of-stack render frame. The `pkg.render`
+/// handler reads this to resolve a composed sub-package's own
+/// `akua.toml` deps under the parent's security posture. Returns the
+/// default when no render is active (the handler then resolves with a
+/// permissive default — only reached outside a render scope, i.e.
+/// tests).
+pub fn current_resolver_context() -> ResolverContext {
+    top_frame_resolver()
 }
 
 /// Absolute roots registered for the top-of-stack frame — the

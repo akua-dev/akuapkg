@@ -37,6 +37,7 @@ fn renders_install_as_package_against_golden() {
         &resolved,
         false,
         akua_core::kcl_plugin::BudgetSnapshot::default(),
+        akua_core::kcl_plugin::ResolverContext::default(),
     ) {
         Ok(r) => r,
         Err(e) => {

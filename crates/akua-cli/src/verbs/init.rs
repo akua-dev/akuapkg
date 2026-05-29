@@ -316,6 +316,7 @@ mod tests {
             &akua_core::chart_resolver::ResolvedCharts::default(),
             false,
             akua_core::kcl_plugin::BudgetSnapshot::default(),
+            akua_core::kcl_plugin::ResolverContext::default(),
         )
         .expect("renders");
         assert_eq!(rendered.resources.len(), 1);

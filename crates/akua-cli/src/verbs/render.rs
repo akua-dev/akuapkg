@@ -340,9 +340,9 @@ pub fn run<W: Write>(
     let package = PackageK::load(args.package_path)?;
     let resolved_inputs = resolve_inputs_path(args);
     let inputs = load_inputs(resolved_inputs.as_deref())?;
-    let charts = resolve_package_charts(args.package_path, args.offline, ctx)?;
+    let (charts, resolver) = resolve_package_charts(args.package_path, args.offline, ctx)?;
     let budget = build_budget(ctx, args.max_depth)?;
-    let rendered = render_in_worker(&package, &inputs, &charts, args.strict, budget)?;
+    let rendered = render_in_worker(&package, &inputs, &charts, args.strict, budget, resolver)?;
 
     if args.stdout_mode {
         write_multi_doc_yaml(stdout, &rendered.resources).map_err(RenderError::StdoutWrite)?;
@@ -403,11 +403,27 @@ fn resolve_package_charts(
     package_path: &Path,
     offline: bool,
     ctx: &Context,
-) -> Result<ResolvedCharts, RenderError> {
+) -> Result<(ResolvedCharts, akua_core::kcl_plugin::ResolverContext), RenderError> {
     let workspace = package_path.parent().unwrap_or(Path::new("."));
     let manifest = match AkuaManifest::load(workspace) {
         Ok(m) => m,
-        Err(ManifestLoadError::Missing { .. }) => return Ok(ResolvedCharts::default()),
+        Err(ManifestLoadError::Missing { .. }) => {
+            // No root manifest, but a composed sub-package may still
+            // carry one. Propagate the security posture (offline +
+            // the env/agent replace gate) so the child resolves under
+            // the same rules even when the root has no deps.
+            return Ok((
+                ResolvedCharts::default(),
+                akua_core::kcl_plugin::ResolverContext {
+                    offline,
+                    cache_root: None,
+                    reject_replace: ctx.agent.detected
+                        || chart_resolver::replace_rejected_from_env(),
+                    cosign_public_key_pem: None,
+                    auth: None,
+                },
+            ));
+        }
         Err(source) => {
             return Err(RenderError::ManifestParse {
                 path: workspace.join("akua.toml"),
@@ -445,9 +461,18 @@ fn resolve_package_charts(
         // pipeline; render doesn't expose `--auth` of its own.
         auth: None,
     };
-    Ok(chart_resolver::resolve_with_options(
-        &manifest, workspace, &opts,
-    )?)
+    // Posture propagated into any composed sub-package's resolve. The
+    // child's `expected_digests` come from the child's own `akua.lock`,
+    // not the root's — so they're deliberately omitted here.
+    let resolver = akua_core::kcl_plugin::ResolverContext {
+        offline: opts.offline,
+        cache_root: opts.cache_root.clone(),
+        reject_replace: opts.reject_replace,
+        cosign_public_key_pem: opts.cosign_public_key_pem.clone(),
+        auth: opts.auth.clone(),
+    };
+    let charts = chart_resolver::resolve_with_options(&manifest, workspace, &opts)?;
+    Ok((charts, resolver))
 }
 
 /// Read the cosign public key referenced by `[signing].cosign_public_key`
@@ -511,6 +536,7 @@ pub fn render_in_worker(
     charts: &ResolvedCharts,
     strict: bool,
     budget: akua_core::kcl_plugin::BudgetSnapshot,
+    resolver: akua_core::kcl_plugin::ResolverContext,
 ) -> Result<akua_core::RenderedPackage, RenderError> {
     use crate::render_worker::{RenderHost, ResourceLimits, WorkerRequest};
 
@@ -519,6 +545,7 @@ pub fn render_in_worker(
         charts,
         strict,
         budget,
+        resolver,
     );
 
     // Helm deps go through the synthetic `charts.<name>` umbrella —

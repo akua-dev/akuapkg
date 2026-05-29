@@ -72,8 +72,14 @@ pub fn run<W: Write>(
         stop_for_handler.store(true, Ordering::SeqCst);
     })?;
 
+    // Auto-enable the replace gate in agent context (CLAUDE.md: a
+    // composed sub-package must not touch a `replace` directive in
+    // production), matching `akua render`. `dev` doesn't resolve root
+    // deps yet, but sub-packages it composes do.
+    let reject_replace =
+        ctx.agent.detected || akua_core::chart_resolver::replace_rejected_from_env();
     run_loop(ctx, args, stdout, stop, |changed| {
-        render_once(args, changed)
+        render_once(args, changed, reject_replace)
     })
 }
 
@@ -124,19 +130,30 @@ where
 /// Load + render the Package once, returning a short one-line
 /// summary. Called for both the startup seed and each debounced
 /// change batch.
-fn render_once(args: &DevArgs<'_>, _changed: &[PathBuf]) -> Result<String, String> {
+fn render_once(
+    args: &DevArgs<'_>,
+    _changed: &[PathBuf],
+    reject_replace: bool,
+) -> Result<String, String> {
     let pkg = PackageK::load(&args.package_path).map_err(|e| e.to_string())?;
     let inputs = load_inputs(args)?;
     // `akua dev` today doesn't resolve `[dependencies]` or expose
     // strict mode — defer both until the watch loop gets flags for
     // them. Rendering still runs in the sandbox.
     let charts = akua_core::chart_resolver::ResolvedCharts::default();
+    // A composed sub-package still resolves its own `akua.toml` deps;
+    // honor the replace gate (agent context or env) the caller computed.
+    let resolver = akua_core::kcl_plugin::ResolverContext {
+        reject_replace,
+        ..Default::default()
+    };
     let rendered = crate::verbs::render::render_in_worker(
         &pkg,
         &inputs,
         &charts,
         false,
         akua_core::kcl_plugin::BudgetSnapshot::default(),
+        resolver,
     )
     .map_err(|e| e.to_string())?;
     let summary = akua_core::package_render::render(&rendered, &args.out_dir, false)

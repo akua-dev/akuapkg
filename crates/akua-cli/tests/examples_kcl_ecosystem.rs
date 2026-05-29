@@ -86,6 +86,7 @@ fn renders_kcl_ecosystem_dep_against_golden() {
         &resolved,
         false,
         akua_core::kcl_plugin::BudgetSnapshot::default(),
+        akua_core::kcl_plugin::ResolverContext::default(),
     ) {
         Ok(r) => r,
         Err(e) => {
