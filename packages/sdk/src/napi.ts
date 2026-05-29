@@ -46,6 +46,19 @@ export interface NapiAddon {
 		timeout?: string;
 		maxDepth?: number;
 	}): string;
+	add(args: {
+		workspace: string;
+		name: string;
+		oci?: string;
+		git?: string;
+		path?: string;
+		repo?: string;
+		chart?: string;
+		version?: string;
+		tag?: string;
+		rev?: string;
+		force?: boolean;
+	}): unknown;
 	lint(args: { package: string }): unknown;
 	fmt(args: { package: string; check?: boolean; stdout?: boolean }): unknown;
 	check(args: { workspace: string; package?: string }): unknown;
