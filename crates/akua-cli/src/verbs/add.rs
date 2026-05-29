@@ -258,6 +258,8 @@ fn build_dependency(
         oci: None,
         git: None,
         path: None,
+        repo: None,
+        chart: None,
         version: version.map(str::to_string),
         tag: tag.map(str::to_string),
         rev: rev.map(str::to_string),

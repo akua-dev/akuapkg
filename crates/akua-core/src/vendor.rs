@@ -163,6 +163,12 @@ pub enum VendorError {
 
     #[error("vendor tree drift detected")]
     Drift { output: VendorCheckOutput },
+
+    /// Dep source kind not yet supported by the vendor path (helm-repo
+    /// deps, until the helm fetcher lands); surfaces a clear error
+    /// rather than silently misbehaving.
+    #[error("dep `{name}`: {kind} source not yet supported by `akua vendor`")]
+    UnsupportedSource { name: String, kind: &'static str },
 }
 
 impl VendorError {
@@ -219,6 +225,9 @@ impl VendorError {
             VendorError::Drift { .. } => {
                 StructuredError::new(codes::E_VENDOR_DRIFT, self.to_string()).with_default_docs()
             }
+            VendorError::UnsupportedSource { .. } => {
+                StructuredError::new(codes::E_DEP_RESOLVE, self.to_string()).with_default_docs()
+            }
         }
     }
 
@@ -234,7 +243,8 @@ impl VendorError {
             | VendorError::PathEscape { .. }
             | VendorError::Manifest(_)
             | VendorError::Lock(_)
-            | VendorError::AuthConfig(_) => ExitCode::UserError,
+            | VendorError::AuthConfig(_)
+            | VendorError::UnsupportedSource { .. } => ExitCode::UserError,
             #[cfg(feature = "oci-fetch")]
             VendorError::OciFetch { .. } => ExitCode::UserError,
             #[cfg(feature = "git-fetch")]
@@ -402,6 +412,12 @@ fn vendor_lock_source(dep: &Dependency, lock_digest: &str) -> (ResolvedSource, S
                 },
                 format!("{GIT_DIGEST_PREFIX}{raw}"),
             )
+        }
+        // This function is only called after a dep has been resolved +
+        // vendored, which for a helm-repo dep requires the (not-yet-wired)
+        // helm fetcher; it cannot be reached until then.
+        DependencySpec::Helm { .. } => {
+            unreachable!("helm dep reaches vendor_lock_source before the helm fetcher exists")
         }
     }
 }
@@ -665,6 +681,12 @@ fn resolve_source(
         DependencySpec::Git { git, tag, rev } => {
             resolve_git_source(workspace, name, git, tag, rev, auth)
         }
+        // Until the helm fetcher lands, `akua vendor add` for a helm-repo
+        // dep surfaces a clear error rather than mishandling it.
+        DependencySpec::Helm { .. } => Err(VendorError::UnsupportedSource {
+            name: name.to_string(),
+            kind: "helm",
+        }),
     }
 }
 

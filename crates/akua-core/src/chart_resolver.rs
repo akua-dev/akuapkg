@@ -403,9 +403,9 @@ pub fn resolve(
     )
 }
 
-/// Full resolver — handles path, replace, and OCI.
-/// Git deps still return [`ChartResolveError::UnsupportedSource`] —
-/// slice C.
+/// Full resolver — handles path, replace, OCI, and git. Helm-repo
+/// (`repo`) deps return [`ChartResolveError::UnsupportedSource`] until
+/// the helm fetcher is wired.
 pub fn resolve_with_options(
     manifest: &AkuaManifest,
     workspace_root: &Path,
@@ -432,10 +432,21 @@ pub fn resolve_with_options(
             entries.insert(name.clone(), chart);
             continue;
         }
+        let spec = dep.spec();
+        // Helm-repo deps — vendored or remote — have no resolver yet, so a
+        // `repo` dep is explicitly unsupported rather than run through
+        // vendor-first with a borrowed source shape. Guarding here keeps
+        // the helm URL out of every downstream source variant.
+        if matches!(spec, DependencySpec::Helm { .. }) {
+            return Err(ChartResolveError::UnsupportedSource {
+                name: name.clone(),
+                kind: DependencySource::Helm,
+                reason: "helm-repo dependencies are not yet supported",
+            });
+        }
         // Vendor-first across all dep kinds — install repos GC
         // canonical sources post-vendor; pulled Packages arrive
         // pre-vendored.
-        let spec = dep.spec();
         let vendor_kind = match spec {
             DependencySpec::Path { declared } => VendorKind::Path { declared },
             DependencySpec::Oci { oci, version } => VendorKind::Oci {
@@ -449,6 +460,7 @@ pub fn resolve_with_options(
                     .unwrap_or(VENDORED_LOCK_FALLBACK)
                     .to_string(),
             },
+            DependencySpec::Helm { .. } => unreachable!("helm guarded above"),
         };
         if let Some(chart) = resolve_from_vendor(name, workspace_root, dep, vendor_kind)? {
             entries.insert(name.clone(), chart);
@@ -466,6 +478,7 @@ pub fn resolve_with_options(
             )?,
             DependencySpec::Oci { oci, .. } => resolve_oci(name, dep, oci, opts)?,
             DependencySpec::Git { git, .. } => resolve_git(name, dep, git, opts)?,
+            DependencySpec::Helm { .. } => unreachable!("helm guarded above"),
         };
         entries.insert(name.clone(), chart);
     }
@@ -805,6 +818,13 @@ fn resolved_source_for_replace(
             "replace on a path-only dep should have been rejected by manifest \
              validation (dep `{name}`)"
         ),
+        // Helm-repo deps have no resolver yet, so a replace on one is
+        // likewise unsupported until the helm fetcher lands.
+        DependencySpec::Helm { .. } => Err(ChartResolveError::UnsupportedSource {
+            name: name.to_string(),
+            kind: DependencySource::Helm,
+            reason: "helm-repo dependencies are not yet supported",
+        }),
     }
 }
 
@@ -991,6 +1011,7 @@ fn source_kind_label(source: DependencySource) -> &'static str {
         DependencySource::Oci => "oci://",
         DependencySource::Git => "git",
         DependencySource::Path => "path",
+        DependencySource::Helm => "helm",
     }
 }
 
@@ -1428,6 +1449,30 @@ edition = "akua.dev/v1alpha1"
             nginx.sha256
         );
         assert_eq!(nginx.sha256.len(), "sha256:".len() + 64);
+    }
+
+    #[test]
+    fn vendored_helm_dep_errors_rather_than_mishandled() {
+        // A helm-repo dep with a pre-existing vendor dir must surface a
+        // clear UnsupportedSource error — never resolve through the
+        // vendor-first path and write the helm URL into another source's
+        // lockfile shape.
+        let ws = tempfile::tempdir().unwrap();
+        write_minimal_chart(&ws.path().join(".akua/vendor/temporal"));
+        let manifest = minimal_manifest(
+            r#"temporal = { repo = "https://go.temporal.io/helm-charts", chart = "temporal", version = "0.62.0" }"#,
+        );
+        let err = resolve(&manifest, ws.path()).expect_err("helm dep must be unsupported");
+        assert!(
+            matches!(
+                err,
+                ChartResolveError::UnsupportedSource {
+                    kind: DependencySource::Helm,
+                    ..
+                }
+            ),
+            "expected UnsupportedSource(Helm), got: {err:?}"
+        );
     }
 
     #[test]

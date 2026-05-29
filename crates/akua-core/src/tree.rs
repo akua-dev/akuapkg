@@ -124,6 +124,7 @@ fn source_of(dep: &Dependency) -> (&'static str, String) {
         Some(DependencySource::Oci) => ("oci", dep.oci.clone().unwrap_or_default()),
         Some(DependencySource::Git) => ("git", dep.git.clone().unwrap_or_default()),
         Some(DependencySource::Path) => ("path", dep.path.clone().unwrap_or_default()),
+        Some(DependencySource::Helm) => ("helm", dep.repo.clone().unwrap_or_default()),
         None => ("unknown", String::new()),
     }
 }

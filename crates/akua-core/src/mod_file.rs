@@ -81,8 +81,8 @@ pub struct WorkspaceSection {
 }
 
 /// A single dependency. Form is discriminated by which source-type field is
-/// set (`oci` / `git` / `path`). Exactly one must be present; all three
-/// present is a validation error.
+/// set (`oci` / `git` / `path` / `repo`). Exactly one must be present; more
+/// than one present is a validation error.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(Default))]
 pub struct Dependency {
@@ -97,6 +97,16 @@ pub struct Dependency {
     /// Local filesystem path. Exclusive with `oci`, `git`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+
+    /// HTTPS Helm-repo URL (the `index.yaml` lives at `<repo>/index.yaml`).
+    /// Exclusive with `oci`, `git`, `path`. Pairs with `chart`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+
+    /// Chart entry name within a `repo`'s `index.yaml`. Required for
+    /// `repo` deps; unused by other sources.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chart: Option<String>,
 
     /// Version constraint (semver exact or range). Required for `oci`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -128,12 +138,14 @@ pub enum DependencySource {
     Oci,
     Git,
     Path,
+    Helm,
 }
 
 /// Typed projection of a [`Dependency`]'s source form. Returned by
 /// [`Dependency::spec`] post-validation; field shapes encode the
 /// validate-enforced invariants (OCI deps have a version; git deps
-/// have at least one of tag/rev) so consumers don't re-prove them.
+/// have at least one of tag/rev; helm deps have chart + version) so
+/// consumers don't re-prove them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DependencySpec<'a> {
     Path {
@@ -147,6 +159,11 @@ pub enum DependencySpec<'a> {
         git: &'a str,
         tag: Option<&'a str>,
         rev: Option<&'a str>,
+    },
+    Helm {
+        repo: &'a str,
+        chart: &'a str,
+        version: &'a str,
     },
 }
 
@@ -194,6 +211,18 @@ pub enum ManifestError {
          Pass credentials via the SDK `auth` parameter or the CLI `--auth` flag."
     )]
     GitUrlHasUserInfo { name: String },
+
+    #[error("dependency `{name}`: helm-repo dep requires a `chart`")]
+    HelmMissingChart { name: String },
+
+    #[error("dependency `{name}`: helm-repo dep requires a `version`")]
+    HelmMissingVersion { name: String },
+
+    #[error(
+        "dependency `{name}`: repo URL must not embed credentials (`user:pass@`). \
+         Pass credentials via the SDK `auth` parameter or the CLI `--auth` flag."
+    )]
+    HelmUrlHasUserInfo { name: String },
 }
 
 impl ManifestError {
@@ -204,6 +233,9 @@ impl ManifestError {
         use crate::cli_contract::codes;
         match self {
             ManifestError::GitUrlHasUserInfo { .. } => codes::E_MANIFEST_GIT_USERINFO,
+            ManifestError::HelmMissingChart { .. } => codes::E_MANIFEST_HELM_MISSING_CHART,
+            ManifestError::HelmMissingVersion { .. } => codes::E_MANIFEST_HELM_MISSING_VERSION,
+            ManifestError::HelmUrlHasUserInfo { .. } => codes::E_MANIFEST_HELM_USERINFO,
             _ => codes::E_MANIFEST_PARSE,
         }
     }
@@ -312,13 +344,19 @@ impl AkuaManifest {
 
 impl Dependency {
     /// Which source form is this? `Some` when exactly one of `oci` /
-    /// `git` / `path` is set; `None` when zero or more than one are set
-    /// (which is a validation error handled by [`validate`]).
+    /// `git` / `path` / `repo` is set; `None` when zero or more than
+    /// one are set (which is a validation error handled by [`validate`]).
     pub fn source(&self) -> Option<DependencySource> {
-        match (self.oci.is_some(), self.git.is_some(), self.path.is_some()) {
-            (true, false, false) => Some(DependencySource::Oci),
-            (false, true, false) => Some(DependencySource::Git),
-            (false, false, true) => Some(DependencySource::Path),
+        match (
+            self.oci.is_some(),
+            self.git.is_some(),
+            self.path.is_some(),
+            self.repo.is_some(),
+        ) {
+            (true, false, false, false) => Some(DependencySource::Oci),
+            (false, true, false, false) => Some(DependencySource::Git),
+            (false, false, true, false) => Some(DependencySource::Path),
+            (false, false, false, true) => Some(DependencySource::Helm),
             _ => None,
         }
     }
@@ -337,18 +375,28 @@ impl Dependency {
             self.path.as_deref(),
             self.oci.as_deref(),
             self.git.as_deref(),
+            self.repo.as_deref(),
         ) {
-            (Some(declared), None, None) => DependencySpec::Path { declared },
-            (None, Some(oci), None) => DependencySpec::Oci {
+            (Some(declared), None, None, None) => DependencySpec::Path { declared },
+            (None, Some(oci), None, None) => DependencySpec::Oci {
                 oci,
                 version: self.version.as_deref().expect(
                     "Dependency::spec called on an unvalidated manifest — call validate() first",
                 ),
             },
-            (None, None, Some(git)) => DependencySpec::Git {
+            (None, None, Some(git), None) => DependencySpec::Git {
                 git,
                 tag: self.tag.as_deref(),
                 rev: self.rev.as_deref(),
+            },
+            (None, None, None, Some(repo)) => DependencySpec::Helm {
+                repo,
+                chart: self.chart.as_deref().expect(
+                    "Dependency::spec called on an unvalidated manifest — call validate() first",
+                ),
+                version: self.version.as_deref().expect(
+                    "Dependency::spec called on an unvalidated manifest — call validate() first",
+                ),
             },
             _ => unreachable!(
                 "Dependency::spec called on an unvalidated manifest — call validate() first"
@@ -361,7 +409,8 @@ impl Dependency {
         let Some(source) = self.source() else {
             let count = self.oci.is_some() as usize
                 + self.git.is_some() as usize
-                + self.path.is_some() as usize;
+                + self.path.is_some() as usize
+                + self.repo.is_some() as usize;
             return Err(ManifestError::AmbiguousSource {
                 name: name.to_string(),
                 count,
@@ -391,6 +440,25 @@ impl Dependency {
                 if self.version.is_some() || self.tag.is_some() || self.rev.is_some() =>
             {
                 Err(ManifestError::PathHasPin {
+                    name: name.to_string(),
+                })
+            }
+            DependencySource::Helm if self.chart.is_none() => {
+                Err(ManifestError::HelmMissingChart {
+                    name: name.to_string(),
+                })
+            }
+            DependencySource::Helm if self.version.is_none() => {
+                Err(ManifestError::HelmMissingVersion {
+                    name: name.to_string(),
+                })
+            }
+            DependencySource::Helm
+                if crate::host_auth::url_has_userinfo(
+                    self.repo.as_deref().expect("repo source set"),
+                ) =>
+            {
+                Err(ManifestError::HelmUrlHasUserInfo {
                     name: name.to_string(),
                 })
             }
@@ -799,5 +867,81 @@ strict_signing = false
             ..Default::default()
         };
         let _ = dep.spec();
+    }
+
+    #[test]
+    fn repo_dep_is_helm_source() {
+        let dep = Dependency {
+            repo: Some("https://go.temporal.io/helm-charts".into()),
+            chart: Some("temporal".into()),
+            version: Some("0.62.0".into()),
+            ..Default::default()
+        };
+        assert_eq!(dep.source(), Some(DependencySource::Helm));
+        dep.validate("temporal").expect("valid helm dep");
+        match dep.spec() {
+            DependencySpec::Helm {
+                repo,
+                chart,
+                version,
+            } => {
+                assert_eq!(repo, "https://go.temporal.io/helm-charts");
+                assert_eq!(chart, "temporal");
+                assert_eq!(version, "0.62.0");
+            }
+            other => panic!("expected Helm, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn helm_dep_requires_chart_and_version() {
+        let no_chart = Dependency {
+            repo: Some("https://r".into()),
+            version: Some("1.0.0".into()),
+            ..Default::default()
+        };
+        assert!(matches!(
+            no_chart.validate("x"),
+            Err(ManifestError::HelmMissingChart { .. })
+        ));
+        let no_version = Dependency {
+            repo: Some("https://r".into()),
+            chart: Some("c".into()),
+            ..Default::default()
+        };
+        assert!(matches!(
+            no_version.validate("x"),
+            Err(ManifestError::HelmMissingVersion { .. })
+        ));
+    }
+
+    #[test]
+    fn helm_repo_url_rejects_userinfo() {
+        let dep = Dependency {
+            repo: Some("https://user:pass@r".into()),
+            chart: Some("c".into()),
+            version: Some("1.0.0".into()),
+            ..Default::default()
+        };
+        assert!(matches!(
+            dep.validate("x"),
+            Err(ManifestError::HelmUrlHasUserInfo { .. })
+        ));
+    }
+
+    #[test]
+    fn repo_is_mutually_exclusive_with_other_sources() {
+        let dep = Dependency {
+            repo: Some("https://r".into()),
+            oci: Some("oci://x".into()),
+            chart: Some("c".into()),
+            version: Some("1.0.0".into()),
+            ..Default::default()
+        };
+        assert_eq!(dep.source(), None);
+        assert!(matches!(
+            dep.validate("x"),
+            Err(ManifestError::AmbiguousSource { .. })
+        ));
     }
 }
