@@ -41,6 +41,35 @@ use wasmtime::{Config, Engine, Linker, Memory, Module, Store, TypedFunc};
 use wasmtime_wasi::p1::{self, WasiP1Ctx};
 use wasmtime_wasi::WasiCtxBuilder;
 
+// --- Per-engine-Session resource caps ----------------------------------------
+
+/// Hard cap on linear memory per engine Session (helm, kustomize).
+///
+/// 2 GiB: real-world large Helm charts (argo-cd, temporal) peak well
+/// under 512 MiB; 2 GiB gives a 4× headroom margin while capping the
+/// DoS blast radius on a shared host — a malicious chart with
+/// pathological `range` recursion or massive generated-file sets cannot
+/// exhaust more than this per-session ceiling.
+pub const ENGINE_MEMORY_CAP_BYTES: usize = 2 * 1024 * 1024 * 1024;
+
+/// Epoch-tick deadline for engine Sessions.
+///
+/// 300 ticks × 100 ms/tick (the render-worker's background ticker rate)
+/// = 30 s wall-clock ceiling per engine call. A chart that takes longer
+/// than 30 s is either pathological or broken; legitimate large charts
+/// (argo-cd: ~5 s observed) finish with >5× margin. The render-worker's
+/// own epoch ticker increments the shared Engine epoch — engine Sessions
+/// share that ticker without needing a second background thread.
+pub const ENGINE_EPOCH_DEADLINE: u64 = 300;
+
+/// Internal Store state for engine Sessions. Holds the WASI context
+/// and a [`wasmtime::StoreLimits`] so the session Store can enforce
+/// both the memory cap and a finite wall-clock deadline.
+struct EngineStoreState {
+    wasi: WasiP1Ctx,
+    limits: wasmtime::StoreLimits,
+}
+
 // --- Shared errors ---------------------------------------------------------
 
 #[derive(Debug, thiserror::Error)]
@@ -75,10 +104,11 @@ fn wasm_err<E: std::fmt::Display>(e: E) -> EngineHostError {
 pub fn shared_config() -> Config {
     let mut config = Config::new();
     config.wasm_exceptions(true);
-    // Wall-clock deadline enforcement. The render worker sets an
-    // epoch deadline per-Store; engine plugins (helm, kustomize)
-    // don't set one, so they run without a tick-level cap — the
-    // host Rust caller enforces whole-call timeouts above them.
+    // Wall-clock deadline enforcement. Every Store that uses this
+    // Engine calls `set_epoch_deadline` with a finite value: the
+    // render worker uses its own budget; engine plugin Sessions
+    // (helm, kustomize) use ENGINE_EPOCH_DEADLINE. The shared
+    // background ticker in render_worker.rs drives the counter.
     config.epoch_interruption(true);
     // Trap symbolication. Without these, traps surface as
     // `wasm function 9837` indices; with them, plus the worker's
@@ -236,7 +266,7 @@ pub struct EngineSpec {
 /// every subsequent plugin call reuses it, so the Go `_initialize` chain
 /// (klog, package inits) runs exactly once.
 pub struct Session {
-    store: Store<WasiP1Ctx>,
+    store: Store<EngineStoreState>,
     memory: Memory,
     malloc: TypedFunc<i32, i32>,
     free: TypedFunc<i32, ()>,
@@ -289,20 +319,26 @@ impl Session {
         };
 
         let wasi = WasiCtxBuilder::new().arg(spec.name).build_p1();
-        let mut store = Store::new(engine, wasi);
-        // Shared Engine has `epoch_interruption` enabled (for the
-        // render worker's wall-clock cap). Engine plugins (helm,
-        // kustomize) don't want a deadline — the host-Rust caller
-        // above us owns their whole-call timeouts. Pick a ceiling
-        // high enough that the ticker never trips their Store: the
-        // `set_epoch_deadline(delta)` API internally does
-        // `current_epoch + delta`, so `u64::MAX` overflows once the
-        // ticker has advanced past zero. `i64::MAX` (2^63-1) at the
-        // 100ms ticker rate is ~29 billion years — comfortably
-        // effectively-infinite.
-        store.set_epoch_deadline(i64::MAX as u64);
-        let mut linker: Linker<WasiP1Ctx> = Linker::new(engine);
-        p1::add_to_linker_sync(&mut linker, |s: &mut WasiP1Ctx| s).map_err(wasm_err)?;
+        let state = EngineStoreState {
+            wasi,
+            limits: wasmtime::StoreLimitsBuilder::new()
+                .memory_size(ENGINE_MEMORY_CAP_BYTES)
+                .build(),
+        };
+        let mut store = Store::new(engine, state);
+        // Attach the memory limiter so wasmtime enforces the cap on
+        // every linear-memory grow inside the guest.
+        store.limiter(|s: &mut EngineStoreState| &mut s.limits);
+        // Finite epoch deadline: 300 ticks × the render-worker's
+        // 100 ms background ticker = 30 s wall-clock ceiling. The
+        // ticker is spawned by the render-worker host (shared Engine);
+        // sessions created before the worker starts up still get the
+        // deadline — `set_epoch_deadline` is relative to the current
+        // epoch counter, so it fires ~30 s after the first tick.
+        store.set_epoch_deadline(ENGINE_EPOCH_DEADLINE);
+        let mut linker: Linker<EngineStoreState> = Linker::new(engine);
+        p1::add_to_linker_sync(&mut linker, |s: &mut EngineStoreState| &mut s.wasi)
+            .map_err(wasm_err)?;
 
         let instance = linker.instantiate(&mut store, &module).map_err(wasm_err)?;
         // Reactor module: `_initialize` runs Go runtime + package init
@@ -567,5 +603,73 @@ mod tests {
             .err()
             .expect("must error");
         assert!(matches!(err, EngineHostError::Wasm(_)));
+    }
+
+    /// ENGINE_MEMORY_CAP_BYTES is bounded and ≥ the largest chart we
+    /// have observed in the wild (~512 MiB peak). Pinned so a future
+    /// accidental change to the constant triggers a test failure.
+    #[test]
+    fn engine_memory_cap_is_bounded_and_generous() {
+        // Must be > 512 MiB so large real charts fit.
+        assert!(
+            ENGINE_MEMORY_CAP_BYTES > 512 * 1024 * 1024,
+            "cap is too small for large charts: {} bytes",
+            ENGINE_MEMORY_CAP_BYTES
+        );
+        // Must be ≤ 4 GiB — WASM linear memory is 32-bit addressed,
+        // so anything larger is unreachable anyway; capping here
+        // prevents a silent no-op ceiling from drifting upward.
+        assert!(
+            ENGINE_MEMORY_CAP_BYTES <= 4 * 1024 * 1024 * 1024,
+            "cap exceeds wasm32 address space: {} bytes",
+            ENGINE_MEMORY_CAP_BYTES
+        );
+    }
+
+    /// ENGINE_EPOCH_DEADLINE is finite and generous: > 60 ticks so
+    /// slow-but-legitimate charts (argo-cd peaks ~5 s at 100 ms/tick
+    /// ≈ 50 ticks) don't trip it, but well under u64::MAX so a real
+    /// ticker can enforce it.
+    #[test]
+    fn engine_epoch_deadline_is_finite_and_generous() {
+        // > 60 ticks (6 s) — must not trip real charts.
+        assert!(
+            ENGINE_EPOCH_DEADLINE > 60,
+            "deadline {ENGINE_EPOCH_DEADLINE} is dangerously close to real chart runtimes"
+        );
+        // < u64::MAX — must be enforceable by a real ticker.
+        assert!(
+            ENGINE_EPOCH_DEADLINE < u64::MAX,
+            "epoch deadline is effectively infinite — DoS cap is not enforced"
+        );
+    }
+
+    /// A well-formed wasm module that exports `memory` and all required
+    /// allocator symbols succeeds `init_from_wasm` under the new caps.
+    /// Verifies that the `EngineStoreState` wrapper + limiter attachment
+    /// don't break the happy path for a module that satisfies the ABI
+    /// (we use `_initialize` as a no-op function to keep the WAT short).
+    #[test]
+    fn init_with_resource_caps_succeeds_for_valid_module() {
+        // A minimal module with the full ABI surface that Session::init_with
+        // expects: memory, malloc, free, result_len, entry, and _initialize.
+        let wasm = wat::parse_str(
+            r#"(module
+                (memory (export "memory") 1)
+                (func (export "_initialize"))
+                (func (export "fake_malloc") (param i32) (result i32) i32.const 0)
+                (func (export "fake_free")   (param i32))
+                (func (export "fake_result_len") (param i32) (result i32) i32.const 0)
+                (func (export "fake_entry")  (param i32 i32) (result i32) i32.const 0)
+            )"#,
+        )
+        .unwrap();
+        // Session::init_from_wasm must succeed — the caps are attached
+        // but don't trip on a trivially small module.
+        let result = Session::init_from_wasm(&wasm, TEST_SPEC);
+        assert!(
+            result.is_ok(),
+            "valid module with full ABI should initialize under resource caps"
+        );
     }
 }
