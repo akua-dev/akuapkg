@@ -22,14 +22,20 @@ const path = require('node:path');
 
 const ENV_VAR = 'AKUA_NATIVE_ENGINES_DIR';
 
-// Don't override an explicit user setting (CI test fixtures, vendored
-// engines, etc.). When the env var is already populated, trust it.
-if (!process.env[ENV_VAR]) {
+// Resolve the engines directory. Honour an explicit user setting (CI
+// test fixtures, vendored engines, etc.) over the bundled package.
+let enginesDir = process.env[ENV_VAR] || null;
+if (!enginesDir) {
 	try {
 		// `require.resolve` returns the path to the package's main
 		// file; the engines package's directory is its parent.
 		const enginesPkgEntry = require.resolve('@akua-dev/native-engines');
-		process.env[ENV_VAR] = path.dirname(enginesPkgEntry);
+		enginesDir = path.dirname(enginesPkgEntry);
+		// Keep the env var populated for Node, where the native side
+		// reads it via std::env. Harmless under Bun (it just won't be
+		// observed by std::env there — that's what the setter below
+		// is for).
+		process.env[ENV_VAR] = enginesDir;
 	} catch (e) {
 		// `@akua-dev/native-engines` is a hard dependency of
 		// `@akua-dev/native` (declared in package.json), so missing
@@ -51,4 +57,22 @@ if (!process.env[ENV_VAR]) {
 	}
 }
 
+// macOS note: napi-rs's generated index.js probes
+// `@akua-dev/native-darwin-universal` before the per-arch package. We
+// don't publish a universal build (package.json `napi.targets` lists
+// only arch triplets), so that first require() fails and is collected
+// in the loader's internal `loadErrors` list — a benign miss; the
+// per-arch package then loads. `bun install` separately surfaces a
+// 404 probing the unpublished `-universal` package; also benign.
 module.exports = require('./index.js');
+
+// Pass the dir to the addon directly. process.env mutation reaches the
+// native side under Node but NOT under Bun (no setenv on assign), so
+// the env var alone is unreliable cross-runtime.
+try {
+	if (enginesDir && typeof module.exports.setEnginesDir === 'function') {
+		module.exports.setEnginesDir(enginesDir);
+	}
+} catch (e) {
+	// addon may predate the setter; env var still covers Node.
+}

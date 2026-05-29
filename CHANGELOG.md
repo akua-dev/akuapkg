@@ -23,6 +23,10 @@ minor bump in the SDK.
 
 - **Nested renders resolve typed aliases** ([package_k.rs](crates/akua-core/src/package_k.rs)). A composed sub-package can now use `pkg.render(package = "<alias>")` against deps declared in its *own* `akua.toml`, not just at the root. `render_opts` enters each render frame with the dep-alias map derived from that frame's resolved charts (`RenderScope::enter_for_render`), with budget inheritance preserved. This is the enabling change that let the untyped `path` form be removed.
 
+### Fixed
+
+- **Helm/kustomize engines now load under Bun via the SDK** ([helm-engine-wasm](crates/helm-engine-wasm/src/lib.rs), [kustomize-engine-wasm](crates/kustomize-engine-wasm/src/lib.rs), [akua-napi](crates/akua-napi/loader.js)). The per-platform native addon ships with engines off and resolves the engine wasm from disk; it previously found that directory only through the `AKUA_NATIVE_ENGINES_DIR` env var, which the JS loader set via `process.env`. Bun doesn't `setenv` on `process.env` assignment, so the addon saw nothing and rendering failed with `helm-engine.wasm not built`. The addon now accepts the engines directory programmatically via a new `setEnginesDir` binding (checked before the env var), which the loader calls at module-load time. The env var still works for Node back-compat. macOS note: napi-rs's generated loader unconditionally probes the unpublished `@akua-dev/native-darwin-universal` package before the per-arch one; the resulting `bun install` 404 / `loadErrors` entry is benign (the per-arch package then loads) and is documented in `loader.js` — we don't publish an empty universal package.
+
 ## [0.8.14] — 2026-05-29
 
 Real-world Helm rendering. This release makes akua render the charts

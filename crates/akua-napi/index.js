@@ -576,6 +576,7 @@ if (!nativeBinding) {
 }
 
 module.exports = nativeBinding
+module.exports.add = nativeBinding.add
 module.exports.check = nativeBinding.check
 module.exports.diff = nativeBinding.diff
 module.exports.export = nativeBinding.export
@@ -584,6 +585,7 @@ module.exports.inspect = nativeBinding.inspect
 module.exports.lint = nativeBinding.lint
 module.exports.render = nativeBinding.render
 module.exports.renderToYaml = nativeBinding.renderToYaml
+module.exports.setEnginesDir = nativeBinding.setEnginesDir
 module.exports.tree = nativeBinding.tree
 module.exports.vendorAdd = nativeBinding.vendorAdd
 module.exports.vendorCheck = nativeBinding.vendorCheck

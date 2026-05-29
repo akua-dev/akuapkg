@@ -31,6 +31,20 @@ pub fn version() -> Result<serde_json::Value> {
     invoke_verb(|ctx, stdout| verbs::version::run(ctx, stdout).map_err(into_napi_io))
 }
 
+/// Point the embedded helm/kustomize engines at a directory holding
+/// their `.wasm`/`.cwasm` artifacts. The JS loader calls this with the
+/// resolved `@akua-dev/native-engines` directory at module-load time.
+///
+/// This is the cross-runtime path: setting `AKUA_NATIVE_ENGINES_DIR`
+/// via `process.env` reaches `std::env` under Node but not under Bun
+/// (Bun doesn't `setenv` on assignment), so the addon takes the dir
+/// directly. Must run before the first render — the engine crates
+/// cache the resolved bytes on first use.
+#[napi]
+pub fn set_engines_dir(dir: String) {
+    akua_core::set_native_engines_dir(&dir);
+}
+
 // ---------------------------------------------------------------------------
 // render
 // ---------------------------------------------------------------------------

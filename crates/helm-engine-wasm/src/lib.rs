@@ -13,7 +13,8 @@
 //! transitively — ~55 MB dead weight for a renderer that talks to no
 //! cluster. Fork patches the `rest.Config` path out.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 
 use engine_host_wasm::{EngineSpec, SessionSlot};
 use serde::{Deserialize, Serialize};
@@ -46,21 +47,51 @@ const ENGINE_FILENAME: &str = if cfg!(feature = "precompile") {
     "helm-engine.wasm"
 };
 
-/// Resolve the engine bytes once per process. With the env var set,
-/// `<dir>/helm-engine.{cwasm|wasm}` is read at first call and cached;
-/// otherwise the embedded bytes serve. Lets the `@akua-dev/native`
-/// loader hand the napi addon a path into `@akua-dev/native-engines`
-/// without changing the API.
+/// Programmatic override for the engines directory, set by the napi
+/// loader. Checked before `AKUA_NATIVE_ENGINES_DIR` so it works under
+/// runtimes (Bun) that don't propagate `process.env` writes to the OS
+/// environment that `std::env` reads.
+static ENGINES_DIR_OVERRIDE: RwLock<Option<PathBuf>> = RwLock::new(None);
+
+/// Set the directory the engine `.wasm`/`.cwasm` is loaded from,
+/// overriding `AKUA_NATIVE_ENGINES_DIR`. Must be called before the
+/// first engine use: [`engine_bytes`] caches the resolved bytes in a
+/// `OnceLock` on first call, so a later `set_engines_dir` won't be
+/// observed. The napi loader calls this at module-load time, well
+/// before any render.
+pub fn set_engines_dir<P: Into<PathBuf>>(dir: P) {
+    *ENGINES_DIR_OVERRIDE.write().expect("engines-dir lock") = Some(dir.into());
+}
+
+/// Resolve the engines directory: the programmatic override wins over
+/// the env var. Returns `None` when neither is set (embedded bytes
+/// serve).
+fn resolve_engines_dir() -> Option<PathBuf> {
+    if let Some(d) = ENGINES_DIR_OVERRIDE
+        .read()
+        .expect("engines-dir lock")
+        .clone()
+    {
+        return Some(d);
+    }
+    std::env::var_os(ENV_NATIVE_ENGINES_DIR).map(PathBuf::from)
+}
+
+/// Resolve the engine bytes once per process. With the dir override or
+/// env var set, `<dir>/helm-engine.{cwasm|wasm}` is read at first call
+/// and cached; otherwise the embedded bytes serve. Lets the
+/// `@akua-dev/native` loader hand the napi addon a path into
+/// `@akua-dev/native-engines` without changing the API.
 fn engine_bytes() -> &'static [u8] {
     use std::sync::OnceLock;
     static OVERRIDE: OnceLock<Option<Vec<u8>>> = OnceLock::new();
     let slot = OVERRIDE.get_or_init(|| {
-        let dir = std::env::var_os(ENV_NATIVE_ENGINES_DIR)?;
-        let path = std::path::Path::new(&dir).join(ENGINE_FILENAME);
+        let dir = resolve_engines_dir()?;
+        let path = dir.join(ENGINE_FILENAME);
         match std::fs::read(&path) {
             Ok(bytes) if !bytes.is_empty() => Some(bytes),
             // Empty file or read failure → fall back to embedded so
-            // a misconfigured env var doesn't take down rendering.
+            // a misconfigured dir doesn't take down rendering.
             // Loud warning would be nicer; library code can't print
             // without leaking through to user output.
             _ => None,
@@ -219,6 +250,34 @@ mod tests {
         } else {
             assert_eq!(ENGINE_FILENAME, "helm-engine.wasm");
         }
+    }
+
+    #[test]
+    fn set_engines_dir_override_wins_over_env() {
+        // Programmatic override must take precedence over (and work
+        // without) AKUA_NATIVE_ENGINES_DIR — that's the whole point of
+        // the Bun fix, where process.env writes don't reach std::env.
+        // We exercise resolve_engines_dir() (pre-cache) rather than
+        // engine_bytes() so the OnceLock byte cache can't interfere
+        // with sibling tests in the same process.
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_path_buf();
+        // Ensure the env var is unset for this check.
+        std::env::remove_var(ENV_NATIVE_ENGINES_DIR);
+        assert_eq!(
+            resolve_engines_dir(),
+            None,
+            "no override + no env should resolve to None"
+        );
+        set_engines_dir(&dir);
+        assert_eq!(
+            resolve_engines_dir().as_deref(),
+            Some(dir.as_path()),
+            "override must be returned even with the env var unset"
+        );
+        // Leave the global override clear so other tests (and a real
+        // render) aren't pinned at this bogus dir.
+        *ENGINES_DIR_OVERRIDE.write().unwrap() = None;
     }
 
     #[test]

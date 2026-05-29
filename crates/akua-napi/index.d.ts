@@ -14,15 +14,6 @@ export declare function inspect(args: NapiInspectArgs): any
 
 export declare function lint(args: NapiPackageArgs): any
 
-/**
- * HTTP basic-auth credential (mirrors
- * [`akua_core::host_auth::BasicAuth`]).
- */
-export interface NapiBasicAuth {
-  username: string
-  password: string
-}
-
 export interface NapiAddArgs {
   /** Workspace root containing `akua.toml`. Defaults to `.`. */
   workspace?: string
@@ -46,6 +37,15 @@ export interface NapiAddArgs {
   rev?: string
   /** Overwrite an existing entry under `name` instead of erroring. */
   force?: boolean
+}
+
+/**
+ * HTTP basic-auth credential (mirrors
+ * [`akua_core::host_auth::BasicAuth`]).
+ */
+export interface NapiBasicAuth {
+  username: string
+  password: string
 }
 
 export interface NapiCheckArgs {
@@ -140,6 +140,19 @@ export declare function render(args: NapiRenderArgs): any
  * where the caller wants raw YAML, not a `RenderSummary`.
  */
 export declare function renderToYaml(args: NapiRenderArgs): string
+
+/**
+ * Point the embedded helm/kustomize engines at a directory holding
+ * their `.wasm`/`.cwasm` artifacts. The JS loader calls this with the
+ * resolved `@akua-dev/native-engines` directory at module-load time.
+ *
+ * This is the cross-runtime path: setting `AKUA_NATIVE_ENGINES_DIR`
+ * via `process.env` reaches `std::env` under Node but not under Bun
+ * (Bun doesn't `setenv` on assignment), so the addon takes the dir
+ * directly. Must run before the first render — the engine crates
+ * cache the resolved bytes on first use.
+ */
+export declare function setEnginesDir(dir: string): void
 
 export declare function tree(args: NapiWorkspaceArgs): any
 

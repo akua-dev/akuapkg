@@ -145,6 +145,23 @@ pub use tree::{
     tree_from_parsed, tree_from_sources, DepRow, LockedInfo, PackageInfo, TreeOutput,
     TreeSourceError,
 };
+/// Point the embedded helm/kustomize engines at a directory holding
+/// their `.wasm`/`.cwasm` artifacts, overriding `AKUA_NATIVE_ENGINES_DIR`.
+///
+/// The napi addon calls this from its JS loader so the engines load
+/// under runtimes (Bun) that don't propagate `process.env` writes to
+/// the OS environment `std::env` reads. Must be called before the
+/// first render — the engine crates cache the resolved bytes on first
+/// use. A no-op for any engine whose feature is disabled.
+pub fn set_native_engines_dir(dir: &str) {
+    #[cfg(feature = "engine-helm")]
+    helm_engine_wasm::set_engines_dir(dir);
+    #[cfg(feature = "engine-kustomize")]
+    kustomize_engine_wasm::set_engines_dir(dir);
+    // Silence unused-arg warning when neither engine feature is on.
+    let _ = dir;
+}
+
 #[cfg(feature = "engine-kcl")]
 pub use vendor::{
     VendorAddOutput, VendorCheckEntry, VendorCheckOutput, VendorError, VendorListEntry,
