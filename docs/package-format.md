@@ -58,7 +58,20 @@ An import brings one of four things into scope:
 
 Imports are resolved at build time against `akua.toml` (declared deps) and verified against `akua.lock` (digest + signature). Failed verification is a compile error. A missing pin is a compile error.
 
-Helm-chart deps and KCL-package deps both land in `[dependencies]` with the same `{ oci = "...", version = "..." }` shape; akua tells them apart from the manifest media type + `org.kcllang.package.*` annotations and routes them to the right consumer (Helm via the synthetic `charts.*` wrapper, KCL packages as direct `ExternalPkg` entries inside the render sandbox).
+Helm-chart deps and KCL-package deps both land in `[dependencies]`; akua tells them apart from the manifest media type + `org.kcllang.package.*` annotations and routes them to the right consumer (Helm via the synthetic `charts.*` wrapper, KCL packages as direct `ExternalPkg` entries inside the render sandbox). Four dependency source forms are supported:
+
+| source | `akua.toml` shape | use when |
+|---|---|---|
+| OCI | `{ oci = "oci://ghcr.io/.../foo", version = "1.2.3" }` | published signed artifact (most common) |
+| Git | `{ git = "https://github.com/foo/bar", tag = "v1.2.3" }` | non-OCI-distributed sources |
+| Path | `{ path = "../shared" }` | workspace-local, dev-only |
+| Helm repo | `{ repo = "https://go.temporal.io/helm-charts", chart = "temporal", version = "0.62.0" }` | classic HTTPS Helm repository |
+
+Helm-repo deps resolve against the repo's `index.yaml` at `akua add` / lock time, content-pinned by `.tgz` sha256 in `akua.lock`, and rendered deterministically offline. Add one with:
+
+```sh
+akua add temporal --repo https://go.temporal.io/helm-charts --chart temporal --version 0.62.0
+```
 
 **For Helm charts and Akua-package deps, use the alias method on the import** — the synthesized stub owns the engine call so the consumer just states the typed args:
 

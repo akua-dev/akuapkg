@@ -15,6 +15,10 @@ minor bump in the SDK.
 
 ## [Unreleased]
 
+### Added
+
+- **HTTPS helm-repo dependency source** ([helm_repo_fetcher.rs](crates/akua-core/src/helm_repo_fetcher.rs)). `akua.toml` deps can now name a classic Helm repository (`repo` + `chart` + `version`, exact or semver range) alongside `oci`/`git`/`path`. Resolved against the repo's `index.yaml` at add/lock time, content-pinned by `.tgz` sha256 in `akua.lock`, rendered deterministically offline. Private repos use the existing host-keyed `--auth`.
+
 ### Fixed
 
 - **Helm `NOTES.txt` no longer breaks renders** ([helm.rs](crates/akua-core/src/helm.rs)). The embedded helm engine returns `NOTES.txt` (top-level and per-subchart) among its rendered files, but those are free-form usage prose, not manifests — `helm template` keeps them out of the YAML stream. akua was parsing every returned file as YAML, so a chart whose notes contain `kubectl ...:` lines aborted the whole render with `parsing output as YAML: could not find expected ':'`. akua now skips any file whose basename is `NOTES.txt` before parsing. Unblocks real-world charts (temporal, prometheus, grafana, cassandra).

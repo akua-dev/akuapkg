@@ -139,55 +139,70 @@ Creates a directory with:
 
 ## `akua add` ✅
 
-Add a dependency, chart, or source to the current package.
+Insert a dependency into `akua.toml`. Pure manifest edit — the resolver best-effortly updates `akua.lock` immediately after.
 
 ```
-akua add <kind> <ref> [flags]
+akua add <name> (--oci=<url> | --git=<url> | --path=<path> | --repo=<url> --chart=<chart>) [flags]
 ```
 
-Kinds:
-- `chart` — Helm chart (OCI or HTTP)
-- `rgd` — kro ResourceGraphDefinition
-- `kcl` — another KCL package
-- `kustomize` — Kustomize base
-- `app` — convenience: scaffold a user-authored App document referencing an existing Package
+Exactly one source flag is required. `--repo` requires `--chart`.
+
+### Dependency sources
+
+| source | flags | use when |
+|---|---|---|
+| OCI | `--oci=<url>` | published signed artifact (most common) |
+| Git | `--git=<url>` | non-OCI-distributed sources |
+| Path | `--path=<path>` | workspace-local, dev-only |
+| Helm repo | `--repo=<url> --chart=<chart>` | classic HTTPS Helm repository |
 
 ### Examples
 
 ```sh
-akua add chart oci://ghcr.io/cloudnative-pg/charts/cluster --version 0.20.0
-akua add kcl oci://ghcr.io/kcl-lang/k8s --version 1.31.2
-akua add rgd ./local/glue.rgd.yaml
-akua add app oci://pkg.akua.dev/node-api:3.2 --name my-api
-```
+# OCI dep
+akua add cnpg --oci oci://ghcr.io/cloudnative-pg/charts/cluster --version 0.20.0
 
-For `chart` and `rgd`: generates a typed KCL subpackage under `./sources/<name>/` with `chart.k`, `values.schema.k`, and cached artifacts.
+# Git dep pinned to a tag
+akua add tooling --git https://github.com/acme/tools --tag v1.2.3
+
+# Local path dep
+akua add shared --path ../shared
+
+# HTTPS Helm-repo dep
+akua add temporal --repo https://go.temporal.io/helm-charts --chart temporal --version 0.62.0
+
+# Replace an existing entry
+akua add cnpg --oci oci://ghcr.io/cloudnative-pg/charts/cluster --version 0.21.0 --force
+```
 
 ### Flags
 
 | flag | description |
 |---|---|
-| `--name=<name>` | local alias (default: derived from ref) |
-| `--version=<version>` | pin to specific version |
-| `--registry=<url>` | override default registry |
-| `--no-generate-schema` | skip schema generation |
-| `--schema-source=<auto\|values-yaml\|url\|chart-path\|local>` | schema generation strategy |
+| `--oci=<url>` | OCI source URL (`oci://…`) |
+| `--git=<url>` | Git source URL |
+| `--path=<path>` | local filesystem path |
+| `--repo=<url>` | HTTPS Helm-repo URL (pairs with `--chart`) |
+| `--chart=<name>` | chart name within the Helm repo (required with `--repo`) |
+| `--version=<version>` | version constraint; required for OCI and Helm-repo deps |
+| `--tag=<tag>` | git tag (alternative to `--rev`) |
+| `--rev=<sha>` | git commit SHA (alternative to `--tag`) |
+| `--force` | replace an existing entry under `name` |
+| `--workspace=<path>` | workspace root containing `akua.toml` (default: `.`) |
 
 ### Exit codes
 
-0 success, 1 user error, 2 system error (fetch failed), 4 rate limited.
+0 success, 1 user error, 2 system error.
 
 ### JSON output
 
 ```json
 {
-  "kind": "chart",
-  "name": "cnpg-cluster",
-  "ref": "oci://ghcr.io/cloudnative-pg/charts/cluster",
-  "version": "0.20.0",
-  "digest": "sha256:abc123…",
-  "schema": "generated",
-  "files_added": ["sources/cnpg-cluster/chart.k", "sources/cnpg-cluster/values.schema.k"]
+  "name": "temporal",
+  "source": "helm",
+  "source_ref": "https://go.temporal.io/helm-charts",
+  "version": "0.62.0",
+  "replaced": false
 }
 ```
 
@@ -202,7 +217,7 @@ akua vendor <subcommand> [flags]
 ```
 
 Subcommands:
-- `add <name>` — copy the declared dependency into `.akua/vendor/<name>/` and pin its digest in `akua.lock`. The dependency must already exist in `[dependencies]`; otherwise the command fails with a suggestion to declare it in `akua.toml`. Works for `path`, `oci`, and `git` deps alike — the resolver's vendor-first lookup is universal across kinds, so once added, the canonical source can be deleted and `akua render` still succeeds via the vendored bytes.
+- `add <name>` — copy the declared dependency into `.akua/vendor/<name>/` and pin its digest in `akua.lock`. The dependency must already exist in `[dependencies]`; otherwise the command fails with a suggestion to declare it in `akua.toml`. Works for `path`, `oci`, `git`, and `helm` (repo) deps alike — the resolver's vendor-first lookup is universal across all four source kinds, so once added, the canonical source can be deleted and `akua render` still succeeds via the vendored bytes.
 - `check` — compare the on-disk vendor trees against `akua.toml` + `akua.lock`. Drift exits with code `1`.
 - `list` — enumerate on-disk vendor trees, including orphaned entries.
 
