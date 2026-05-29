@@ -39,6 +39,11 @@ const DEPTH_BUDGET_MARKER: &str = "render depth limit";
 /// was already in the past.
 const DEADLINE_BUDGET_MARKER: &str = "wall-clock budget exhausted";
 
+/// The worker's render response overflowed the host's bounded stdout
+/// pipe. Substring of [`crate::render_worker::WorkerError::RenderOutputTooLarge`]'s
+/// `Display`, which `worker_to_render_err` threads through `KclEval`.
+const OUTPUT_TOO_LARGE_MARKER: &str = "per-render output limit";
+
 /// User-facing remediation for `E_PATH_ESCAPE`. Emitted as the
 /// `suggestion` field on the structured error so agents have a
 /// machine-readable next-action without parsing the `docs/errors/`
@@ -59,6 +64,9 @@ const DEPTH_BUDGET_SUGGESTION: &str =
 
 const DEADLINE_BUDGET_SUGGESTION: &str =
     "The wall-clock deadline installed by the outer caller had already expired before the nested `pkg.render` could run. Raise the deadline or split the work.";
+
+const OUTPUT_TOO_LARGE_SUGGESTION: &str =
+    "The Package rendered but its manifest set is too large to deliver from the sandbox. Split it into smaller Packages composed via `pkg.render`, or narrow the chart values so fewer resources are emitted.";
 
 /// Marker → (code, suggestion) lookup for the `KclEval` arm of
 /// [`RenderError::to_structured`]. Order is by selectivity, but the
@@ -81,6 +89,11 @@ const KCL_EVAL_MARKER_TABLE: &[(&str, &str, &str)] = &[
         DEADLINE_BUDGET_MARKER,
         codes::E_RENDER_BUDGET_DEADLINE,
         DEADLINE_BUDGET_SUGGESTION,
+    ),
+    (
+        OUTPUT_TOO_LARGE_MARKER,
+        codes::E_RENDER_OUTPUT_TOO_LARGE,
+        OUTPUT_TOO_LARGE_SUGGESTION,
     ),
 ];
 
@@ -696,6 +709,7 @@ mod tests {
             ("CYCLE_MARKER", CYCLE_MARKER),
             ("DEPTH_BUDGET_MARKER", DEPTH_BUDGET_MARKER),
             ("DEADLINE_BUDGET_MARKER", DEADLINE_BUDGET_MARKER),
+            ("OUTPUT_TOO_LARGE_MARKER", OUTPUT_TOO_LARGE_MARKER),
         ];
         for (i, (a_name, a)) in markers.iter().enumerate() {
             for (b_name, b) in markers.iter().skip(i + 1) {

@@ -62,6 +62,12 @@ pub const E_INPUTS_PARSE: &str = "E_INPUTS_PARSE";
 pub const E_INVALID_FLAG: &str = "E_INVALID_FLAG";
 pub const E_RENDER_KCL: &str = "E_RENDER_KCL";
 pub const E_RENDER_YAML: &str = "E_RENDER_YAML";
+/// A render produced more output than the host is willing to buffer
+/// from the sandboxed worker (the per-render stdout ceiling — a DoS
+/// bound on shared hosts). The Package renders, but its manifest set
+/// is too large to deliver. Distinct from `E_RENDER_KCL` so agents
+/// don't mistake an over-large-but-valid render for a program error.
+pub const E_RENDER_OUTPUT_TOO_LARGE: &str = "E_RENDER_OUTPUT_TOO_LARGE";
 /// Package called an engine plugin whose WASM backend hasn't shipped
 /// yet (docs/roadmap.md tracks the blocked features). Shell-out is
 /// not an option — see CLAUDE.md "No shell-out, ever."

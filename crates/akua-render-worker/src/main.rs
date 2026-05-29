@@ -173,9 +173,13 @@ fn run() -> Result<(), WorkerError> {
 
     let out =
         serde_json::to_string(&resp).map_err(|source| WorkerError::EncodeResponse { source })?;
+    let out_len = out.len();
     std::io::stdout()
         .write_all(out.as_bytes())
-        .map_err(|source| WorkerError::StdoutWrite { source })?;
+        .map_err(|source| WorkerError::StdoutWrite {
+            source,
+            attempted: out_len,
+        })?;
     Ok(())
 }
 
@@ -262,10 +266,19 @@ fn render_request(
 
 #[derive(Debug)]
 enum WorkerError {
-    StdinRead { source: std::io::Error },
-    ParseRequest { source: serde_json::Error },
-    EncodeResponse { source: serde_json::Error },
-    StdoutWrite { source: std::io::Error },
+    StdinRead {
+        source: std::io::Error,
+    },
+    ParseRequest {
+        source: serde_json::Error,
+    },
+    EncodeResponse {
+        source: serde_json::Error,
+    },
+    StdoutWrite {
+        source: std::io::Error,
+        attempted: usize,
+    },
 }
 
 impl std::fmt::Display for WorkerError {
@@ -274,7 +287,16 @@ impl std::fmt::Display for WorkerError {
             WorkerError::StdinRead { source } => write!(f, "stdin read: {source}"),
             WorkerError::ParseRequest { source } => write!(f, "parse request: {source}"),
             WorkerError::EncodeResponse { source } => write!(f, "encode response: {source}"),
-            WorkerError::StdoutWrite { source } => write!(f, "stdout write: {source}"),
+            // A short write into the host's bounded stdout pipe means the
+            // render's output exceeded the host's per-render output ceiling.
+            // The host names the byte limit (E_RENDER_OUTPUT_TOO_LARGE); the
+            // worker contributes the size it tried to deliver so the
+            // combined message is actionable instead of a bare `os error 29`.
+            WorkerError::StdoutWrite { source, attempted } => write!(
+                f,
+                "render output ({attempted} bytes) exceeded the host's per-render \
+                 output limit (stdout pipe write failed: {source})"
+            ),
         }
     }
 }

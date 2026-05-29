@@ -207,6 +207,16 @@ pub enum WorkerError {
 
     #[error("worker stderr: {0}")]
     WorkerStderr(String),
+
+    /// The render's output overflowed the host's per-render stdout
+    /// ceiling. The Package rendered successfully but its manifest set
+    /// is larger than the host will buffer from the sandboxed worker
+    /// (the DoS bound on shared hosts). Carries the host's byte limit.
+    #[error(
+        "render output exceeded the {limit_bytes}-byte per-render output limit \
+         — the Package renders but produces too many manifests to deliver"
+    )]
+    RenderOutputTooLarge { limit_bytes: usize },
 }
 
 /// Handle to the shared wasmtime Engine's precompiled worker module.
@@ -357,7 +367,18 @@ impl RenderHost {
         // WASI pipes as owned handles we can read back after the
         // guest finishes writing.
         let stdin_pipe = MemoryInputPipe::new(req_bytes);
-        let stdout_pipe = MemoryOutputPipe::new(1 << 20); // 1 MiB cap on response
+        // Stdout carries the worker's entire JSON+YAML render response.
+        // Real charts blow past 1 MiB (argo-cd renders ~1.36 MB), so
+        // cap at the worker's own memory ceiling rather than an
+        // arbitrary fraction of it: a render that fits in guest memory
+        // should be deliverable to the host. This is the DoS ceiling
+        // on host memory for a single render's output on shared hosts —
+        // a render that overflows it fails with E_RENDER_OUTPUT_TOO_LARGE
+        // rather than corrupting output.
+        let stdout_cap = limits.memory_bytes.min(256 << 20);
+        let stdout_pipe = MemoryOutputPipe::new(stdout_cap);
+        // Deliberately small: stderr is structured JSON-lines diagnostics,
+        // not bulk output.
         let stderr_pipe = MemoryOutputPipe::new(64 * 1024);
 
         let mut wasi = WasiCtxBuilder::new();
@@ -469,9 +490,19 @@ impl RenderHost {
             Err(e) => match e.downcast_ref::<wasmtime_wasi::I32Exit>() {
                 Some(wasmtime_wasi::I32Exit(0)) => {}
                 Some(wasmtime_wasi::I32Exit(code)) => {
+                    let stderr = String::from_utf8_lossy(&err_bytes);
+                    // A short stdout write in the worker (the response
+                    // overflowed the bounded stdout pipe) surfaces as
+                    // this — promote it to the typed too-large error so
+                    // callers see E_RENDER_OUTPUT_TOO_LARGE, not an
+                    // opaque `os error 29`.
+                    if stderr.contains("per-render output limit") {
+                        return Err(WorkerError::RenderOutputTooLarge {
+                            limit_bytes: stdout_cap,
+                        });
+                    }
                     return Err(WorkerError::WorkerStderr(format!(
-                        "worker exited with code {code} — stderr: {}",
-                        String::from_utf8_lossy(&err_bytes)
+                        "worker exited with code {code} — stderr: {stderr}"
                     )));
                 }
                 None => {
