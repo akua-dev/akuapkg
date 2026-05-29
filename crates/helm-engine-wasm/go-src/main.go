@@ -41,6 +41,7 @@ import (
 	"helm.sh/helm/v4/pkg/chart/common"
 	"helm.sh/helm/v4/pkg/chart/common/util"
 	"helm.sh/helm/v4/pkg/chart/v2/loader"
+	chartutil "helm.sh/helm/v4/pkg/chart/v2/util"
 	"helm.sh/helm/v4/pkg/engine"
 	"sigs.k8s.io/yaml"
 )
@@ -125,6 +126,13 @@ func renderInternal(inputBytes []byte) renderOutput {
 	values, err := parseValues(in.ValuesYAML)
 	if err != nil {
 		return renderOutput{Error: fmt.Sprintf("parsing values YAML: %s", err)}
+	}
+	// Prune subcharts whose `condition`/`tags` resolve false and apply
+	// import-values, mutating ch.Dependencies() in place. Upstream Helm
+	// runs this before ToRenderValues (pkg/action/install.go); without it
+	// every bundled subchart renders regardless of its condition.
+	if err := chartutil.ProcessDependencies(ch, values); err != nil {
+		return renderOutput{Error: fmt.Sprintf("processing chart dependencies: %s", err)}
 	}
 	// util.ToRenderValues performs the chart-hierarchy value coalescing
 	// (subchart defaults, alias scoping) that engine.Render relies on.

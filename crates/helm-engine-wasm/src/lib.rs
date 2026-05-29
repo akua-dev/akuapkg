@@ -375,4 +375,82 @@ data:
             other => panic!("expected Engine error, got {other:?}"),
         }
     }
+
+    /// Build a parent chart with one conditional subchart bundled under
+    /// `charts/`. Returns the chart-dir path inside `tmp`.
+    fn write_conditional_parent(tmp: &std::path::Path) -> std::path::PathBuf {
+        let parent = tmp.join("parent");
+        std::fs::create_dir_all(parent.join("templates")).unwrap();
+        std::fs::create_dir_all(parent.join("charts/sub/templates")).unwrap();
+        std::fs::write(
+            parent.join("Chart.yaml"),
+            "apiVersion: v2\nname: parent\nversion: 0.1.0\n\
+             dependencies:\n  - name: sub\n    version: 0.1.0\n    condition: sub.enabled\n",
+        )
+        .unwrap();
+        std::fs::write(
+            parent.join("templates/cm.yaml"),
+            "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: parent-cm\n",
+        )
+        .unwrap();
+        std::fs::write(
+            parent.join("charts/sub/Chart.yaml"),
+            "apiVersion: v2\nname: sub\nversion: 0.1.0\n",
+        )
+        .unwrap();
+        std::fs::write(
+            parent.join("charts/sub/templates/cm.yaml"),
+            "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: sub-cm\n",
+        )
+        .unwrap();
+        parent
+    }
+
+    fn rendered_has(out: &std::collections::BTreeMap<String, String>, name: &str) -> bool {
+        out.values().any(|y| y.contains(name))
+    }
+
+    /// A bundled subchart whose `condition` resolves false must be pruned
+    /// before rendering — Helm's `chartutil.ProcessDependencies` step.
+    #[test]
+    fn subchart_condition_disables_subchart() {
+        if !engine_is_built() {
+            eprintln!("skipping: helm-engine.wasm not built (run `task build:helm-engine-wasm`)");
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let parent = write_conditional_parent(tmp.path());
+
+        let disabled = render_dir(
+            &parent,
+            "parent",
+            "sub:\n  enabled: false\n",
+            &Release::default(),
+        )
+        .expect("render with sub disabled");
+        assert!(
+            rendered_has(&disabled, "parent-cm"),
+            "parent-cm should always render: {disabled:?}"
+        );
+        assert!(
+            !rendered_has(&disabled, "sub-cm"),
+            "sub-cm must be pruned when sub.enabled=false: {disabled:?}"
+        );
+
+        let enabled = render_dir(
+            &parent,
+            "parent",
+            "sub:\n  enabled: true\n",
+            &Release::default(),
+        )
+        .expect("render with sub enabled");
+        assert!(
+            rendered_has(&enabled, "parent-cm"),
+            "parent-cm should always render: {enabled:?}"
+        );
+        assert!(
+            rendered_has(&enabled, "sub-cm"),
+            "sub-cm must render when sub.enabled=true: {enabled:?}"
+        );
+    }
 }

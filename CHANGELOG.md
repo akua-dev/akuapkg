@@ -15,6 +15,10 @@ minor bump in the SDK.
 
 ## [Unreleased]
 
+### Fixed
+
+- Helm subchart `condition`/`tags` disabling now honored — the embedded engine calls `chartutil.ProcessDependencies` before rendering, so `cassandra.enabled = false` (etc.) actually skips the subchart. Previously bundled subcharts always rendered regardless of their condition, for every dep source.
+
 ## [0.8.16] — 2026-05-29
 
 Security hardening release. Remediates all 17 findings from the 2026-05-29
