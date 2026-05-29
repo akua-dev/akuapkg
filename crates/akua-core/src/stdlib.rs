@@ -88,16 +88,51 @@ pub fn materialize_pkg_stubs_if_any(
     if aliased.is_empty() {
         return Ok(None);
     }
+    detect_ident_collisions(aliased.iter().map(|(alias, _)| *alias))?;
     let dir = tempfile::Builder::new().prefix("akua-pkgs-").tempdir()?;
     const PKGS_KCL_MOD: &str =
         "[package]\nname = \"pkgs\"\nedition = \"0.0.1\"\nversion = \"0.0.1\"\n";
     std::fs::write(dir.path().join("kcl.mod"), PKGS_KCL_MOD)?;
     for (alias, chart) in aliased {
         let source = std::fs::read_to_string(chart.abs_path.join("package.k"))?;
+        // `build_stub_module` keeps the original `alias` for the
+        // `package = "..."` lookup (`pkg.render` keys the resolved-pkg
+        // map on the raw dep name), but the on-disk module — and thus
+        // the `import pkgs.<ident>` the user writes — uses the
+        // sanitized identifier.
         let stub = crate::pkg_stub::build_stub_module(alias, &source);
-        std::fs::write(dir.path().join(format!("{alias}.k")), stub)?;
+        let module = crate::mod_file::kcl_ident(alias);
+        std::fs::write(dir.path().join(format!("{module}.k")), stub)?;
     }
     Ok(Some(dir))
+}
+
+/// Reject two distinct dep keys that sanitize to the same KCL
+/// identifier (e.g. `a-b` and `a_b` both → `a_b`). Without this guard
+/// the second materialized module file would silently overwrite the
+/// first, leaving one import pointing at the wrong dep. Surfaces as an
+/// I/O error since the materializers return [`std::io::Result`]; the
+/// render verb maps it to `E_RENDER_KCL` like other materialization
+/// failures.
+fn detect_ident_collisions<'a>(names: impl Iterator<Item = &'a str>) -> std::io::Result<()> {
+    use std::collections::HashMap;
+    let mut seen: HashMap<String, &str> = HashMap::new();
+    for name in names {
+        let ident = crate::mod_file::kcl_ident(name);
+        if let Some(prior) = seen.insert(ident.clone(), name) {
+            if prior != name {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!(
+                        "dep keys `{prior}` and `{name}` both sanitize to the KCL \
+                         identifier `{ident}` — rename one so `import` aliases are \
+                         unambiguous"
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn materialize_charts(
@@ -107,6 +142,7 @@ pub fn materialize_charts(
     const CHARTS_KCL_MOD: &str =
         "[package]\nname = \"charts\"\nedition = \"0.0.1\"\nversion = \"0.0.1\"\n";
     std::fs::write(dir.path().join("kcl.mod"), CHARTS_KCL_MOD)?;
+    detect_ident_collisions(resolved.helm_charts().map(|(name, _)| name))?;
     // Only Helm deps get the synthetic wrapper. KCL ecosystem deps
     // are mounted as standalone ExternalPkg entries by the render verb.
     for (name, chart) in resolved.helm_charts() {
@@ -117,7 +153,12 @@ pub fn materialize_charts(
             &chart.sha256,
             values_schema.as_deref(),
         );
-        std::fs::write(dir.path().join(format!("{name}.k")), body)?;
+        // On-disk module name = the `import charts.<ident>` alias the
+        // user writes. Hyphenated dep keys (`cnpg-operator`) become
+        // legal KCL identifiers (`cnpg_operator`) so the import
+        // resolves the module *and* sees its `template`/`TemplateOpts`.
+        let module = crate::mod_file::kcl_ident(name);
+        std::fs::write(dir.path().join(format!("{module}.k")), body)?;
     }
     Ok(dir)
 }
@@ -313,6 +354,63 @@ mod tests {
         );
         // No values.schema.json → values type is the passthrough dict.
         assert!(nginx_k.contains("values: {str:}"), "module: {nginx_k}");
+    }
+
+    #[test]
+    fn materialize_charts_sanitizes_hyphenated_dep_name() {
+        use crate::chart_resolver::{ResolvedChart, ResolvedCharts};
+        use std::collections::BTreeMap;
+
+        let mut entries = BTreeMap::new();
+        entries.insert(
+            "cnpg-operator".to_string(),
+            ResolvedChart {
+                name: "cnpg-operator".to_string(),
+                abs_path: PathBuf::from("/tmp/charts/cnpg-operator"),
+                sha256: "sha256:abc".to_string(),
+                kind: crate::chart_resolver::PackageKind::HelmChart,
+                source: crate::chart_resolver::ResolvedSource::Path {
+                    declared: "./charts/cnpg-operator".to_string(),
+                },
+            },
+        );
+        let resolved = ResolvedCharts { entries };
+
+        let tmp = materialize_charts(&resolved).expect("materialize");
+        // Module file is named after the sanitized identifier so
+        // `import charts.cnpg_operator` resolves it.
+        assert!(tmp.path().join("cnpg_operator.k").is_file());
+        assert!(!tmp.path().join("cnpg-operator.k").exists());
+        let body = std::fs::read_to_string(tmp.path().join("cnpg_operator.k")).unwrap();
+        assert!(body.contains("template = lambda"), "module: {body}");
+    }
+
+    #[test]
+    fn materialize_charts_rejects_ident_collision() {
+        use crate::chart_resolver::{ResolvedChart, ResolvedCharts};
+        use std::collections::BTreeMap;
+
+        let mk = |key: &str| ResolvedChart {
+            name: key.to_string(),
+            abs_path: PathBuf::from(format!("/tmp/charts/{key}")),
+            sha256: "sha256:abc".to_string(),
+            kind: crate::chart_resolver::PackageKind::HelmChart,
+            source: crate::chart_resolver::ResolvedSource::Path {
+                declared: format!("./charts/{key}"),
+            },
+        };
+        let mut entries = BTreeMap::new();
+        entries.insert("a-b".to_string(), mk("a-b"));
+        entries.insert("a_b".to_string(), mk("a_b"));
+        let resolved = ResolvedCharts { entries };
+
+        let err = materialize_charts(&resolved).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("a-b") && msg.contains("a_b"), "msg: {msg}");
+        assert!(
+            msg.contains("a_b") && msg.contains("identifier"),
+            "msg: {msg}"
+        );
     }
 
     #[test]

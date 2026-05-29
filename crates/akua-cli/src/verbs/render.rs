@@ -541,9 +541,20 @@ pub fn render_in_worker(
         if c.is_akua_package() {
             continue;
         }
-        let guest_path = format!("/kcl-pkgs/{alias}");
+        // The worker registers each as `ExternalPkg { pkg_name: <ident> }`,
+        // which is the name `import <ident>` resolves against — so a
+        // hyphenated dep key (`my-pkg`) must mount as the sanitized
+        // identifier (`my_pkg`) the user can actually write.
+        let ident = akua_core::mod_file::kcl_ident(alias);
+        let guest_path = format!("/kcl-pkgs/{ident}");
         kcl_preopens.push((c.abs_path.clone(), guest_path.clone()));
-        kcl_pkgs_request.insert(alias.to_string(), guest_path);
+        if kcl_pkgs_request.insert(ident.clone(), guest_path).is_some() {
+            return Err(RenderError::PackageK(PackageKError::KclEval(format!(
+                "dep key `{alias}` sanitizes to the KCL identifier `{ident}`, which \
+                 collides with another kcl-package dep — rename one so `import` \
+                 aliases are unambiguous"
+            ))));
+        }
     }
 
     let host = RenderHost::shared().map_err(worker_to_render_err)?;

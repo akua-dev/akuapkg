@@ -467,6 +467,30 @@ impl Dependency {
     }
 }
 
+/// Map a dep key to a legal KCL identifier by replacing every char
+/// outside `[A-Za-z0-9_]` with `_`. Dep keys allow `-` (and validate
+/// as Cargo/npm-style names), but KCL identifiers don't — a module
+/// written to `cnpg-operator.k` binds its symbols under the literal
+/// `cnpg-operator`, which `import charts.cnpg_operator` can't see.
+/// Sanitizing at every site that turns a dep key into a KCL module /
+/// alias name keeps the on-disk module name aligned with the `import`
+/// alias the user has to write.
+///
+/// Dep keys already reject a leading `-` (see [`is_valid_package_name`]),
+/// so the result never starts with a digit-or-separator combination
+/// that KCL would reject; only the separator chars need mapping.
+pub fn kcl_ident(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
 /// Package name rules (aligned with Cargo / npm / poetry conventions):
 /// - non-empty
 /// - ASCII alphanumeric, `-`, `_` only
@@ -737,6 +761,27 @@ edition = "akua.dev/v1alpha1"
         assert!(!is_valid_package_name("-leading-hyphen"));
         assert!(!is_valid_package_name("has space"));
         assert!(!is_valid_package_name("has.dot"));
+    }
+
+    #[test]
+    fn kcl_ident_sanitizes_separators() {
+        assert_eq!(kcl_ident("cnpg-operator"), "cnpg_operator");
+        // Idempotent / unchanged on already-legal identifiers.
+        assert_eq!(kcl_ident("traefik"), "traefik");
+        assert_eq!(kcl_ident("web_app_123"), "web_app_123");
+        // Collapses other separators a dep key might carry.
+        assert_eq!(kcl_ident("a.b"), "a_b");
+        assert_eq!(kcl_ident("a-b.c"), "a_b_c");
+        // Digits and underscores pass through untouched.
+        assert_eq!(kcl_ident("01-hello-webapp"), "01_hello_webapp");
+    }
+
+    #[test]
+    fn kcl_ident_collision_is_detectable() {
+        // Two distinct dep keys that sanitize to the same identifier —
+        // the materializers reject this rather than overwrite a module.
+        assert_eq!(kcl_ident("a-b"), kcl_ident("a_b"));
+        assert_ne!("a-b", "a_b");
     }
 
     #[test]
