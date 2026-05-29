@@ -54,7 +54,7 @@ ts-export = ["akua-core/ts-export", "dep:ts-rs"]
 schema-export = ["akua-core/schema-export", "dep:schemars"]
 
 [dependencies]
-akua-core = { path = "../akua-core", default-features = false, features = ["engine-kcl", "engine-helm", "engine-kustomize", "git-fetch"] }
+akua-core = { path = "../akua-core", default-features = false, features = ["engine-kcl", "engine-helm", "engine-kustomize", "git-fetch", "helm-fetch"] }
 clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

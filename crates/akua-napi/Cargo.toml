@@ -44,6 +44,7 @@ akua-core = { path = "../akua-core", default-features = false, features = [
     "engine-kustomize",
     "oci-fetch",
     "git-fetch",
+    "helm-fetch",
     "cosign-verify",
 ] }
 napi = { version = "3", features = ["napi9", "serde-json"] }
