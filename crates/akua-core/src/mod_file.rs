@@ -476,11 +476,13 @@ impl Dependency {
 /// alias name keeps the on-disk module name aligned with the `import`
 /// alias the user has to write.
 ///
-/// Dep keys already reject a leading `-` (see [`is_valid_package_name`]),
-/// so the result never starts with a digit-or-separator combination
-/// that KCL would reject; only the separator chars need mapping.
+/// Every char outside `[A-Za-z0-9_]` maps to `_`. A KCL identifier may
+/// not start with a digit, and [`is_valid_package_name`] permits
+/// digit-leading dep keys (e.g. `01-foo`), so a leading digit is
+/// prefixed with `_` (`01-foo` → `_01_foo`).
 pub fn kcl_ident(name: &str) -> String {
-    name.chars()
+    let mut out: String = name
+        .chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() || c == '_' {
                 c
@@ -488,7 +490,11 @@ pub fn kcl_ident(name: &str) -> String {
                 '_'
             }
         })
-        .collect()
+        .collect();
+    if out.starts_with(|c: char| c.is_ascii_digit()) {
+        out.insert(0, '_');
+    }
+    out
 }
 
 /// Package name rules (aligned with Cargo / npm / poetry conventions):
@@ -772,8 +778,10 @@ edition = "akua.dev/v1alpha1"
         // Collapses other separators a dep key might carry.
         assert_eq!(kcl_ident("a.b"), "a_b");
         assert_eq!(kcl_ident("a-b.c"), "a_b_c");
-        // Digits and underscores pass through untouched.
-        assert_eq!(kcl_ident("01-hello-webapp"), "01_hello_webapp");
+        // A leading digit is illegal in a KCL identifier, so it's prefixed
+        // with `_` (digit-leading dep keys are otherwise permitted).
+        assert_eq!(kcl_ident("01-hello-webapp"), "_01_hello_webapp");
+        assert_eq!(kcl_ident("9lives"), "_9lives");
     }
 
     #[test]
