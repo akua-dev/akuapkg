@@ -8,9 +8,10 @@
 //!    (memory cap, instance/table caps), `consume_fuel`, and an
 //!    epoch deadline checked by a background-thread tick.
 //! 2. Constructs a `WasiCtx` with **only** the preopens the request
-//!    declared — workspace dir read-only, output dir writable, nothing
-//!    else reachable. No inherited env, no inherited stdio beyond the
-//!    JSON envelope pipes.
+//!    declared — the stdlib / charts / kcl-pkg / pkgs dirs, all
+//!    **read-only**; the guest has no writable host dir (the render
+//!    result returns over the stdout pipe, the host writes files).
+//!    No inherited env, no inherited stdio beyond the JSON envelope pipes.
 //! 3. Instantiates the worker module (deserialized once from the
 //!    AOT `.cwasm`; reused across all `Store`s of the same `Engine`).
 //! 4. Pipes a JSON request into the worker's stdin, invokes its
@@ -81,6 +82,31 @@ impl Default for ResourceLimits {
         Self {
             memory_bytes: 256 * 1024 * 1024,
             epoch_deadline: 60,
+        }
+    }
+}
+
+impl ResourceLimits {
+    /// Epoch ticks (100ms each, matching [`spawn_epoch_ticker`]) for a
+    /// remaining wall-clock window, clamped to `[1, 1h]`. Lets `--timeout`
+    /// bound the worker in both directions.
+    pub(crate) fn epoch_ticks_for_remaining(remaining: std::time::Duration) -> u64 {
+        const TICK_MS: u128 = 100;
+        const MAX_TICKS: u128 = 60 * 60 * 1000 / TICK_MS; // 1 hour ceiling
+        (remaining.as_millis() / TICK_MS).clamp(1, MAX_TICKS) as u64
+    }
+
+    /// Limits honoring an optional wall-clock deadline (from `--timeout`).
+    /// `None` falls back to the conservative default epoch.
+    pub(crate) fn for_deadline(deadline: Option<std::time::Instant>) -> Self {
+        match deadline {
+            Some(d) => Self {
+                epoch_deadline: Self::epoch_ticks_for_remaining(
+                    d.saturating_duration_since(std::time::Instant::now()),
+                ),
+                ..Self::default()
+            },
+            None => Self::default(),
         }
     }
 }
@@ -797,6 +823,41 @@ fn spawn_epoch_ticker(engine: Engine) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn epoch_ticks_map_timeout_to_100ms_ticks_clamped() {
+        // 6s default-equivalent → 60 ticks.
+        assert_eq!(
+            ResourceLimits::epoch_ticks_for_remaining(Duration::from_secs(6)),
+            60
+        );
+        // Sub-tick / already-expired windows floor to 1 (never 0 → never an
+        // instant trap-on-entry, but still the tightest cap).
+        assert_eq!(
+            ResourceLimits::epoch_ticks_for_remaining(Duration::from_millis(50)),
+            1
+        );
+        assert_eq!(ResourceLimits::epoch_ticks_for_remaining(Duration::ZERO), 1);
+        // Looser timeout extends the deadline (operator opt-in).
+        assert_eq!(
+            ResourceLimits::epoch_ticks_for_remaining(Duration::from_secs(30)),
+            300
+        );
+        // Clamped to the 1h ceiling.
+        assert_eq!(
+            ResourceLimits::epoch_ticks_for_remaining(Duration::from_secs(10 * 3600)),
+            60 * 60 * 1000 / 100
+        );
+    }
+
+    #[test]
+    fn for_deadline_none_uses_default_epoch() {
+        assert_eq!(
+            ResourceLimits::for_deadline(None).epoch_deadline,
+            ResourceLimits::default().epoch_deadline
+        );
+    }
 
     /// Skips when the sandbox wasn't compiled in. Run
     /// `task build:render-worker && cargo test -p akua-cli` to get

@@ -618,7 +618,11 @@ pub fn render_in_worker(
     let response = host
         .invoke_with_deps(
             &request,
-            ResourceLimits::default(),
+            // Honor `--timeout`: derive the worker's epoch deadline from the
+            // budget's wall-clock deadline (BudgetSnapshot is Copy, so this
+            // read is fine after the move into the scope above). Without
+            // `--timeout`, the conservative default epoch applies.
+            ResourceLimits::for_deadline(budget.deadline),
             charts_tmp.as_ref().map(|d| d.path()),
             &kcl_preopens,
             pkgs_tmp.as_ref().map(|d| d.path()),

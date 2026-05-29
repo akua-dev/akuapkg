@@ -34,27 +34,28 @@ fetch buffering, decompression bombs).
 | 6 | MEDIUM | Decompression bomb on gzip→tar layer/chart extraction | fetch | ✅ fixed |
 | 7 | MEDIUM | `BasicAuth` derives `Debug`+`Serialize` with no redaction (latent secret leak) | secrets | ✅ fixed |
 | 8 | MEDIUM | gix git transport honors ambient `GIT_SSL_NO_VERIFY` (first-resolve MITM window) | fetch | ✅ fixed |
-| 9 | MEDIUM | Cosign verification is opt-in, contradicting "verify by default on pull" | supply-chain | docs reconcile |
+| 9 | MEDIUM | Cosign verification is opt-in, contradicting "verify by default on pull" | supply-chain | ✅ docs reconciled |
 | 10 | LOW | UTF-8 byte-slice panic on registry error body (`&body[..300]`) | parsing | ✅ fixed |
 | 11 | LOW | Helm-repo `index.yaml` can downgrade `.tgz` download to `http://` | fetch | ✅ fixed |
 | 12 | LOW | Helm-repo `chart` name path-joined without `..` validation (self-targeting) | path | ✅ fixed |
 | 13 | LOW | git checkout trusts gix tree-entry filenames for `dest.join` (defense-in-depth) | path | ✅ fixed |
 | 14 | LOW | `vendor add --json` `source_ref` echoes raw (uncanonicalized) git URL | secrets | ✅ fixed |
 | 15 | INFO | OCI deps not validated for embedded `user:pass@` (symmetry with git/helm) | secrets | ✅ fixed |
-| 16 | INFO | Worker preopen doc comment says "writable" but dirs are read-only (stale) | sandbox | docs |
-| 17 | INFO | `--timeout` not propagated into the worker epoch deadline | sandbox | note |
+| 16 | INFO | Worker preopen doc comment says "writable" but dirs are read-only (stale) | sandbox | ✅ fixed |
+| 17 | INFO | `--timeout` not propagated into the worker epoch deadline | sandbox | ✅ fixed |
 
 ## Remediation status
 
-Findings 1-8 and 10-15 were fixed the same day, each in an isolated worktree
-(disjoint file sets) and merged to `main` as the `fix(security): …` commit series.
-All 446 `akua-core` tests pass on the merged result and the CLI builds clean. Three
-items remain as deliberate follow-ups: **#9** (a docs-vs-implementation
-reconciliation — verification engages when a cosign key is configured; digest-pin is
-the universal gate — pending a maintainer call on whether to require a key by
-default), **#16** (a one-line stale doc comment), and **#17** (propagating
-`--timeout` into the worker epoch). Each "Fix:" note below describes the change that
-landed.
+**All 17 findings are remediated.** Findings 1-8 and 10-15 were fixed the same day,
+each in an isolated worktree (disjoint file sets) and merged to `main` as the
+`fix(security): …` commit series. **#9** was resolved by reconciling the docs: the
+"verify by default" invariant in CLAUDE.md now states accurately that digest-pinning
+is the universal verified-before-write gate and cosign signature verification engages
+(fail-closed) when a `[signing].cosign_public_key` is configured — keeping signing
+opt-in rather than breaking every key-less workspace. **#16** (stale worker preopen
+comment) and **#17** (`--timeout` now derives the worker epoch deadline, with a unit
+test) are fixed. All `akua-core` + `akua-cli` tests pass on the merged result; the CLI
+builds clean. Each "Fix:" note below describes the change that landed.
 
 ## Findings
 
