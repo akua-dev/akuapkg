@@ -15,14 +15,30 @@ minor bump in the SDK.
 
 ## [Unreleased]
 
+## [0.8.14] — 2026-05-29
+
+Real-world Helm rendering. This release makes akua render the charts
+people actually deploy — pulling from classic HTTPS Helm repositories,
+composing charts inside modular sub-packages, and surviving the schema
+shapes and output sizes of large upstream charts (temporal, argo-cd,
+traefik, prometheus, grafana, cassandra). It also fixes the release
+pipeline's version-stamping.
+
 ### Added
 
-- **HTTPS helm-repo dependency source** ([helm_repo_fetcher.rs](crates/akua-core/src/helm_repo_fetcher.rs)). `akua.toml` deps can now name a classic Helm repository (`repo` + `chart` + `version`, exact or semver range) alongside `oci`/`git`/`path`. Resolved against the repo's `index.yaml` at add/lock time, content-pinned by `.tgz` sha256 in `akua.lock`, rendered deterministically offline. Private repos use the existing host-keyed `--auth`.
+- **HTTPS helm-repo dependency source** ([helm_repo_fetcher.rs](crates/akua-core/src/helm_repo_fetcher.rs)). `akua.toml` deps can now name a classic Helm repository — `repo` + `chart` + `version` (exact or semver range) — alongside `oci`/`git`/`path`. Resolved against the repo's `index.yaml` at add/lock time, content-pinned by `.tgz` sha256 in `akua.lock`, rendered deterministically from the cache offline. Private repos use the existing host-keyed `--auth`. The CLI gains `akua add --repo <url> --chart <name> --version <req>`; the SDK's `add()` mirrors it.
+- **`examples/13-subpackage-helm`** — a modular sub-package that itself composes a Helm chart, exercising the cross-package context fix below.
+- **`examples/14-helm-repo-dep`** — a chart pulled from an HTTPS Helm repository (network-gated e2e test, run pre-release like `examples_kcl_ecosystem`).
 
 ### Fixed
 
-- **Helm `NOTES.txt` no longer breaks renders** ([helm.rs](crates/akua-core/src/helm.rs)). The embedded helm engine returns `NOTES.txt` (top-level and per-subchart) among its rendered files, but those are free-form usage prose, not manifests — `helm template` keeps them out of the YAML stream. akua was parsing every returned file as YAML, so a chart whose notes contain `kubectl ...:` lines aborted the whole render with `parsing output as YAML: could not find expected ':'`. akua now skips any file whose basename is `NOTES.txt` before parsing. Unblocks real-world charts (temporal, prometheus, grafana, cassandra).
-- **Release binaries report their tag version** ([release.yml](.github/workflows/release.yml)). The release pipeline now derives the Rust workspace version from the pushed git tag (`scripts/set-cargo-version.sh`) and asserts `akua -V` matches the tag in the build smoke-test. Previously `CARGO_PKG_VERSION` was pinned to the committed `Cargo.toml`, so 0.8.9–0.8.13 binaries (and their SLSA provenance / OCI annotations) all reported `0.8.8`.
+- **Composed sub-packages now resolve their own external deps** ([pkg_render.rs](crates/akua-core/src/pkg_render.rs)). A `pkg.render`-composed (or typed `pkgs.<alias>`) sub-package can now `import charts.<x>` (Helm) and `import k8s.api…` (kcl-ecosystem) declared in its *own* `akua.toml` — previously these failed with `CannotFindModule` because external-package context was only set up for the root. The recursion loads the child manifest, resolves its deps, and registers them for the child eval, with the parent's `reject_replace`/`offline` posture propagated so a sub-package can't open an escape the root forbade.
+- **Helm `NOTES.txt` no longer breaks renders** ([helm.rs](crates/akua-core/src/helm.rs)). The engine returns `NOTES.txt` (top-level and per-subchart) among its files, but those are free-form prose, not manifests. akua parsed every file as YAML, so notes containing `kubectl …:` lines aborted the whole render with `could not find expected ':'`. `NOTES.txt` is now skipped before parsing.
+- **Union-typed chart values no longer crash the evaluator** ([values_schema.rs](crates/akua-core/src/values_schema.rs)). A `values.schema.json` field typed `["string","integer","null"]` was collapsed to its first member while its default was emitted verbatim (`port: str = 8080`), aborting the wasm KCL evaluator. akua now emits a real KCL union (`int | str`) and marks `null`-bearing unions optional. Unblocks charts like traefik.
+- **Hyphenated dependency names now import correctly** ([mod_file.rs](crates/akua-core/src/mod_file.rs)). A dep keyed `cnpg-operator` produced a `cnpg-operator.k` module that `import charts.cnpg_operator` couldn't see (`-` is not a KCL identifier). Dep names are sanitized to KCL identifiers at every materialization site, with collision detection and digit-leading handling.
+- **Large renders no longer fail with an opaque I/O error** ([render_worker.rs](crates/akua-cli/src/render_worker.rs)). The worker's stdout pipe was capped at 1 MiB, so a chart rendering >1 MiB (e.g. argo-cd, ~1.36 MB) died with `os error 29`. The cap is raised to the worker's memory ceiling (256 MiB) and overflow now surfaces as a typed `E_RENDER_OUTPUT_TOO_LARGE`.
+- **Sub-package stubs no longer leak `charts.*` imports** ([pkg_stub.rs](crates/akua-core/src/pkg_stub.rs)). A sub-package's `import charts.<x>` was carried into the synthesized stub compiled in the root context, where `charts` isn't registered. Chart imports are stripped from stubs (the schemas are what the stub needs).
+- **Release binaries report their tag version** ([release.yml](.github/workflows/release.yml)). The pipeline derives the workspace version from the pushed git tag (`scripts/set-cargo-version.sh`) and asserts `akua -V` matches the tag in the build smoke-test. Previously `CARGO_PKG_VERSION` was pinned to the committed `Cargo.toml`, so 0.8.9–0.8.13 binaries (and their SLSA provenance / OCI annotations) all reported `0.8.8`.
 
 ## [0.8.8] — 2026-05-07
 
