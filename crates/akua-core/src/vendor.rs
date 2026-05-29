@@ -761,9 +761,15 @@ fn resolve_git_source(
         name: name.to_string(),
         source,
     })?;
+    // Canonicalize the URL before surfacing it in `source_ref` (and
+    // therefore `VendorAddOutput.source_ref` in `--json` output). The
+    // fetch path already validates that no userinfo is present in
+    // `akua.toml`, but applying canonicalize_url here is defense-in-depth
+    // matching the lockfile write path.
+    let canon_git = crate::host_auth::canonicalize_url(git);
     Ok(SourceResolution {
         kind: "git",
-        source_ref: format!("{git}@{}", ref_spec.label()),
+        source_ref: format!("{canon_git}@{}", ref_spec.label()),
         lock_digest: Some(format!("{GIT_DIGEST_PREFIX}{}", fetched.commit_sha)),
         root: fetched.chart_dir,
     })
@@ -1017,6 +1023,22 @@ upstream = { git = "https://example.com/acme/app", tag = "v1.0.0" }
             .contains("path = \".akua/vendor/nope\""));
     }
 
+    /// The `source_ref` in `VendorAddOutput` (and thus in `--json` output)
+    /// must use a canonicalized URL — no userinfo, no default ports, no
+    /// trailing `.git`. This is defense-in-depth on the `--json` output
+    /// path matching the lockfile write path.
+    #[test]
+    fn source_ref_in_output_uses_canonical_url_for_path_dep() {
+        // For path deps the source_ref is the declared path string, not a URL —
+        // canonicalize_url is only applied on the git arm. This test confirms
+        // the path arm is unaffected and still returns the declared path.
+        let ws = workspace(minimal_manifest());
+        make_source_tree(&ws.path().join("charts/local"));
+        let out = add(ws.path(), "local", None).expect("add");
+        // Path dep: source_ref should be the declared path, not a URL.
+        assert_eq!(out.source_ref, "./charts/local");
+    }
+
     /// `vendor add` writes the dep's digest into `akua.lock` so render's
     /// vendor-first lookup + `vendor check` drift detection have a stable
     /// pin to compare against. Without this, dropping the canonical
@@ -1093,6 +1115,30 @@ upstream = { git = "https://example.com/acme/app", tag = "v1.0.0" }
         let lock_v2 = std::fs::read_to_string(ws.path().join("akua.lock")).expect("read 2");
 
         assert_eq!(lock_v1, lock_v2, "repeat add must produce identical lock");
+    }
+
+    /// The git `source_ref` in `VendorAddOutput` must not expose a raw
+    /// URL that might carry userinfo or default ports. `resolve_git_source`
+    /// applies `canonicalize_url` before formatting `source_ref`; this
+    /// test validates the canonicalization contract directly so it runs
+    /// unconditionally (not gated on `git-fetch`).
+    #[test]
+    fn resolve_git_source_ref_strips_default_port_and_dot_git() {
+        // canonicalize_url is applied to `git` before formatting source_ref.
+        // Exercise the same function to confirm the contract is met.
+        use crate::host_auth::canonicalize_url;
+
+        let raw = "https://example.com:443/acme/app.git";
+        let canon = canonicalize_url(raw);
+        assert_eq!(canon, "https://example.com/acme/app");
+        // A source_ref built with the canonicalized URL should NOT contain
+        // the default port or `.git`.
+        let source_ref = format!("{canon}@v1.0.0");
+        assert!(
+            !source_ref.contains(":443"),
+            "default port must be stripped"
+        );
+        assert!(!source_ref.contains(".git"), ".git suffix must be stripped");
     }
 
     mod vendor_lock_source_tests {

@@ -22,7 +22,7 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// HTTP basic-auth credential pair. Sent as `Authorization: Basic
 /// <base64(user:pass)>` on the underlying HTTPS request.
@@ -31,10 +31,27 @@ use serde::{Deserialize, Serialize};
 /// transports overwhelmingly use basic auth (with the token as the
 /// password), and adding a discriminated enum is non-breaking when
 /// the need surfaces.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `Debug` is implemented manually to redact the password — any
+/// `{:?}` on a struct that holds a `HostAuthMap` (e.g. `VendorArgs`)
+/// must not leak plaintext credentials into logs or error messages.
+/// `Serialize` is intentionally absent: `BasicAuth` is an intake type
+/// (deserialized from `--auth-file` TOML via `auth_parse`); it is
+/// never serialized as output, so omitting `Serialize` eliminates any
+/// accidental credential-in-JSON path.
+#[derive(Clone, PartialEq, Eq, Deserialize)]
 pub struct BasicAuth {
     pub username: String,
     pub password: String,
+}
+
+impl std::fmt::Debug for BasicAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BasicAuth")
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .finish()
+    }
 }
 
 impl BasicAuth {
@@ -319,5 +336,32 @@ mod tests {
     fn canonicalize_preserves_unparseable_input() {
         // No `://` → return as-is rather than corrupting.
         assert_eq!(canonicalize_url("not-a-url"), "not-a-url");
+    }
+
+    // --- Security: Debug redaction ---
+
+    /// `{:?}` on `BasicAuth` must NOT expose the password. Any struct
+    /// that holds a `HostAuthMap` (e.g. `VendorArgs`) derives `Debug`,
+    /// so a plain `{:?}` on it must not leak credentials into logs or
+    /// error messages.
+    #[test]
+    fn basic_auth_debug_redacts_password() {
+        let creds = BasicAuth {
+            username: "alice".to_string(),
+            password: "super-secret-token".to_string(),
+        };
+        let debug_str = format!("{creds:?}");
+        assert!(
+            !debug_str.contains("super-secret-token"),
+            "Debug must not expose the password; got: {debug_str}"
+        );
+        assert!(
+            debug_str.contains("[REDACTED]"),
+            "Debug must show [REDACTED] for password; got: {debug_str}"
+        );
+        assert!(
+            debug_str.contains("alice"),
+            "Debug should still show the username; got: {debug_str}"
+        );
     }
 }

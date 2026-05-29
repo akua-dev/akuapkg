@@ -43,6 +43,16 @@ pub const E_MANIFEST_HELM_MISSING_VERSION: &str = "E_MANIFEST_HELM_MISSING_VERSI
 /// time so the credential never reaches the lockfile or git history.
 /// Pass credentials via the SDK `auth` parameter or `--auth` instead.
 pub const E_MANIFEST_HELM_USERINFO: &str = "E_MANIFEST_HELM_USERINFO";
+/// `akua.toml` declares a `repo` dep whose `chart` value contains
+/// path separators (`/`, `\`) or `..` — a chart name must be a plain
+/// single-component name. Rejected at parse time to prevent path
+/// confusion in the chart cache.
+pub const E_MANIFEST_HELM_CHART_INVALID: &str = "E_MANIFEST_HELM_CHART_INVALID";
+/// `akua.toml` declares an `oci` dep whose URL contains embedded
+/// credentials (`oci://user:pass@host/...`). Rejected at parse time
+/// so the credential never reaches the lockfile or git history.
+/// Pass credentials via the SDK `auth` parameter or `--auth` instead.
+pub const E_MANIFEST_OCI_USERINFO: &str = "E_MANIFEST_OCI_USERINFO";
 
 /// CLI `--auth <prefix>=<user>:<password>` value (or `--auth-file`
 /// TOML payload) didn't parse. Distinct from `E_INVALID_FLAG` so

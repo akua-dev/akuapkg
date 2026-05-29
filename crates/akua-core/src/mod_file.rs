@@ -223,6 +223,18 @@ pub enum ManifestError {
          Pass credentials via the SDK `auth` parameter or the CLI `--auth` flag."
     )]
     HelmUrlHasUserInfo { name: String },
+
+    #[error(
+        "dependency `{name}`: `chart` value `{chart}` must be a plain chart name \
+         (no path separators or `..`)"
+    )]
+    HelmChartInvalid { name: String, chart: String },
+
+    #[error(
+        "dependency `{name}`: oci URL must not embed credentials (`user:pass@`). \
+         Pass credentials via the SDK `auth` parameter or the CLI `--auth` flag."
+    )]
+    OciUrlHasUserInfo { name: String },
 }
 
 impl ManifestError {
@@ -236,6 +248,8 @@ impl ManifestError {
             ManifestError::HelmMissingChart { .. } => codes::E_MANIFEST_HELM_MISSING_CHART,
             ManifestError::HelmMissingVersion { .. } => codes::E_MANIFEST_HELM_MISSING_VERSION,
             ManifestError::HelmUrlHasUserInfo { .. } => codes::E_MANIFEST_HELM_USERINFO,
+            ManifestError::HelmChartInvalid { .. } => codes::E_MANIFEST_HELM_CHART_INVALID,
+            ManifestError::OciUrlHasUserInfo { .. } => codes::E_MANIFEST_OCI_USERINFO,
             _ => codes::E_MANIFEST_PARSE,
         }
     }
@@ -422,6 +436,15 @@ impl Dependency {
                     name: name.to_string(),
                 })
             }
+            DependencySource::Oci
+                if crate::host_auth::url_has_userinfo(
+                    self.oci.as_deref().expect("oci source set"),
+                ) =>
+            {
+                Err(ManifestError::OciUrlHasUserInfo {
+                    name: name.to_string(),
+                })
+            }
             DependencySource::Git if self.tag.is_none() && self.rev.is_none() => {
                 Err(ManifestError::GitMissingTagOrRev {
                     name: name.to_string(),
@@ -462,6 +485,17 @@ impl Dependency {
                     name: name.to_string(),
                 })
             }
+            DependencySource::Helm => {
+                // chart is Some at this point (HelmMissingChart arm above).
+                let chart = self.chart.as_deref().expect("chart validated present");
+                if is_path_traversal_chart_name(chart) {
+                    return Err(ManifestError::HelmChartInvalid {
+                        name: name.to_string(),
+                        chart: chart.to_string(),
+                    });
+                }
+                Ok(())
+            }
             _ => Ok(()),
         }
     }
@@ -495,6 +529,14 @@ pub fn kcl_ident(name: &str) -> String {
         out.insert(0, '_');
     }
     out
+}
+
+/// True when a helm `chart` value contains path separators or `..`
+/// segments that could be path-joined into the chart cache to escape
+/// its directory. A chart name must be a plain single-component name
+/// (e.g. `temporal`, `nginx`); it never contains `/`, `\`, or `..`.
+fn is_path_traversal_chart_name(chart: &str) -> bool {
+    chart.contains('/') || chart.contains('\\') || chart.contains("..")
 }
 
 /// Package name rules (aligned with Cargo / npm / poetry conventions):
@@ -980,6 +1022,103 @@ strict_signing = false
             dep.validate("x"),
             Err(ManifestError::HelmUrlHasUserInfo { .. })
         ));
+    }
+
+    // --- Security: OCI userinfo ---
+
+    /// An OCI dep URL with embedded credentials (`oci://user:pass@host/...`)
+    /// must be rejected at parse time, matching the symmetry with git and
+    /// helm-repo validation.
+    #[test]
+    fn rejects_oci_url_with_userinfo() {
+        let bad = r#"
+[package]
+name    = "bad"
+version = "0.1.0"
+edition = "akua.dev/v1alpha1"
+
+[dependencies]
+pkg = { oci = "oci://alice:secret@ghcr.io/acme/nginx", version = "1.0.0" }
+"#;
+        let err = AkuaManifest::parse(bad).unwrap_err();
+        assert!(
+            matches!(err, ManifestError::OciUrlHasUserInfo { ref name } if name == "pkg"),
+            "expected OciUrlHasUserInfo, got {err:?}"
+        );
+        assert_eq!(
+            err.structured_code(),
+            crate::cli_contract::codes::E_MANIFEST_OCI_USERINFO
+        );
+    }
+
+    // --- Security: helm chart name ---
+
+    /// A `chart` value containing a path separator (`/`) must be rejected —
+    /// a chart name is a plain single-component identifier, never a path.
+    #[test]
+    fn rejects_helm_chart_with_path_separator() {
+        let bad = r#"
+[package]
+name    = "bad"
+version = "0.1.0"
+edition = "akua.dev/v1alpha1"
+
+[dependencies]
+evil = { repo = "https://charts.example.com", chart = "../../foo", version = "1.0.0" }
+"#;
+        let err = AkuaManifest::parse(bad).unwrap_err();
+        assert!(
+            matches!(err, ManifestError::HelmChartInvalid { ref name, ref chart }
+                if name == "evil" && chart.contains("../")),
+            "expected HelmChartInvalid, got {err:?}"
+        );
+        assert_eq!(
+            err.structured_code(),
+            crate::cli_contract::codes::E_MANIFEST_HELM_CHART_INVALID
+        );
+    }
+
+    /// A `chart` value containing `..` (without a slash) must also be
+    /// rejected — any occurrence of `..` is sufficient to disallow it.
+    #[test]
+    fn rejects_helm_chart_with_dotdot() {
+        let dep = Dependency {
+            repo: Some("https://r".into()),
+            chart: Some("../x".into()),
+            version: Some("1.0.0".into()),
+            ..Default::default()
+        };
+        assert!(matches!(
+            dep.validate("x"),
+            Err(ManifestError::HelmChartInvalid { .. })
+        ));
+    }
+
+    /// A `chart` value containing a backslash must also be rejected.
+    #[test]
+    fn rejects_helm_chart_with_backslash() {
+        let dep = Dependency {
+            repo: Some("https://r".into()),
+            chart: Some("foo\\bar".into()),
+            version: Some("1.0.0".into()),
+            ..Default::default()
+        };
+        assert!(matches!(
+            dep.validate("x"),
+            Err(ManifestError::HelmChartInvalid { .. })
+        ));
+    }
+
+    /// A plain chart name (no separators) must be accepted normally.
+    #[test]
+    fn accepts_plain_helm_chart_name() {
+        let dep = Dependency {
+            repo: Some("https://go.temporal.io/helm-charts".into()),
+            chart: Some("temporal".into()),
+            version: Some("0.62.0".into()),
+            ..Default::default()
+        };
+        dep.validate("temporal").expect("plain chart name is valid");
     }
 
     #[test]
