@@ -442,6 +442,39 @@ attestation = "sha256:e9d2c7f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9b1c3d5e7f9a1
     }
 
     #[test]
+    fn helm_repo_source_round_trips() {
+        // Helm-repo deps encode the chart in a `helm+<repo>#<chart>`
+        // source fragment and pin the `.tgz` sha256 under `digest` —
+        // no LockedPackage schema change. Verify it survives a TOML
+        // round-trip and passes digest validation.
+        let mut lock = AkuaLock::empty();
+        lock.packages.push(LockedPackage {
+            name: "temporal".to_string(),
+            version: "0.62.0".to_string(),
+            source: "helm+https://go.temporal.io/helm-charts#temporal".to_string(),
+            digest: "sha256:deadbeef".to_string(),
+            vendor_digest: None,
+            signature: None,
+            dependencies: vec![],
+            attestation: None,
+            replaced: None,
+            yanked: None,
+            kyverno_source_digest: None,
+            converter_version: None,
+        });
+        let serialized = lock.to_toml().expect("serialize");
+        let reparsed = AkuaLock::parse(&serialized).expect("reparse");
+        assert_eq!(lock, reparsed);
+        let entry = &reparsed.packages[0];
+        assert_eq!(
+            entry.source,
+            "helm+https://go.temporal.io/helm-charts#temporal"
+        );
+        assert_eq!(entry.version, "0.62.0");
+        assert_eq!(entry.digest, "sha256:deadbeef");
+    }
+
+    #[test]
     fn rejects_version_mismatch() {
         let bad = r#"
 version = 99
