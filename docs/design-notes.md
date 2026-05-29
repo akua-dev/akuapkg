@@ -21,7 +21,7 @@
 - **A single binary and SDK** covering the whole packaging + platform lifecycle: author, render, test, lint, format, sign, publish, verify, diff, inspect, deploy, query, audit. Thirty verbs. One mental model. The bun/deno pattern applied to cloud-native.
 - **Typed composition.** Packages authored in **KCL** with first-class schemas; policies authored in **Rego**. YAML is a derived view via `akua export`, never authoritative.
 - **Deterministic transformation.** Same inputs + same lockfile + same akua version → byte-identical output. No non-determinism inside the render pipeline.
-- **Signed + attested by default.** cosign signature + SLSA v1 predicate on every `akua publish`. Consumers verify by default on pull.
+- **Signed + attested by default.** cosign signature + SLSA v1 predicate on every `akua publish`. On pull, the `akua.lock` digest is always verified (the universal gate); cosign + SLSA verification engages, fail-closed, when a `[signing] cosign_public_key` is configured.
 - **Agent-first.** The primary user is an AI agent operating in a Linux sandbox. Humans gate at policy checkpoints. See [`agent-usage.md`](./agent-usage.md).
 
 ### What akua is *not*

@@ -67,13 +67,15 @@ Every `akua publish` emits:
 - A **cosign signature** over the package OCI digest (keyless via Sigstore, or key-based).
 - A **SLSA v1 Build predicate** recording builder identity, source commit, and the set of input digests.
 
-Consumers verify by default on `akua pull`:
+On `akua pull`, the `akua.lock` digest is always verified before bytes touch disk. Cosign signature + SLSA attestation verification additionally engages — fail-closed — when the consuming workspace configures a `[signing] cosign_public_key`:
 
 ```sh
 akua pull oci://registry.example.com/my-app:1.0.0
-# → verifies cosign signature
-# → verifies SLSA predicate digest chain
-# → refuses to proceed if either fails
+# → always: verifies the pulled blob against the akua.lock pinned digest
+# → with [signing] cosign_public_key configured:
+#     verifies the cosign signature + SLSA predicate digest chain,
+#     and refuses to proceed if either fails (a missing signature is fatal)
+# → without a configured key: integrity rests on the digest pin, not signer identity
 ```
 
 This gives you a cryptographic chain from source commit to deployed manifests. A supply chain attacker who can push to the registry but not forge signatures cannot introduce unsigned artifacts into the render pipeline.

@@ -62,7 +62,7 @@ See [`design-notes.md §engine-determinism`](./design-notes.md#10-engine-determi
 
 ## Signing + attestation by default
 
-`akua publish` emits a cosign signature plus a SLSA v1 predicate unless the caller explicitly opts out. Consumers verify by default on pull. See [`docs/lockfile-format.md`](./lockfile-format.md) and [`docs/cli.md`](./cli.md) `publish` / `verify`.
+`akua publish` emits a cosign signature plus a SLSA v1 predicate unless the caller explicitly opts out. On pull, the `akua.lock` digest is verified before any bytes touch disk (always — the universal integrity gate); cosign signature + SLSA attestation verification engages, fail-closed, when a `[signing] cosign_public_key` is configured. See [`docs/lockfile-format.md`](./lockfile-format.md) and [`docs/cli.md`](./cli.md) `publish` / `verify`.
 
 ## What akua is not
 
