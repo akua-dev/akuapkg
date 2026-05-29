@@ -144,9 +144,177 @@ pub fn resolve_tarball_url(repo: &str, url: &str) -> String {
     )
 }
 
+use std::path::{Path, PathBuf};
+
+/// Result of a successful helm-repo fetch.
+#[derive(Debug, Clone)]
+pub struct Fetched {
+    /// Absolute path to the unpacked chart root (contains `Chart.yaml`).
+    pub root_dir: PathBuf,
+    /// `sha256:<hex>` of the pulled `.tgz` bytes.
+    pub digest: String,
+    /// Resolved exact version (set by `fetch`, echoed for the lockfile).
+    pub version: String,
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(bytes);
+    format!("{:x}", h.finalize())
+}
+
+fn cache_dir_for(cache_root: &Path, digest: &str) -> PathBuf {
+    cache_root.join(digest.trim_start_matches("sha256:"))
+}
+
+/// Unpack `tgz` into the content-addressed cache and return the root.
+/// `chart_dir_name` is the top-level directory helm packs the chart under
+/// (the chart's own name), used to locate the unpacked root.
+pub fn extract_and_hash(
+    tgz: &[u8],
+    cache_root: &Path,
+    chart_dir_name: &str,
+) -> Result<Fetched, HelmRepoFetchError> {
+    let digest = format!("sha256:{}", sha256_hex(tgz));
+    let dest = cache_dir_for(cache_root, &digest);
+    let root = dest.join(chart_dir_name);
+    if !root.join("Chart.yaml").is_file() {
+        std::fs::create_dir_all(&dest).map_err(|source| HelmRepoFetchError::Io {
+            path: dest.clone(),
+            source,
+        })?;
+        let gz = flate2::read::GzDecoder::new(tgz);
+        let mut ar = tar::Archive::new(gz);
+        // tar crate rejects `..`/absolute members by default (no
+        // set_overwrite/preserve escape), so extraction stays within `dest`.
+        ar.unpack(&dest).map_err(|source| HelmRepoFetchError::Io {
+            path: dest.clone(),
+            source,
+        })?;
+    }
+    Ok(Fetched {
+        root_dir: root,
+        digest,
+        version: String::new(),
+    })
+}
+
+/// Offline path: return the cached unpack for a pinned digest, if present.
+pub fn fetch_from_cache(cache_root: &Path, digest: &str) -> Option<Fetched> {
+    let dest = cache_dir_for(cache_root, digest);
+    // The chart dir name isn't known here; find the single subdir holding Chart.yaml.
+    let entry = std::fs::read_dir(&dest)
+        .ok()?
+        .flatten()
+        .find(|e| e.path().join("Chart.yaml").is_file())?;
+    Some(Fetched {
+        root_dir: entry.path(),
+        digest: digest.to_string(),
+        version: String::new(),
+    })
+}
+
+/// Options for an online fetch.
+pub struct FetchOpts<'a> {
+    /// Lockfile-pinned digest; when set, the pulled tarball's sha256
+    /// must match or the fetch fails.
+    pub expected_digest: Option<&'a str>,
+    /// Host-keyed basic-auth map for private repos.
+    pub auth: Option<&'a crate::host_auth::HostAuthMap>,
+}
+
+/// Fetch `chart`@`version_req` from `repo` over HTTPS: GET index.yaml,
+/// select the version, download the `.tgz`, verify/assign the digest,
+/// unpack into the cache. Returns the unpacked root + resolved version.
+pub fn fetch(
+    repo: &str,
+    chart: &str,
+    version_req: &str,
+    cache_root: &Path,
+    opts: &FetchOpts<'_>,
+) -> Result<Fetched, HelmRepoFetchError> {
+    let client = reqwest::blocking::Client::builder()
+        .user_agent(concat!("akua/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|e| HelmRepoFetchError::Http {
+            url: repo.to_string(),
+            detail: e.to_string(),
+        })?;
+
+    let index_url = format!("{}/index.yaml", repo.trim_end_matches('/'));
+    let index_bytes = http_get(&client, &index_url, opts.auth)?;
+    let index = parse_index(&index_bytes)?;
+    let (version, tgz_url) = select_version(&index, chart, version_req)?;
+    let abs_url = resolve_tarball_url(repo, &tgz_url);
+    let tgz = http_get(&client, &abs_url, opts.auth)?;
+
+    let digest = format!("sha256:{}", sha256_hex(&tgz));
+    if let Some(expected) = opts.expected_digest {
+        if expected != digest {
+            return Err(HelmRepoFetchError::DigestMismatch {
+                chart: chart.to_string(),
+                expected: expected.to_string(),
+                actual: digest,
+            });
+        }
+    }
+    let mut fetched = extract_and_hash(&tgz, cache_root, chart)?;
+    fetched.version = version;
+    Ok(fetched)
+}
+
+fn http_get(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    auth: Option<&crate::host_auth::HostAuthMap>,
+) -> Result<Vec<u8>, HelmRepoFetchError> {
+    let mut req = client.get(url);
+    if let Some(map) = auth {
+        if let Some(creds) = crate::host_auth::lookup(map, url) {
+            req = req.basic_auth(&creds.username, Some(&creds.password));
+        }
+    }
+    let resp = req.send().map_err(|e| HelmRepoFetchError::Http {
+        url: url.to_string(),
+        detail: e.to_string(),
+    })?;
+    if !resp.status().is_success() {
+        return Err(HelmRepoFetchError::Http {
+            url: url.to_string(),
+            detail: format!("HTTP {}", resp.status()),
+        });
+    }
+    resp.bytes()
+        .map(|b| b.to_vec())
+        .map_err(|e| HelmRepoFetchError::Http {
+            url: url.to_string(),
+            detail: e.to_string(),
+        })
+}
+
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// Build a minimal chart `.tgz` in memory: `demo/Chart.yaml`.
+    /// Shared with `chart_resolver` tests, which prime a cache with it.
+    #[cfg(test)]
+    pub(crate) fn demo_tgz() -> Vec<u8> {
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        {
+            let mut tar = tar::Builder::new(&mut gz);
+            let chart_yaml = b"apiVersion: v2\nname: demo\nversion: 0.1.0\n";
+            let mut h = tar::Header::new_gnu();
+            h.set_size(chart_yaml.len() as u64);
+            h.set_mode(0o644);
+            h.set_cksum();
+            tar.append_data(&mut h, "demo/Chart.yaml", &chart_yaml[..])
+                .unwrap();
+            tar.finish().unwrap();
+        }
+        gz.finish().unwrap()
+    }
 
     const FIXTURE: &[u8] = br#"
 apiVersion: v1
@@ -211,5 +379,20 @@ entries:
             resolve_tarball_url("https://go.temporal.io/helm-charts/", "temporal-0.61.0.tgz"),
             "https://go.temporal.io/helm-charts/temporal-0.61.0.tgz"
         );
+    }
+
+    #[test]
+    fn extract_and_hash_unpacks_chart_and_pins_digest() {
+        let tgz = demo_tgz();
+
+        let cache = tempfile::tempdir().unwrap();
+        let first = extract_and_hash(&tgz, cache.path(), "demo").expect("extract");
+        assert!(first.root_dir.join("Chart.yaml").is_file());
+        assert!(first.digest.starts_with("sha256:"));
+
+        // Deterministic: same bytes → same digest, and it lands in the cache.
+        let cached = fetch_from_cache(cache.path(), &first.digest).expect("cached");
+        assert_eq!(cached.digest, first.digest);
+        assert!(cached.root_dir.join("Chart.yaml").is_file());
     }
 }
