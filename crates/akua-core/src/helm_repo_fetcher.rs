@@ -201,15 +201,22 @@ pub fn extract_and_hash(
 }
 
 /// Offline path: return the cached unpack for a pinned digest, if present.
-pub fn fetch_from_cache(cache_root: &Path, digest: &str) -> Option<Fetched> {
+/// `chart_dir_name` is the chart's own name — the top-level directory the
+/// online path unpacked into. Locate deterministically rather than scanning.
+pub fn fetch_from_cache(cache_root: &Path, digest: &str, chart_dir_name: &str) -> Option<Fetched> {
     let dest = cache_dir_for(cache_root, digest);
-    // The chart dir name isn't known here; find the single subdir holding Chart.yaml.
-    let entry = std::fs::read_dir(&dest)
-        .ok()?
-        .flatten()
-        .find(|e| e.path().join("Chart.yaml").is_file())?;
+    // Deterministic: the online path unpacks to `<dest>/<chart_dir_name>/`.
+    let named = dest.join(chart_dir_name);
+    let root = if named.join("Chart.yaml").is_file() {
+        named
+    } else if dest.join("Chart.yaml").is_file() {
+        // Chart packed at the archive root rather than under a dir.
+        dest.clone()
+    } else {
+        return None;
+    };
     Some(Fetched {
-        root_dir: entry.path(),
+        root_dir: root,
         digest: digest.to_string(),
         version: String::new(),
     })
@@ -391,7 +398,7 @@ entries:
         assert!(first.digest.starts_with("sha256:"));
 
         // Deterministic: same bytes → same digest, and it lands in the cache.
-        let cached = fetch_from_cache(cache.path(), &first.digest).expect("cached");
+        let cached = fetch_from_cache(cache.path(), &first.digest, "demo").expect("cached");
         assert_eq!(cached.digest, first.digest);
         assert!(cached.root_dir.join("Chart.yaml").is_file());
     }
