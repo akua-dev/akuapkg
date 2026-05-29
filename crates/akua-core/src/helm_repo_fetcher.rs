@@ -130,6 +130,20 @@ pub fn select_version(
     Ok((ver.to_string(), url))
 }
 
+/// Resolve a tarball URL from `index.yaml` against the repo base.
+/// Absolute (`http://`/`https://`) URLs pass through; relative ones
+/// are joined to `<repo>/`.
+pub fn resolve_tarball_url(repo: &str, url: &str) -> String {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        return url.to_string();
+    }
+    format!(
+        "{}/{}",
+        repo.trim_end_matches('/'),
+        url.trim_start_matches('/')
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,5 +194,22 @@ entries:
         let idx = parse_index(FIXTURE).unwrap();
         let err = select_version(&idx, "missing", "1.0.0").unwrap_err();
         assert!(matches!(err, HelmRepoFetchError::ChartNotFound { .. }));
+    }
+
+    #[test]
+    fn resolves_relative_and_absolute_urls() {
+        let repo = "https://go.temporal.io/helm-charts";
+        assert_eq!(
+            resolve_tarball_url(repo, "https://cdn.example.com/temporal-0.62.0.tgz"),
+            "https://cdn.example.com/temporal-0.62.0.tgz"
+        );
+        assert_eq!(
+            resolve_tarball_url(repo, "temporal-0.61.0.tgz"),
+            "https://go.temporal.io/helm-charts/temporal-0.61.0.tgz"
+        );
+        assert_eq!(
+            resolve_tarball_url("https://go.temporal.io/helm-charts/", "temporal-0.61.0.tgz"),
+            "https://go.temporal.io/helm-charts/temporal-0.61.0.tgz"
+        );
     }
 }
