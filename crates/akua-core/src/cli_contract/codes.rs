@@ -31,6 +31,19 @@ pub const E_DEP_KIND_MISMATCH: &str = "E_DEP_KIND_MISMATCH";
 /// `--auth` flag instead.
 pub const E_MANIFEST_GIT_USERINFO: &str = "E_MANIFEST_GIT_USERINFO";
 
+/// `akua.toml` declares a `repo` (HTTPS Helm repository) dep that
+/// is missing the required `chart` field.
+pub const E_MANIFEST_HELM_MISSING_CHART: &str = "E_MANIFEST_HELM_MISSING_CHART";
+/// `akua.toml` declares a `repo` dep that is missing the required
+/// `version` field (a semver constraint is mandatory for
+/// reproducibility).
+pub const E_MANIFEST_HELM_MISSING_VERSION: &str = "E_MANIFEST_HELM_MISSING_VERSION";
+/// `akua.toml` declares a `repo` dep whose URL contains embedded
+/// credentials (`https://user:pass@host/...`). Rejected at parse
+/// time so the credential never reaches the lockfile or git history.
+/// Pass credentials via the SDK `auth` parameter or `--auth` instead.
+pub const E_MANIFEST_HELM_USERINFO: &str = "E_MANIFEST_HELM_USERINFO";
+
 /// CLI `--auth <prefix>=<user>:<password>` value (or `--auth-file`
 /// TOML payload) didn't parse. Distinct from `E_INVALID_FLAG` so
 /// agents can branch on credential-input shape errors specifically.
