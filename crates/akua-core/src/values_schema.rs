@@ -111,6 +111,14 @@ pub struct GeneratedKcl {
 pub enum ValuesSchemaError {
     #[error("values.schema.json not valid JSON: {0}")]
     Parse(#[from] serde_json::Error),
+
+    /// A `properties` key is not a legal KCL identifier. Property names
+    /// are emitted verbatim into the generated `schema` body, so a key
+    /// that isn't `[A-Za-z_][A-Za-z0-9_]*` is rejected rather than
+    /// emitted — a crafted key (e.g. containing a newline + statement)
+    /// could otherwise inject KCL into the consumer's signed output.
+    #[error("values.schema.json property name is not a valid KCL identifier: {name:?}")]
+    InvalidPropertyName { name: String },
 }
 
 /// Convert `values.schema.json` bytes to a KCL `schema Values` block
@@ -124,19 +132,19 @@ pub enum ValuesSchemaError {
 /// "no typed schema generated" rather than erroring.
 pub fn generate_from_bytes(bytes: &[u8]) -> Result<GeneratedKcl, ValuesSchemaError> {
     let schema: JsonSchema = serde_json::from_slice(bytes)?;
-    Ok(generate(&schema))
+    generate(&schema)
 }
 
-fn generate(root: &JsonSchema) -> GeneratedKcl {
+fn generate(root: &JsonSchema) -> Result<GeneratedKcl, ValuesSchemaError> {
     let primary = root.ty.as_ref().and_then(TypeSpec::primary).unwrap_or("");
     if primary != "object" {
-        return GeneratedKcl::default();
+        return Ok(GeneratedKcl::default());
     }
     let mut gen = SchemaGen::default();
-    gen.emit_object(root, "Values");
-    GeneratedKcl {
+    gen.emit_object(root, "Values")?;
+    Ok(GeneratedKcl {
         source: gen.finish(),
-    }
+    })
 }
 
 #[derive(Default)]
@@ -148,7 +156,7 @@ struct SchemaGen {
 }
 
 impl SchemaGen {
-    fn emit_object(&mut self, schema: &JsonSchema, name: &str) {
+    fn emit_object(&mut self, schema: &JsonSchema, name: &str) -> Result<(), ValuesSchemaError> {
         let required: std::collections::HashSet<&str> =
             schema.required.iter().map(String::as_str).collect();
 
@@ -165,14 +173,15 @@ impl SchemaGen {
             // field; callers can still construct an empty `{}`.
             body.push_str("    _: any = None\n\n");
             self.out.push(body);
-            return;
+            return Ok(());
         }
 
         for (prop_name, prop_schema) in &schema.properties {
-            self.emit_field(&mut body, name, prop_name, prop_schema, &required);
+            self.emit_field(&mut body, name, prop_name, prop_schema, &required)?;
         }
         body.push('\n');
         self.out.push(body);
+        Ok(())
     }
 
     fn emit_field(
@@ -182,10 +191,22 @@ impl SchemaGen {
         prop_name: &str,
         prop_schema: &JsonSchema,
         required: &std::collections::HashSet<&str>,
-    ) {
+    ) -> Result<(), ValuesSchemaError> {
+        // Property names are emitted verbatim into the schema body. A
+        // key that isn't a legal KCL identifier (one with a newline,
+        // `:`, etc.) could inject statements into the consumer's signed
+        // output, so reject it rather than emit it raw. The downstream
+        // KCL parser is not a defense here — valid-but-injected KCL
+        // parses fine.
+        if !is_kcl_identifier(prop_name) {
+            return Err(ValuesSchemaError::InvalidPropertyName {
+                name: prop_name.to_string(),
+            });
+        }
+
         let is_required = required.contains(prop_name);
         let nested_name = format!("{parent_name}{}", pascal_case(prop_name));
-        let ty = self.render_type(&nested_name, prop_schema);
+        let ty = self.render_type(&nested_name, prop_schema)?;
 
         // A nullable type (`["...","null"]`) means the field may be
         // absent; KCL models that as an optional field regardless of
@@ -210,12 +231,17 @@ impl SchemaGen {
             out.push_str(&format_docstring(desc, 4));
             out.push('\n');
         }
+        Ok(())
     }
 
     /// Decide the KCL type for a field. Nested objects emit a new
     /// schema and return its name; primitives return the built-in
     /// type; arrays recurse on the element type.
-    fn render_type(&mut self, nested_name: &str, schema: &JsonSchema) -> String {
+    fn render_type(
+        &mut self,
+        nested_name: &str,
+        schema: &JsonSchema,
+    ) -> Result<String, ValuesSchemaError> {
         // Multi-member unions (more than one non-null type) map to a
         // KCL union annotation `T1 | T2`. A single-member union (the
         // common `["string","null"]` optionality idiom) drops through
@@ -235,31 +261,31 @@ impl SchemaGen {
                 // (we'd need a synthesized schema per branch); fall back
                 // to `any` for the whole field rather than guess.
                 if non_null.iter().any(|t| *t == "object" || *t == "array") {
-                    return "any".to_string();
+                    return Ok("any".to_string());
                 }
                 let parts: Vec<&str> = non_null.into_iter().map(primitive_kcl_type).collect();
-                return parts.join(" | ");
+                return Ok(parts.join(" | "));
             }
         }
         let primary = schema.ty.as_ref().and_then(TypeSpec::primary).unwrap_or("");
-        match primary {
+        Ok(match primary {
             "object" => {
                 // Nested object — emit a support schema.
-                self.emit_object(schema, nested_name);
+                self.emit_object(schema, nested_name)?;
                 nested_name.to_string()
             }
             "array" => {
                 let item_ty = match schema.items.as_deref() {
                     Some(inner) => {
                         let inner_name = format!("{nested_name}Item");
-                        self.render_type(&inner_name, inner)
+                        self.render_type(&inner_name, inner)?
                     }
                     None => "any".to_string(),
                 };
                 format!("[{item_ty}]")
             }
             other => primitive_kcl_type(other).to_string(),
-        }
+        })
     }
 
     fn finish(self) -> String {
@@ -328,11 +354,33 @@ pub(crate) fn kcl_string_literal(s: &str) -> String {
     out
 }
 
+/// True when `s` is a legal KCL identifier (`[A-Za-z_][A-Za-z0-9_]*`).
+/// Property names are emitted verbatim into a `schema` body, so only
+/// identifier-shaped keys are safe to emit; anything else could carry
+/// a statement-injecting payload (newline, `:`, `=`, …) into the
+/// consumer's signed render output.
+fn is_kcl_identifier(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 /// Indent a docstring block at `indent` spaces. KCL docstrings use
 /// triple-quoted strings on the line below the field.
+///
+/// The description text comes from the chart's `values.schema.json` and
+/// is untrusted: an embedded `"""` would close the docstring early and
+/// let trailing text become schema/module body. We neutralize every
+/// run of quotes that could form (or extend) a `"""` delimiter by
+/// inserting a backslash, which KCL reads as an escaped quote inside
+/// the string rather than a delimiter. This keeps the prose readable
+/// while making breakout impossible.
 fn format_docstring(text: &str, indent: usize) -> String {
     let pad = " ".repeat(indent);
-    let trimmed = text.trim();
+    let trimmed = neutralize_triple_quotes(text.trim());
     // Single-line doc → single-line docstring, multi-line → block.
     if !trimmed.contains('\n') {
         format!("{pad}\"\"\"{trimmed}\"\"\"")
@@ -344,6 +392,30 @@ fn format_docstring(text: &str, indent: usize) -> String {
             .join("\n");
         format!("{pad}\"\"\"\n{body}\n{pad}\"\"\"")
     }
+}
+
+/// Escape every `"` in a run of two or more consecutive quotes so the
+/// text can never form a `"""` docstring delimiter, and escape a quote
+/// adjacent to either end (a leading/trailing quote would merge with
+/// the wrapping delimiter into `""""`). A lone interior quote is left
+/// as-is — KCL permits a single `"` inside a triple-quoted string.
+fn neutralize_triple_quotes(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    for (i, &c) in chars.iter().enumerate() {
+        if c == '"' {
+            let prev_quote = i > 0 && chars[i - 1] == '"';
+            let next_quote = i + 1 < chars.len() && chars[i + 1] == '"';
+            let at_edge = i == 0 || i + 1 == chars.len();
+            // Escape if this quote is part of a >=2 quote run, or sits
+            // against the delimiter we're about to wrap it in.
+            if prev_quote || next_quote || at_edge {
+                out.push('\\');
+            }
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// `replicaCount` / `image_pull_policy` → `ReplicaCount` / `ImagePullPolicy`.
@@ -640,5 +712,89 @@ mod tests {
         let input = b"not json {{{";
         let err = generate_from_bytes(input).unwrap_err();
         assert!(matches!(err, ValuesSchemaError::Parse(_)));
+    }
+
+    #[test]
+    fn injected_property_name_is_rejected_not_emitted() {
+        // A property key crafted to break out of the field line and
+        // inject a top-level statement into `schema Values`. The key
+        // contains a `:` + newline + a fabricated assignment.
+        let input = br#"{
+            "type": "object",
+            "properties": {
+                "x: int\n    INJECTED = 999\n    y": { "type": "string" }
+            }
+        }"#;
+        let result = generate_from_bytes(input);
+        // Either the generator refuses the whole schema (structured
+        // error) or it never emits the injected statement. We require
+        // the injected token to be absent from any generated source.
+        match result {
+            Err(ValuesSchemaError::InvalidPropertyName { .. }) => {}
+            Ok(gen) => assert!(
+                !gen.source.contains("INJECTED"),
+                "injected statement leaked into generated source:\n{}",
+                gen.source
+            ),
+            Err(other) => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn description_triple_quote_cannot_escape_docstring() {
+        // A description that closes the docstring early and appends a
+        // fabricated top-level statement.
+        let input = br#"{
+            "type": "object",
+            "description": "ok \"\"\"\n_INJECTED = 1\nschema Evil:\n    z: int\n\"\"\"",
+            "properties": {
+                "host": { "type": "string" }
+            },
+            "required": ["host"]
+        }"#;
+        let out = generate_from_bytes(input).unwrap();
+        // The raw `"""` must not survive: any embedded triple-quote is
+        // neutralized (escaped) so it cannot close the docstring and let
+        // trailing text become module body. No unescaped `"""` should
+        // appear inside the description payload.
+        assert!(
+            !out.source.contains("ok \"\"\""),
+            "unescaped triple-quote survived in description:\n{}",
+            out.source
+        );
+        // The injected statement must NOT appear as a top-level (column
+        // 0) statement — it stays indented inside the docstring block.
+        assert!(
+            !out.source.lines().any(|l| l.starts_with("_INJECTED")),
+            "injected statement reached module body:\n{}",
+            out.source
+        );
+        assert!(
+            !out.source.lines().any(|l| l.starts_with("schema Evil")),
+            "injected schema reached module body:\n{}",
+            out.source
+        );
+        // And the generated module must still be valid, parseable KCL —
+        // a successful breakout would instead produce a parse error.
+        let issues = crate::package_k::lint_kcl_source("values.k", &out.source).unwrap();
+        assert!(
+            issues.is_empty(),
+            "source:\n{}\nissues: {:?}",
+            out.source,
+            issues
+        );
+    }
+
+    #[test]
+    fn is_kcl_identifier_matches_grammar() {
+        assert!(is_kcl_identifier("replicaCount"));
+        assert!(is_kcl_identifier("image_pull_policy"));
+        assert!(is_kcl_identifier("_private"));
+        assert!(is_kcl_identifier("a1"));
+        assert!(!is_kcl_identifier(""));
+        assert!(!is_kcl_identifier("1abc"));
+        assert!(!is_kcl_identifier("node-selector"));
+        assert!(!is_kcl_identifier("foo.bar"));
+        assert!(!is_kcl_identifier("x: int\n    INJECTED = 1"));
     }
 }
