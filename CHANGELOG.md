@@ -15,6 +15,10 @@ minor bump in the SDK.
 
 ## [Unreleased]
 
+### Security
+
+- **Hardening from the 2026-05-29 security audit** ([docs/security-audit-2026-05-29.md](docs/security-audit-2026-05-29.md)). `akua publish` now strips `replace` directives from the signed manifest (consumers never inherit a publisher's replace); untrusted chart `values.schema.json` property names + descriptions are validated/escaped before KCL codegen (no injection); helm/kustomize engine Stores get a memory cap + finite epoch (chart-DoS ceiling); HTTP fetch bodies + gzip→tar extraction are size-capped (OOM / decompression-bomb); `BasicAuth` redacts its password in `Debug` and no longer derives `Serialize`; the git transport forces TLS verification (ignores ambient `GIT_SSL_NO_VERIFY`); plus several lower-severity fixes (UTF-8 panic on registry error bodies, helm `http://` scheme-downgrade rejection, helm `chart`-name + OCI userinfo validation, git tree-entry name guard, `vendor add` URL canonicalization). No sandbox-escape was found; these are integrity + DoS-resilience hardening.
+
 ## [0.8.15] — 2026-05-29
 
 Typed composition and Bun. Cross-Package composition is now typed-only

@@ -26,23 +26,35 @@ fetch buffering, decompression bombs).
 
 | # | Severity | Finding | Area | Status |
 |---|---|---|---|---|
-| 1 | HIGH | `akua publish` does not strip `replace` directives before packing+signing | supply-chain | fix in progress |
-| 2 | HIGH | KCL injection via unsanitized `values.schema.json` property names | codegen | fix in progress |
-| 3 | HIGH | KCL docstring breakout via unescaped `"""` in schema descriptions | codegen | fix in progress |
-| 4 | MEDIUM | Native helm/kustomize engine Stores have no memory cap + infinite epoch → chart DoS | sandbox | fix in progress |
-| 5 | MEDIUM | Unbounded HTTP response buffering (OCI/helm/git) → OOM DoS | fetch | fix in progress |
-| 6 | MEDIUM | Decompression bomb on gzip→tar layer/chart extraction | fetch | fix in progress |
-| 7 | MEDIUM | `BasicAuth` derives `Debug`+`Serialize` with no redaction (latent secret leak) | secrets | fix in progress |
-| 8 | MEDIUM | gix git transport honors ambient `GIT_SSL_NO_VERIFY` (first-resolve MITM window) | fetch | fix in progress |
+| 1 | HIGH | `akua publish` does not strip `replace` directives before packing+signing | supply-chain | ✅ fixed |
+| 2 | HIGH | KCL injection via unsanitized `values.schema.json` property names | codegen | ✅ fixed |
+| 3 | HIGH | KCL docstring breakout via unescaped `"""` in schema descriptions | codegen | ✅ fixed |
+| 4 | MEDIUM | Native helm/kustomize engine Stores have no memory cap + infinite epoch → chart DoS | sandbox | ✅ fixed |
+| 5 | MEDIUM | Unbounded HTTP response buffering (OCI/helm/git) → OOM DoS | fetch | ✅ fixed |
+| 6 | MEDIUM | Decompression bomb on gzip→tar layer/chart extraction | fetch | ✅ fixed |
+| 7 | MEDIUM | `BasicAuth` derives `Debug`+`Serialize` with no redaction (latent secret leak) | secrets | ✅ fixed |
+| 8 | MEDIUM | gix git transport honors ambient `GIT_SSL_NO_VERIFY` (first-resolve MITM window) | fetch | ✅ fixed |
 | 9 | MEDIUM | Cosign verification is opt-in, contradicting "verify by default on pull" | supply-chain | docs reconcile |
-| 10 | LOW | UTF-8 byte-slice panic on registry error body (`&body[..300]`) | parsing | fix in progress |
-| 11 | LOW | Helm-repo `index.yaml` can downgrade `.tgz` download to `http://` | fetch | fix in progress |
-| 12 | LOW | Helm-repo `chart` name path-joined without `..` validation (self-targeting) | path | fix in progress |
-| 13 | LOW | git checkout trusts gix tree-entry filenames for `dest.join` (defense-in-depth) | path | fix in progress |
-| 14 | LOW | `vendor add --json` `source_ref` echoes raw (uncanonicalized) git URL | secrets | fix in progress |
-| 15 | INFO | OCI deps not validated for embedded `user:pass@` (symmetry with git/helm) | secrets | fix in progress |
+| 10 | LOW | UTF-8 byte-slice panic on registry error body (`&body[..300]`) | parsing | ✅ fixed |
+| 11 | LOW | Helm-repo `index.yaml` can downgrade `.tgz` download to `http://` | fetch | ✅ fixed |
+| 12 | LOW | Helm-repo `chart` name path-joined without `..` validation (self-targeting) | path | ✅ fixed |
+| 13 | LOW | git checkout trusts gix tree-entry filenames for `dest.join` (defense-in-depth) | path | ✅ fixed |
+| 14 | LOW | `vendor add --json` `source_ref` echoes raw (uncanonicalized) git URL | secrets | ✅ fixed |
+| 15 | INFO | OCI deps not validated for embedded `user:pass@` (symmetry with git/helm) | secrets | ✅ fixed |
 | 16 | INFO | Worker preopen doc comment says "writable" but dirs are read-only (stale) | sandbox | docs |
 | 17 | INFO | `--timeout` not propagated into the worker epoch deadline | sandbox | note |
+
+## Remediation status
+
+Findings 1-8 and 10-15 were fixed the same day, each in an isolated worktree
+(disjoint file sets) and merged to `main` as the `fix(security): …` commit series.
+All 446 `akua-core` tests pass on the merged result and the CLI builds clean. Three
+items remain as deliberate follow-ups: **#9** (a docs-vs-implementation
+reconciliation — verification engages when a cosign key is configured; digest-pin is
+the universal gate — pending a maintainer call on whether to require a key by
+default), **#16** (a one-line stale doc comment), and **#17** (propagating
+`--timeout` into the worker epoch). Each "Fix:" note below describes the change that
+landed.
 
 ## Findings
 
