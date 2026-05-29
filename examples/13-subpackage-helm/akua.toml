@@ -1,0 +1,10 @@
+[package]
+name    = "subpackage-helm"
+version = "0.1.0"
+edition = "akua.dev/v1alpha1"
+
+[dependencies]
+# Path-dep on the webserver sub-package. The sub-package declares its
+# own `[dependencies]` (the nginx Helm chart) — that context is
+# resolved when `pkgs.webserver` is composed via `ws.render(...)`.
+webserver = { path = "./deps/webserver" }

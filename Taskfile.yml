@@ -143,6 +143,7 @@ tasks:
           --test examples_kustomize_hello
           --test examples_kcl_ecosystem
           --test examples_install_as_package
+          --test examples_subpackage_helm
           --test examples_export
           -- --include-ignored
 

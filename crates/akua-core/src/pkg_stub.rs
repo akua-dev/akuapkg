@@ -62,6 +62,16 @@ pub fn extract_schemas(source: &str) -> String {
 
         if !is_indented {
             if trimmed_start.starts_with("import ") {
+                // `charts.*` imports are per-render synthetic modules that
+                // only exist in the render context of the package that
+                // declares the dep — they are never available in the
+                // consumer's stub-compilation context. Drop them: chart
+                // imports are only used in body code (`resources = …`),
+                // never in schema type definitions, so the stub doesn't
+                // need them for type-checking on the consumer side.
+                if trimmed_start.starts_with("import charts.") {
+                    continue;
+                }
                 out.push_str(line);
                 out.push('\n');
                 continue;
@@ -217,5 +227,40 @@ input: Input = ctx.input()
         let src = "schema Other:\n    x: int\n";
         let stub = build_stub_module("upstream", src);
         assert!(stub.contains("render = lambda inputs: {str:} -> [{str:}]"));
+    }
+
+    /// `import charts.*` lines must be stripped from the stub because the
+    /// synthesized `charts` package only exists in the render context of the
+    /// package that declares the chart dep — it is never available in the
+    /// consumer's stub-compilation context. A sub-package that does
+    /// `import charts.nginx` must not carry that import into its stub, or
+    /// the consumer's root render will fail with `CannotFindModule charts.nginx`.
+    /// Chart imports only appear in body code (`resources = c.template(…)`),
+    /// never in schema type definitions, so the stub doesn't lose any
+    /// type information by dropping them.
+    #[test]
+    fn strips_charts_import_from_stub() {
+        let src = r#"
+import akua.ctx
+import charts.nginx as c
+
+schema Input:
+    namespace: str = "demo"
+
+input: Input = ctx.input()
+
+resources = c.template(c.TemplateOpts { namespace = input.namespace })
+"#;
+        let stub = extract_schemas(src);
+        // The chart import must be dropped — it's a per-render synthetic
+        // module not available in the consumer's context.
+        assert!(
+            !stub.contains("import charts."),
+            "charts.* import must not appear in stub: {stub}"
+        );
+        // Non-chart imports and schema blocks survive.
+        assert!(stub.contains("import akua.ctx"), "akua.ctx import survives");
+        assert!(stub.contains("schema Input:"), "Input schema survives");
+        assert!(stub.contains("namespace: str"), "schema field survives");
     }
 }

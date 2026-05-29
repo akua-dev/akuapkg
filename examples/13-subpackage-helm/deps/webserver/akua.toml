@@ -1,0 +1,11 @@
+[package]
+name    = "webserver"
+version = "0.1.0"
+edition = "akua.dev/v1alpha1"
+
+[dependencies]
+# Local Helm chart — path-dep resolved offline, no network required.
+# Nested under charts/ so the webserver directory (akua.toml +
+# package.k at root) is correctly detected as an Akua package rather
+# than a Helm chart by the resolver's marker heuristic.
+nginx = { path = "./vendor/nginx" }

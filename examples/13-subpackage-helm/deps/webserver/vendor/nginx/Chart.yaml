@@ -1,0 +1,4 @@
+apiVersion: v2
+name: nginx
+description: Minimal Helm chart used by the webserver sub-package in example 13.
+version: 0.1.0

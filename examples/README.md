@@ -20,6 +20,7 @@ Every green row in the table below renders through the shipped `akua` binary and
 | 09 | [09-kustomize-hello/](09-kustomize-hello/) | smallest `kustomize.build` example — overlay adds namePrefix + labels | ✅ renders |
 | 10 | [10-kcl-ecosystem/](10-kcl-ecosystem/) | pull `oci://ghcr.io/kcl-lang/k8s` (a kpm-published KCL package) and author a typed `Deployment` against it | ✅ renders |
 | 11 | [11-install-as-package/](11-install-as-package/) | install-as-Package shape — `pkg.render` an upstream, overlay tenant label, filter out a kind, append extras | ✅ renders |
+| 13 | [13-subpackage-helm/](13-subpackage-helm/) | a root Package composes a sub-package (via `pkgs.<alias>`) whose own `akua.toml` declares a Helm chart dep — chart context propagates through the composition | ✅ renders |
 
 **Legend:**
 
@@ -46,7 +47,7 @@ akua render --out /tmp/hello
 diff -r /tmp/hello rendered/   # byte-identical to committed golden
 ```
 
-The other green examples (01, 08, 09, 10) follow the same pattern — `akua render --package ./package.k --inputs ./inputs.yaml --out /tmp/<name>` and compare against `rendered/`.
+The other green examples (01, 08, 09, 10, 11, 13) follow the same pattern — `akua render --package ./package.k --inputs ./inputs.yaml --out /tmp/<name>` and compare against `rendered/`.
 
 ---
 
@@ -62,6 +63,7 @@ Each example adds concepts over the prior one:
 - **05 → 06:** demonstrates multi-engine composition — Helm + Kustomize + kro RGD + inline KCL flattened into one render.
 - **06 → 07:** introduces package-of-packages composition — `upstream.render(upstream.Input{...})` via the synthesized `pkgs.<name>` stub, the same alias-method shape `webapp.template(webapp.TemplateOpts{...})` uses for Helm charts.
 - **07 ← 08:** drops network-dependence by replacing the OCI-pinned base with a local path. The shape cross-package reuse takes — both in local and distributed form.
+- **11 → 13:** the composed sub-package itself uses a Helm chart — chart context now propagates through `pkgs.<alias>` so a sub-package can declare and render its own `charts.*` dep.
 
 Beyond 07, realistic workspaces combine these patterns at scale. See the [use cases](../docs/use-cases.md) for archetypes (solo dev, small SaaS, platform team, ISV).
 
