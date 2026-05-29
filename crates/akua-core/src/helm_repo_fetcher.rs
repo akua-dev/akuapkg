@@ -402,4 +402,122 @@ entries:
         assert_eq!(cached.digest, first.digest);
         assert!(cached.root_dir.join("Chart.yaml").is_file());
     }
+
+    /// A minimal in-process HTTP/1.1 server for the online-fetch tests.
+    /// Binds an ephemeral port, then serves exactly `requests` connections
+    /// from a spawned thread. Two routes: `GET /index.yaml` and the chart
+    /// `.tgz`; everything else is 404. No external network, no new deps —
+    /// just `std::net::TcpListener`. The handler tolerates client-side
+    /// aborts (a digest-pin failure never downloads the tarball) so the
+    /// thread exits cleanly whether or not every route is hit.
+    fn serve_demo_repo(requests: usize) -> String {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
+        let port = listener.local_addr().expect("local addr").port();
+
+        std::thread::spawn(move || {
+            for _ in 0..requests {
+                let (mut stream, _) = match listener.accept() {
+                    Ok(c) => c,
+                    Err(_) => return,
+                };
+                stream
+                    .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                    .ok();
+
+                // Read just the request line; the body is irrelevant for GET.
+                let mut buf = [0u8; 1024];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let head = String::from_utf8_lossy(&buf[..n]);
+                let path = head
+                    .lines()
+                    .next()
+                    .and_then(|l| l.split_whitespace().nth(1))
+                    .unwrap_or("");
+
+                let body: Vec<u8> = match path {
+                    "/index.yaml" => format!(
+                        // Two versions; 0.2.0 uses a RELATIVE url to exercise
+                        // resolve_tarball_url, 0.1.0 an absolute one.
+                        "apiVersion: v1\n\
+                         entries:\n\
+                         \x20\x20demo:\n\
+                         \x20\x20\x20\x20- version: 0.2.0\n\
+                         \x20\x20\x20\x20\x20\x20urls: [\"demo-0.2.0.tgz\"]\n\
+                         \x20\x20\x20\x20- version: 0.1.0\n\
+                         \x20\x20\x20\x20\x20\x20urls: [\"http://127.0.0.1:{port}/demo-0.1.0.tgz\"]\n"
+                    )
+                    .into_bytes(),
+                    "/demo-0.2.0.tgz" => demo_tgz(),
+                    _ => {
+                        let _ = stream
+                            .write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n");
+                        continue;
+                    }
+                };
+
+                let header = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
+                // A client abort mid-write is fine — ignore the error.
+                let _ = stream.write_all(header.as_bytes());
+                let _ = stream.write_all(&body);
+                let _ = stream.flush();
+            }
+        });
+
+        format!("http://127.0.0.1:{port}")
+    }
+
+    #[test]
+    fn fetch_online_selects_highest_and_pins_tgz_digest() {
+        let repo = serve_demo_repo(2);
+        let cache = tempfile::tempdir().unwrap();
+
+        let fetched = fetch(
+            &repo,
+            "demo",
+            ">=0.1, <0.3",
+            cache.path(),
+            &FetchOpts {
+                expected_digest: None,
+                auth: None,
+            },
+        )
+        .expect("online fetch");
+
+        assert_eq!(fetched.version, "0.2.0", "highest version in range");
+        assert!(fetched.root_dir.join("Chart.yaml").is_file());
+        // Digest pins the pulled `.tgz` bytes, not the unpacked tree.
+        assert_eq!(
+            fetched.digest,
+            format!("sha256:{}", sha256_hex(&demo_tgz()))
+        );
+    }
+
+    #[test]
+    fn fetch_online_rejects_digest_mismatch() {
+        let repo = serve_demo_repo(2);
+        let cache = tempfile::tempdir().unwrap();
+
+        let wrong = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+        let err = fetch(
+            &repo,
+            "demo",
+            ">=0.1, <0.3",
+            cache.path(),
+            &FetchOpts {
+                expected_digest: Some(wrong),
+                auth: None,
+            },
+        )
+        .expect_err("digest mismatch must fail the fetch");
+
+        assert!(matches!(err, HelmRepoFetchError::DigestMismatch { .. }));
+        // Guard fires before extraction: the cache stays empty.
+        assert!(
+            std::fs::read_dir(cache.path()).unwrap().next().is_none(),
+            "no chart should be unpacked on a pinned-digest mismatch"
+        );
+    }
 }
