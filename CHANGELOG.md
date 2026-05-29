@@ -15,9 +15,11 @@ minor bump in the SDK.
 
 ## [Unreleased]
 
+## [0.8.17] — 2026-05-29
+
 ### Fixed
 
-- Helm subchart `condition`/`tags` disabling now honored — the embedded engine calls `chartutil.ProcessDependencies` before rendering, so `cassandra.enabled = false` (etc.) actually skips the subchart. Previously bundled subcharts always rendered regardless of their condition, for every dep source.
+- **Helm subchart `condition`/`tags` disabling now honored** ([helm-engine-wasm](crates/helm-engine-wasm/go-src/main.go)). The embedded engine now calls `chartutil.ProcessDependencies` before rendering, so `cassandra.enabled = false` (etc.) actually skips the subchart. Previously bundled subcharts always rendered regardless of their `condition` — for every dependency source (repo, path, oci), not just helm-repo. Disabling a chart's subcharts now requires you to supply your own datastore/config values the subchart used to provide (expected: the chart points at *your* backend).
 
 ## [0.8.16] — 2026-05-29
 
