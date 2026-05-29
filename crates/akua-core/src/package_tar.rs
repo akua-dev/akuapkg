@@ -30,6 +30,45 @@ pub enum PackageTarError {
         #[source]
         source: std::io::Error,
     },
+
+    #[error("akua.toml at `{}` could not be parsed/re-serialized for publish: {source}", path.display())]
+    Manifest {
+        path: PathBuf,
+        #[source]
+        source: crate::mod_file::ManifestError,
+    },
+}
+
+/// Read the workspace `akua.toml`, strip every dependency's `replace`
+/// directive, and return the re-serialized TOML bytes.
+///
+/// `replace` (path / oci / git overrides) is a publisher-local fast-
+/// iteration knob; the signed artifact must not carry it, so a
+/// consumer never inherits an override the publisher used only on
+/// their own machine. The vendored-dep tree + `akua.lock` already pin
+/// the real bytes consumers resolve against — clearing `replace` only
+/// drops the local redirect, nothing the consumer needs.
+fn manifest_without_replace(akua_toml: &Path) -> Result<Vec<u8>, PackageTarError> {
+    let text = std::fs::read_to_string(akua_toml).map_err(|source| PackageTarError::Io {
+        path: akua_toml.to_path_buf(),
+        source,
+    })?;
+    let mut manifest = crate::mod_file::AkuaManifest::parse(&text).map_err(|source| {
+        PackageTarError::Manifest {
+            path: akua_toml.to_path_buf(),
+            source,
+        }
+    })?;
+    for dep in manifest.dependencies.values_mut() {
+        dep.replace = None;
+    }
+    let toml = manifest
+        .to_toml()
+        .map_err(|source| PackageTarError::Manifest {
+            path: akua_toml.to_path_buf(),
+            source,
+        })?;
+    Ok(toml.into_bytes())
 }
 
 /// Unpack a `.tar.gz` produced by [`pack_workspace`] into `target`.
@@ -131,6 +170,26 @@ pub fn pack_workspace_with_vendored_deps(
         tar_b.follow_symlinks(false);
 
         for (rel, abs) in entries.iter().chain(vendor_entries.iter()) {
+            // The root `akua.toml` is rewritten on the way in: a
+            // publisher's `replace` directives are local iteration
+            // overrides and must never enter the signed artifact, or a
+            // consumer pulling the Package would inherit a path-based
+            // (or oci/git) override the publisher never intended to ship.
+            // Every other entry is appended byte-for-byte from disk.
+            if rel == Path::new("akua.toml") {
+                let bytes = manifest_without_replace(abs)?;
+                let mut hdr = tar::Header::new_gnu();
+                hdr.set_size(bytes.len() as u64);
+                hdr.set_mode(0o644);
+                hdr.set_cksum();
+                tar_b
+                    .append_data(&mut hdr, rel, &bytes[..])
+                    .map_err(|source| PackageTarError::Io {
+                        path: abs.clone(),
+                        source,
+                    })?;
+                continue;
+            }
             let mut file = std::fs::File::open(abs).map_err(|source| PackageTarError::Io {
                 path: abs.clone(),
                 source,
@@ -548,6 +607,60 @@ mod tests {
             got.vendored_deps,
             vec!["nginx".to_string(), "redis".to_string()]
         );
+    }
+
+    /// Read the bytes of a single tar entry back out of a packed
+    /// `.tar.gz`. Returns `None` if the entry is absent.
+    fn read_entry(tar_gz: &[u8], want: &str) -> Option<Vec<u8>> {
+        let gz = flate2::read::GzDecoder::new(tar_gz);
+        let mut ar = tar::Archive::new(gz);
+        for entry in ar.entries().unwrap() {
+            let mut e = entry.unwrap();
+            if e.path().unwrap().to_str() == Some(want) {
+                let mut got = Vec::new();
+                e.read_to_end(&mut got).unwrap();
+                return Some(got);
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn pack_strips_replace_directives_from_published_manifest() {
+        // A publisher's `replace = { path = "./fork" }` is a local
+        // iteration override. It must never survive into the signed
+        // artifact — a consumer pulling the package must not inherit it.
+        let tmp = tempfile::tempdir().unwrap();
+        write(
+            tmp.path(),
+            "akua.toml",
+            br#"[package]
+name = "x"
+version = "0.1.0"
+edition = "akua.dev/v1alpha1"
+
+[dependencies]
+webapp = { oci = "oci://ghcr.io/acme/webapp", version = "1.0.0", replace = { path = "./fork" } }
+"#,
+        );
+        write(tmp.path(), "package.k", b"resources = []\n");
+
+        let tar_gz = pack_workspace(tmp.path()).unwrap();
+        let manifest = read_entry(&tar_gz, "akua.toml").expect("akua.toml in tarball");
+        let text = String::from_utf8(manifest).unwrap();
+
+        assert!(
+            !text.contains("replace"),
+            "published manifest must not carry replace: {text}"
+        );
+
+        // The rest of the manifest survives — package identity + the
+        // dep's real source/version are still there.
+        let m = crate::mod_file::AkuaManifest::parse(&text).expect("re-parse stripped manifest");
+        assert_eq!(m.package.name, "x");
+        assert_eq!(m.package.version, "0.1.0");
+        let dep = m.dependencies.get("webapp").expect("webapp dep survives");
+        assert!(dep.replace.is_none(), "replace cleared on dep");
     }
 
     #[test]
