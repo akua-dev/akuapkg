@@ -68,6 +68,68 @@ pub enum HelmRepoFetchError {
     },
 }
 
+/// Select the `.tgz` URL for `chart` satisfying `version_req`.
+///
+/// `version_req` is parsed as a semver requirement: an exact version
+/// like `0.62.0` matches only itself; a range like `>=0.60, <0.63`
+/// selects the **highest** published version that satisfies it.
+/// Pre-releases are excluded unless the requirement names one.
+/// Returns `(resolved_version, tarball_url)`.
+pub fn select_version(
+    index: &RepoIndex,
+    chart: &str,
+    version_req: &str,
+) -> Result<(String, String), HelmRepoFetchError> {
+    let entries = index
+        .entries
+        .get(chart)
+        .ok_or_else(|| HelmRepoFetchError::ChartNotFound {
+            chart: chart.to_string(),
+        })?;
+
+    let req =
+        semver::VersionReq::parse(version_req).map_err(|e| HelmRepoFetchError::BadRequirement {
+            req: version_req.to_string(),
+            detail: e.to_string(),
+        })?;
+
+    let mut best: Option<(semver::Version, &IndexEntry)> = None;
+    for entry in entries {
+        let ver =
+            semver::Version::parse(&entry.version).map_err(|e| HelmRepoFetchError::BadVersion {
+                chart: chart.to_string(),
+                version: entry.version.clone(),
+                detail: e.to_string(),
+            })?;
+        if !req.matches(&ver) {
+            continue;
+        }
+        if best.as_ref().map(|(b, _)| &ver > b).unwrap_or(true) {
+            best = Some((ver, entry));
+        }
+    }
+
+    let (ver, entry) = best.ok_or_else(|| {
+        let mut available: Vec<&str> = entries.iter().map(|e| e.version.as_str()).collect();
+        available.sort_unstable();
+        HelmRepoFetchError::NoMatchingVersion {
+            chart: chart.to_string(),
+            req: version_req.to_string(),
+            available: available.join(", "),
+        }
+    })?;
+
+    let url = entry
+        .urls
+        .first()
+        .ok_or_else(|| HelmRepoFetchError::NoUrl {
+            chart: chart.to_string(),
+            version: ver.to_string(),
+        })?
+        .clone();
+    Ok((ver.to_string(), url))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,5 +151,34 @@ entries:
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].version, "0.62.0");
         assert_eq!(entries[1].urls[0], "temporal-0.61.0.tgz");
+    }
+
+    #[test]
+    fn selects_exact_version() {
+        let idx = parse_index(FIXTURE).unwrap();
+        let (v, url) = select_version(&idx, "temporal", "0.61.0").unwrap();
+        assert_eq!(v, "0.61.0");
+        assert_eq!(url, "temporal-0.61.0.tgz");
+    }
+
+    #[test]
+    fn selects_highest_in_range() {
+        let idx = parse_index(FIXTURE).unwrap();
+        let (v, _) = select_version(&idx, "temporal", ">=0.60, <0.63").unwrap();
+        assert_eq!(v, "0.62.0", "highest satisfying version");
+    }
+
+    #[test]
+    fn errors_when_no_version_satisfies() {
+        let idx = parse_index(FIXTURE).unwrap();
+        let err = select_version(&idx, "temporal", ">=1.0.0").unwrap_err();
+        assert!(matches!(err, HelmRepoFetchError::NoMatchingVersion { .. }));
+    }
+
+    #[test]
+    fn errors_when_chart_absent() {
+        let idx = parse_index(FIXTURE).unwrap();
+        let err = select_version(&idx, "missing", "1.0.0").unwrap_err();
+        assert!(matches!(err, HelmRepoFetchError::ChartNotFound { .. }));
     }
 }
