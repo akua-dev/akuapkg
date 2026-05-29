@@ -62,10 +62,11 @@ struct JsonSchema {
 }
 
 /// `type:` in JSON Schema can be a string or an array (union).
-/// We handle the string form directly; array form collapses to the
-/// first non-null type (helm charts use `["string", "null"]` to
-/// express optionality, which KCL represents as a non-required
-/// field instead).
+/// The string form maps to one KCL built-in. The array form: a
+/// `"null"` member makes the field optional (the `["string","null"]`
+/// optionality idiom); the remaining non-null members map to a KCL
+/// union annotation (`int | str`) when there's more than one, or a
+/// single built-in when there's one.
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 enum TypeSpec {
@@ -79,6 +80,20 @@ impl TypeSpec {
             TypeSpec::Single(s) => Some(s.as_str()),
             TypeSpec::Union(v) => v.iter().map(String::as_str).find(|t| *t != "null"),
         }
+    }
+
+    /// Every declared type member, in source order (including `"null"`).
+    fn members(&self) -> Vec<&str> {
+        match self {
+            TypeSpec::Single(s) => vec![s.as_str()],
+            TypeSpec::Union(v) => v.iter().map(String::as_str).collect(),
+        }
+    }
+
+    /// True when the union admits `"null"` — JSON Schema's way of
+    /// expressing optionality, which KCL models as a non-required field.
+    fn is_nullable(&self) -> bool {
+        matches!(self, TypeSpec::Union(v) if v.iter().any(|t| t == "null"))
     }
 }
 
@@ -172,11 +187,20 @@ impl SchemaGen {
         let nested_name = format!("{parent_name}{}", pascal_case(prop_name));
         let ty = self.render_type(&nested_name, prop_schema);
 
+        // A nullable type (`["...","null"]`) means the field may be
+        // absent; KCL models that as an optional field regardless of
+        // whether JSON Schema marked it required or gave it a default.
+        let nullable = prop_schema
+            .ty
+            .as_ref()
+            .map(TypeSpec::is_nullable)
+            .unwrap_or(false);
+
         let default = default_literal(prop_schema);
-        let opt_marker = if is_required || default.is_some() {
-            ""
-        } else {
+        let opt_marker = if nullable || !(is_required || default.is_some()) {
             "?"
+        } else {
+            ""
         };
         let assignment = default.map(|d| format!(" = {d}")).unwrap_or_default();
 
@@ -192,6 +216,31 @@ impl SchemaGen {
     /// schema and return its name; primitives return the built-in
     /// type; arrays recurse on the element type.
     fn render_type(&mut self, nested_name: &str, schema: &JsonSchema) -> String {
+        // Multi-member unions (more than one non-null type) map to a
+        // KCL union annotation `T1 | T2`. A single-member union (the
+        // common `["string","null"]` optionality idiom) drops through
+        // to the primary fast path below — optionality is handled by
+        // the field's `?` marker, not the type.
+        if let Some(TypeSpec::Union(_)) = schema.ty.as_ref() {
+            let non_null: Vec<&str> = schema
+                .ty
+                .as_ref()
+                .map(TypeSpec::members)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|t| *t != "null")
+                .collect();
+            if non_null.len() > 1 {
+                // object/array members can't be named per-member here
+                // (we'd need a synthesized schema per branch); fall back
+                // to `any` for the whole field rather than guess.
+                if non_null.iter().any(|t| *t == "object" || *t == "array") {
+                    return "any".to_string();
+                }
+                let parts: Vec<&str> = non_null.into_iter().map(primitive_kcl_type).collect();
+                return parts.join(" | ");
+            }
+        }
         let primary = schema.ty.as_ref().and_then(TypeSpec::primary).unwrap_or("");
         match primary {
             "object" => {
@@ -209,17 +258,24 @@ impl SchemaGen {
                 };
                 format!("[{item_ty}]")
             }
-            "string" => "str".to_string(),
-            "integer" => "int".to_string(),
-            "number" => "float".to_string(),
-            "boolean" => "bool".to_string(),
-            "null" => "any".to_string(),
-            _ => "any".to_string(),
+            other => primitive_kcl_type(other).to_string(),
         }
     }
 
     fn finish(self) -> String {
         self.out.join("\n")
+    }
+}
+
+/// Map a JSON Schema primitive name to its KCL built-in. Unknown or
+/// unmappable types (`null`, anything we don't model) collapse to `any`.
+fn primitive_kcl_type(json_type: &str) -> &'static str {
+    match json_type {
+        "string" => "str",
+        "integer" => "int",
+        "number" => "float",
+        "boolean" => "bool",
+        _ => "any",
     }
 }
 
@@ -473,7 +529,9 @@ mod tests {
     }
 
     #[test]
-    fn nullable_type_union_uses_primary() {
+    fn nullable_single_member_union_stays_optional() {
+        // `["string", "null"]` has one non-null member: it renders as
+        // a plain `str` (no `|`), forced optional by the `"null"`.
         let input = br#"{
             "type": "object",
             "properties": {
@@ -482,6 +540,61 @@ mod tests {
         }"#;
         let out = generate_from_bytes(input).unwrap();
         assert!(out.source.contains("maybe?: str"), "{}", out.source);
+    }
+
+    #[test]
+    fn multi_member_nullable_union_emits_union_annotation() {
+        // A union like `["string","integer","null"]` with a default
+        // whose JSON type is only ONE of the members must emit a real
+        // KCL union annotation (`int | str`), not collapse to the first
+        // member with a contradictory default. Collapsing produced e.g.
+        // `port: str = 8080` which aborts the evaluator at type-pack.
+        let input = br#"{
+            "type": "object",
+            "properties": {
+                "port": { "type": ["string", "integer", "null"], "default": 8080 }
+            }
+        }"#;
+        let out = generate_from_bytes(input).unwrap();
+        // Annotation is a union containing int and str, field optional
+        // because the union is nullable.
+        assert!(
+            out.source.contains("port?: int | str = 8080")
+                || out.source.contains("port?: str | int = 8080"),
+            "expected union annotation, got:\n{}",
+            out.source
+        );
+        // Must NOT emit the contradictory bare-`str`-with-int-default.
+        assert!(
+            !out.source.contains("port?: str = 8080") && !out.source.contains("port: str = 8080"),
+            "emitted contradictory bare annotation:\n{}",
+            out.source
+        );
+    }
+
+    #[test]
+    fn non_nullable_union_is_required_union() {
+        // `["string","integer"]` (no null) → `str | int`. Because the
+        // union is not nullable, the field's `?` is governed by the
+        // normal required/default rules — here it's `required`, so no `?`.
+        let input = br#"{
+            "type": "object",
+            "properties": {
+                "value": { "type": ["string", "integer"] }
+            },
+            "required": ["value"]
+        }"#;
+        let out = generate_from_bytes(input).unwrap();
+        assert!(
+            out.source.contains("value: str | int"),
+            "expected required union, got:\n{}",
+            out.source
+        );
+        assert!(
+            !out.source.contains("value?:"),
+            "non-nullable union must not be optional:\n{}",
+            out.source
+        );
     }
 
     #[test]

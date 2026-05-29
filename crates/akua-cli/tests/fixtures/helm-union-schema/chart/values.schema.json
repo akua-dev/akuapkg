@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "port": {
+      "type": ["string", "integer", "null"],
+      "default": 8080
+    }
+  }
+}
