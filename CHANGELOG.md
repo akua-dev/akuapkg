@@ -15,6 +15,14 @@ minor bump in the SDK.
 
 ## [Unreleased]
 
+## [0.8.15] — 2026-05-29
+
+Typed composition and Bun. Cross-Package composition is now typed-only
+(the untyped `pkg.render({ path })` form is gone, and nested renders
+finally resolve typed aliases), and the published SDK renders Helm
+charts under Bun — the native addon takes its engines directory
+programmatically instead of relying on env-var propagation Bun doesn't do.
+
 ### Removed
 
 - **Untyped `pkg.render({ path = "..." })` composition form (breaking)** ([pkg_render.rs](crates/akua-core/src/pkg_render.rs), [stdlib/akua/pkg.k](crates/akua-core/stdlib/akua/pkg.k)). Cross-Package composition now goes through typed dep aliases only: `pkg.render(pkg.Render { package = "<alias>" })`, where `<alias>` is declared under `[dependencies]` in the calling Package's `akua.toml`. Supplying `path` (or no target) is a hard error directing the user to the alias form — honoring CLAUDE.md's "No filesystem paths in user-authored KCL." Path *dependencies* in `akua.toml` (`{ path = "./..." }`) stay valid; only the inline `pkg.render` path call is gone. Migrate by declaring the sub-package as a dep and composing it by alias (see `examples/08-pkg-compose`).
