@@ -83,4 +83,68 @@ metadata:
         assert!(e.starts_with("pluginX:"), "got: {e}");
         assert!(e.contains("not utf-8"));
     }
+
+    /// A `|-` block scalar whose content contains a paragraph-separator
+    /// (empty line) must parse without error and preserve the full value —
+    /// the shape of temporal's `server-configmap.yaml`, where
+    /// `config_template.yaml: |-` embeds multi-section YAML with bare empty
+    /// lines. Locks in that the multi-doc parser handles it.
+    ///
+    /// NOTE: raw byte string (`br#"..."#`) is required to preserve the indentation
+    /// of the block scalar. A non-raw `b"...\n\    persistence:"` would strip
+    /// leading whitespace from the continuation line, producing invalid YAML.
+    #[test]
+    fn block_scalar_with_empty_line_parses_correctly() {
+        let text = br#"---
+apiVersion: v1
+kind: ConfigMap
+data:
+  config_template.yaml: |-
+    log:
+      stdout: true
+      level: "debug,info"
+
+    persistence:
+      defaultStore: default
+"#;
+        let docs = parse(text, "helm.template").unwrap_or_else(|e| {
+            panic!("block scalar with paragraph-separator empty line should parse without error; got: {e}")
+        });
+        assert_eq!(docs.len(), 1, "expected exactly 1 ConfigMap doc");
+        let config_val = docs[0]["data"]["config_template.yaml"]
+            .as_str()
+            .unwrap_or_else(|| {
+                panic!(
+                    "config_template.yaml should be a string value; got: {:?}",
+                    docs[0]["data"]["config_template.yaml"]
+                )
+            });
+        assert!(
+            config_val.contains("persistence"),
+            "block scalar content must preserve 'persistence' section after the empty line; \
+             got: {config_val:?}"
+        );
+    }
+
+    /// Regression: real Helm multi-doc output (temporal chart, 59 documents total,
+    /// 55 non-empty) must parse without error. The fixture contains block scalars
+    /// with embedded shell pipe characters and `sed` patterns.
+    #[test]
+    fn parses_real_helm_multidoc_output() {
+        let fixture = include_bytes!("../tests/fixtures/helm-multidoc.yaml");
+        let docs = parse(fixture, "helm.template").unwrap_or_else(|e| {
+            panic!("helm.template: failed to parse real helm output: {e}");
+        });
+        assert!(
+            docs.len() >= 50,
+            "expected ≥50 non-empty docs from temporal chart, got {}",
+            docs.len()
+        );
+        for (i, doc) in docs.iter().enumerate() {
+            assert!(
+                doc.is_object(),
+                "doc[{i}] is not a YAML mapping (got {doc:?})"
+            );
+        }
+    }
 }

@@ -69,17 +69,35 @@ pub fn install() {
             helm_engine_wasm::render_dir(&resolved_chart, &chart_name, &values_yaml, &release)
                 .map_err(|e| err(format!("helm engine: {e}")))?;
 
-        // Each helm manifest may contain multiple `---`-separated docs
-        // (one chart file → N resources). Parse each through the shared
-        // multi-doc YAML helper so empty separator docs drop cleanly
-        // and errors attribute to `helm.template:` prefix.
-        let mut resources = Vec::new();
-        for yaml in manifests.values() {
-            let docs = crate::yaml_multidoc::parse(yaml.as_bytes(), PLUGIN_NAME)?;
-            resources.extend(docs);
-        }
+        let resources = parse_manifests(&manifests)?;
         Ok(Value::Array(resources))
     });
+}
+
+/// Parse the engine's rendered template files into resource values.
+///
+/// Each helm manifest may contain multiple `---`-separated docs (one chart
+/// file → N resources). Parse each through the shared multi-doc YAML helper
+/// so empty separator docs drop cleanly and errors attribute to the
+/// `helm.template:` prefix.
+fn parse_manifests(
+    manifests: &std::collections::BTreeMap<String, String>,
+) -> Result<Vec<Value>, String> {
+    let mut resources = Vec::new();
+    for (path, yaml) in manifests {
+        if is_notes_file(path) {
+            continue;
+        }
+        resources.extend(crate::yaml_multidoc::parse(yaml.as_bytes(), PLUGIN_NAME)?);
+    }
+    Ok(resources)
+}
+
+/// `NOTES.txt` (top-level or in any subchart) is helm's free-form usage
+/// prose, not a manifest. Matched by basename so subchart notes like
+/// `charts/cassandra/templates/NOTES.txt` are caught too.
+fn is_notes_file(manifest_path: &str) -> bool {
+    manifest_path.rsplit('/').next() == Some("NOTES.txt")
 }
 
 fn err(msg: impl std::fmt::Display) -> String {
@@ -142,6 +160,30 @@ fn chart_dir_name(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Helm renders `NOTES.txt` (top-level and per-subchart) as free-form
+    /// usage prose, never a manifest — `helm template` keeps it out of the
+    /// YAML stream. The engine returns it among the rendered files, so akua
+    /// must drop it before parsing; otherwise prose like "To tail the logs
+    /// run: kubectl ..." hits the YAML parser and the whole render fails.
+    #[test]
+    fn notes_txt_is_skipped_not_parsed_as_yaml() {
+        use std::collections::BTreeMap;
+        let mut manifests = BTreeMap::new();
+        manifests.insert(
+            "temporal/charts/cassandra/templates/NOTES.txt".to_string(),
+            "To tail the logs run the following:\n- kubectl logs -f --namespace platform\n"
+                .to_string(),
+        );
+        manifests.insert(
+            "temporal/templates/configmap.yaml".to_string(),
+            "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: real\n".to_string(),
+        );
+
+        let resources = parse_manifests(&manifests).expect("NOTES.txt prose must not be parsed");
+        assert_eq!(resources.len(), 1, "only the real manifest should parse");
+        assert_eq!(resources[0]["kind"], "ConfigMap");
+    }
 
     #[test]
     fn release_name_valid() {

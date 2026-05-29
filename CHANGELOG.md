@@ -15,6 +15,11 @@ minor bump in the SDK.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Helm `NOTES.txt` no longer breaks renders** ([helm.rs](crates/akua-core/src/helm.rs)). The embedded helm engine returns `NOTES.txt` (top-level and per-subchart) among its rendered files, but those are free-form usage prose, not manifests — `helm template` keeps them out of the YAML stream. akua was parsing every returned file as YAML, so a chart whose notes contain `kubectl ...:` lines aborted the whole render with `parsing output as YAML: could not find expected ':'`. akua now skips any file whose basename is `NOTES.txt` before parsing. Unblocks real-world charts (temporal, prometheus, grafana, cassandra).
+- **Release binaries report their tag version** ([release.yml](.github/workflows/release.yml)). The release pipeline now derives the Rust workspace version from the pushed git tag (`scripts/set-cargo-version.sh`) and asserts `akua -V` matches the tag in the build smoke-test. Previously `CARGO_PKG_VERSION` was pinned to the committed `Cargo.toml`, so 0.8.9–0.8.13 binaries (and their SLSA provenance / OCI annotations) all reported `0.8.8`.
+
 ## [0.8.8] — 2026-05-07
 
 Host-keyed HTTPS basic auth for `vendor add`. The CLI and SDK now
