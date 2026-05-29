@@ -15,6 +15,17 @@
 //! implementation. Sandbox posture in CLAUDE.md + security-model.md
 //! stays intact.
 //!
+//! ## TLS posture
+//!
+//! gix's curl-rustls transport derives its TLS options from git config,
+//! which layers in `GIT_SSL_NO_VERIFY` / `GIT_SSL_CAINFO` as
+//! environment overrides. Left to the default, a poisoned environment
+//! could disable certificate validation on the first clone — a TOFU
+//! MITM window before any commit is pinned. [`force_tls_verification`]
+//! pins `ssl_verify = true` on every connection *before* the handshake,
+//! so neither half of a hostile env (`*_NO_VERIFY` nor a swapped CA
+//! bundle) is ever consulted.
+//!
 //! ## Scope
 //!
 //! - Public HTTPS + `file://` URLs. Public github / gitlab / gitea
@@ -228,16 +239,21 @@ fn clone_bare(
         url: url.to_string(),
         detail: e.to_string(),
     })?;
-    if let Some(map) = auth {
-        // `Arc` over `clone()` because `configure_connection` and
-        // `set_credentials` are both `FnMut` — refcount bumps beat
-        // re-cloning the map per connection / per 401 retry.
-        let map: std::sync::Arc<HostAuthMap> = std::sync::Arc::new(map.clone());
-        prep = prep.configure_connection(move |conn| {
-            set_connection_credentials(conn, std::sync::Arc::clone(&map));
-            Ok(())
-        });
-    }
+    // Always install a connection configurator so we can pin TLS
+    // verification ON regardless of ambient env (see
+    // `force_tls_verification`); the credential helper is only added
+    // when the caller supplied an auth map.
+    let map = auth.map(|m| std::sync::Arc::new(m.clone()));
+    prep = prep.configure_connection(move |conn| {
+        force_tls_verification(conn);
+        if let Some(map) = &map {
+            // `Arc` over `clone()` because `configure_connection` and
+            // `set_credentials` are both `FnMut` — refcount bumps beat
+            // re-cloning the map per connection / per 401 retry.
+            set_connection_credentials(conn, std::sync::Arc::clone(map));
+        }
+        Ok(())
+    });
     let (repo, _) = prep
         .fetch_only(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
         .map_err(|e| GitFetchError::Clone {
@@ -277,6 +293,7 @@ fn refresh_bare(
                 url: url.to_string(),
                 detail: e.to_string(),
             })?;
+    force_tls_verification(&mut conn);
     if let Some(map) = auth {
         set_connection_credentials(&mut conn, std::sync::Arc::new(map.clone()));
     }
@@ -294,6 +311,36 @@ fn refresh_bare(
         detail: e.to_string(),
     })?;
     Ok(())
+}
+
+/// Pin TLS certificate verification ON for this connection, defeating
+/// any ambient `GIT_SSL_NO_VERIFY` / `http.sslNoVerify` in the
+/// environment.
+///
+/// gix's curl-rustls transport derives its `http::Options` from the
+/// repo's git config, which layers in `GIT_SSL_NO_VERIFY` /
+/// `GIT_SSL_CAINFO` as environment overrides (see
+/// `gix::config::tree::gitoxide::Http::SSL_NO_VERIFY`). A poisoned
+/// environment could therefore disable certificate validation on the
+/// first `akua add` — a TOFU MITM window before any digest/commit is
+/// pinned. We pre-seed the connection's transport options with a
+/// `ssl_verify: true` `http::Options` *before* the handshake. Because
+/// `Connection::prepare_fetch` only derives options from config when
+/// `transport_options` is still `None`, our explicit value wins and the
+/// env-derived `ssl_verify = false` is never consulted.
+///
+/// `ssl_ca_info` is intentionally left `None` (curl's default trust
+/// store) — we drop any env-supplied CA bundle along with the
+/// env-supplied no-verify, so neither half of a poisoned env applies.
+fn force_tls_verification<T>(conn: &mut gix::remote::Connection<'_, '_, T>)
+where
+    T: gix::protocol::transport::client::Transport,
+{
+    let opts = gix::protocol::transport::client::http::Options {
+        ssl_verify: true,
+        ..Default::default()
+    };
+    conn.set_transport_options(Box::new(opts));
 }
 
 #[allow(clippy::result_large_err)]
@@ -456,6 +503,25 @@ fn materialize_checkout(
     Ok(())
 }
 
+/// Is `name` a single, normal path component safe to `join` onto a
+/// checkout dir? Rejects empty, `.`/`..`, anything containing a path
+/// separator, and absolute paths. Mirrors the path-escape posture in
+/// CLAUDE.md: user-reachable code never constructs an escape string.
+fn is_safe_component(name: &str) -> bool {
+    if name.is_empty() || name == "." || name == ".." {
+        return false;
+    }
+    if name.contains('/') || name.contains('\\') {
+        return false;
+    }
+    // A single normal component never resolves to anything but itself.
+    let mut comps = Path::new(name).components();
+    matches!(
+        (comps.next(), comps.next()),
+        (Some(std::path::Component::Normal(_)), None)
+    )
+}
+
 /// Walk a git tree and materialize every blob to disk. Simple
 /// recursive traversal — no deltified tree walking, so bigger repos
 /// take more I/O; fine for helm-chart-scale trees (~100 files).
@@ -470,6 +536,16 @@ fn write_tree(repo: &gix::Repository, tree_id: gix::ObjectId, dest: &Path) -> Re
     for entry in tree_ref.entries.iter() {
         let name = std::str::from_utf8(entry.filename)
             .map_err(|e| format!("non-utf8 filename in `{tree_id}`: {e}"))?;
+        // Defense-in-depth: gix already validates tree-entry names, but
+        // we still hold each name to a single normal path component
+        // before `dest.join` so a crafted/​corrupt tree can't escape the
+        // checkout dir (`..`, an embedded `/`, or an absolute path would
+        // otherwise let `join` walk outside `dest`).
+        if !is_safe_component(name) {
+            return Err(format!(
+                "unsafe tree-entry name `{name}` in `{tree_id}` (must be a single normal path component)"
+            ));
+        }
         let target = dest.join(name);
         match entry.mode.kind() {
             gix::object::tree::EntryKind::Tree => {
@@ -602,6 +678,22 @@ mod tests {
     fn ref_spec_label_returns_tag_or_rev() {
         assert_eq!(RefSpec::Tag("v1.0".into()).label(), "v1.0");
         assert_eq!(RefSpec::Rev("abcdef1234".into()).label(), "abcdef1234");
+    }
+
+    #[test]
+    fn is_safe_component_accepts_normal_names_rejects_escapes() {
+        assert!(is_safe_component("Chart.yaml"));
+        assert!(is_safe_component("values.yaml"));
+        assert!(is_safe_component("templates"));
+        // Escapes / non-single-component names must be rejected.
+        assert!(!is_safe_component(""));
+        assert!(!is_safe_component("."));
+        assert!(!is_safe_component(".."));
+        assert!(!is_safe_component("a/b"));
+        assert!(!is_safe_component("../escape"));
+        assert!(!is_safe_component("/etc/passwd"));
+        assert!(!is_safe_component("sub/../../escape"));
+        assert!(!is_safe_component("a\\b"));
     }
 
     #[test]

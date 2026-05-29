@@ -50,8 +50,15 @@ use crate::hex::hex_encode;
 use crate::oci_auth::{self, Credentials, CredsStore};
 use crate::oci_media_types::AKUA_PACKAGE_LAYER_MEDIA_TYPE;
 use crate::oci_transport::{
-    build_client, get_with_auth, parse_ref, registry_scheme, OciRef, TokenCache, TransportError,
+    build_client, get_with_auth_capped, parse_ref, registry_scheme, OciRef, TokenCache,
+    TransportError, MAX_BLOB_BYTES, MAX_MANIFEST_BYTES,
 };
+
+/// Ceiling on the *decompressed* size of a layer tarball. The verified
+/// digest covers the compressed bytes only, so a small valid-digest
+/// gzip can expand to fill the disk (a "zip bomb"). 2 GiB is generous
+/// for any real chart / KCL package while bounding the blast radius.
+const MAX_DECOMPRESSED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 /// Media type the helm-v3+ OCI chart format uses for the chart blob.
 const HELM_CHART_LAYER_MEDIA_TYPE: &str = "application/vnd.cncf.helm.chart.content.v1.tar+gzip";
@@ -454,6 +461,22 @@ pub fn fetch_with_opts(
     })?;
     let layer_digest = detected.layer.digest.clone();
 
+    // Reject before downloading if the manifest itself declares a blob
+    // larger than the ceiling. The streamed read in `get_blob` is the
+    // real backstop (a registry can lie about `size`), but honouring
+    // the declared size avoids opening the connection at all for an
+    // obviously-oversize artifact.
+    if detected.layer.size > MAX_BLOB_BYTES {
+        return Err(OciFetchError::Transport(TransportError::ResponseTooLarge {
+            url: format!(
+                "{}://{}/v2/{}/blobs/{}",
+                scheme, parsed.registry, parsed.repository, layer_digest
+            ),
+            limit: MAX_BLOB_BYTES,
+            declared: Some(detected.layer.size),
+        }));
+    }
+
     let blob_url = format!(
         "{}://{}/v2/{}/blobs/{}",
         scheme, parsed.registry, parsed.repository, layer_digest
@@ -684,13 +707,21 @@ fn get_manifest(
     creds: Option<&Credentials>,
     token: &mut TokenCache,
 ) -> Result<Vec<u8>, OciFetchError> {
-    Ok(get_with_auth(client, url, registry, creds, token, |req| {
-        let mut req = req;
-        for media in OCI_MANIFEST_MEDIA_TYPES {
-            req = req.header("Accept", *media);
-        }
-        req
-    })?)
+    Ok(get_with_auth_capped(
+        client,
+        url,
+        registry,
+        creds,
+        token,
+        MAX_MANIFEST_BYTES,
+        |req| {
+            let mut req = req;
+            for media in OCI_MANIFEST_MEDIA_TYPES {
+                req = req.header("Accept", *media);
+            }
+            req
+        },
+    )?)
 }
 
 fn get_blob(
@@ -700,9 +731,67 @@ fn get_blob(
     creds: Option<&Credentials>,
     token: &mut TokenCache,
 ) -> Result<Vec<u8>, OciFetchError> {
-    Ok(get_with_auth(client, url, registry, creds, token, |req| {
-        req
-    })?)
+    Ok(get_with_auth_capped(
+        client,
+        url,
+        registry,
+        creds,
+        token,
+        MAX_BLOB_BYTES,
+        |req| req,
+    )?)
+}
+
+// --- Decompression-bomb guard ---------------------------------------------
+
+/// A `Read` adapter that aborts once more than `limit` bytes have been
+/// pulled through it. Wraps the *decompressed* gzip stream so a small
+/// valid-digest archive can't expand without bound while `tar` unpacks
+/// it. On the byte that would cross `limit` it yields an
+/// `io::ErrorKind::InvalidData` carrying [`DECOMPRESSION_LIMIT_MARKER`]
+/// so the caller can distinguish a bomb from a genuine I/O failure.
+struct CappedReader<R> {
+    inner: R,
+    read: u64,
+    limit: u64,
+}
+
+/// Sentinel embedded in the `io::Error` message when [`CappedReader`]
+/// trips, so `extract_blob` can map it to a typed error rather than a
+/// generic extraction failure.
+const DECOMPRESSION_LIMIT_MARKER: &str = "akua: decompressed size limit exceeded";
+
+impl<R: std::io::Read> std::io::Read for CappedReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.read = self.read.saturating_add(n as u64);
+        if self.read > self.limit {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                DECOMPRESSION_LIMIT_MARKER,
+            ));
+        }
+        Ok(n)
+    }
+}
+
+/// Map a `tar::Archive::unpack` error to a typed `OciFetchError`,
+/// recognising the [`DECOMPRESSION_LIMIT_MARKER`] sentinel anywhere in
+/// the error's source chain (tar wraps the underlying io error). A
+/// tripped cap is reported distinctly so callers / logs can tell a
+/// decompression bomb from a corrupt archive.
+fn map_extract_error(e: std::io::Error) -> OciFetchError {
+    let mut src: Option<&(dyn std::error::Error + 'static)> = Some(&e);
+    while let Some(err) = src {
+        if err.to_string().contains(DECOMPRESSION_LIMIT_MARKER) {
+            return OciFetchError::Extract(format!(
+                "decompressed size exceeds the {MAX_DECOMPRESSED_BYTES}-byte ceiling \
+                 (possible decompression bomb)"
+            ));
+        }
+        src = err.source();
+    }
+    OciFetchError::Extract(e.to_string())
 }
 
 // --- Tarball extraction ---------------------------------------------------
@@ -713,6 +802,18 @@ fn get_blob(
 /// paths internally; we still write to a staging dir and atomically
 /// rename so concurrent akua processes don't see partial state.
 fn extract_blob(bytes: &[u8], dest: &Path, format: ArchiveFormat) -> Result<(), OciFetchError> {
+    extract_blob_capped(bytes, dest, format, MAX_DECOMPRESSED_BYTES)
+}
+
+/// Cap-parameterized core of [`extract_blob`]. Split out so tests can
+/// trip the decompression guard with a small ceiling instead of having
+/// to materialize a multi-GiB fixture.
+fn extract_blob_capped(
+    bytes: &[u8],
+    dest: &Path,
+    format: ArchiveFormat,
+    decompressed_limit: u64,
+) -> Result<(), OciFetchError> {
     let parent = dest.parent().ok_or_else(|| {
         OciFetchError::Extract(format!("cache path has no parent: {}", dest.display()))
     })?;
@@ -733,23 +834,29 @@ fn extract_blob(bytes: &[u8], dest: &Path, format: ArchiveFormat) -> Result<(), 
             source,
         })?;
 
+    // Both branches cap the *decompressed* (gzip) / unpacked (plain
+    // tar) byte stream so a small valid-digest archive can't expand
+    // to fill the disk. A trip surfaces as an InvalidData io error
+    // carrying `DECOMPRESSION_LIMIT_MARKER`, mapped to a typed error.
+    let unpack = |reader: &mut dyn std::io::Read| -> Result<(), OciFetchError> {
+        let mut archive = tar::Archive::new(CappedReader {
+            inner: reader,
+            read: 0,
+            limit: decompressed_limit,
+        });
+        archive.set_overwrite(true);
+        archive.set_preserve_permissions(false);
+        archive.unpack(staging.path()).map_err(map_extract_error)
+    };
+
     match format {
         ArchiveFormat::GzipTar => {
-            let gz = flate2::read::GzDecoder::new(bytes);
-            let mut archive = tar::Archive::new(gz);
-            archive.set_overwrite(true);
-            archive.set_preserve_permissions(false);
-            archive
-                .unpack(staging.path())
-                .map_err(|e| OciFetchError::Extract(e.to_string()))?;
+            let mut gz = flate2::read::GzDecoder::new(bytes);
+            unpack(&mut gz)?;
         }
         ArchiveFormat::PlainTar => {
-            let mut archive = tar::Archive::new(bytes);
-            archive.set_overwrite(true);
-            archive.set_preserve_permissions(false);
-            archive
-                .unpack(staging.path())
-                .map_err(|e| OciFetchError::Extract(e.to_string()))?;
+            let mut raw = bytes;
+            unpack(&mut raw)?;
         }
     }
 
@@ -1436,6 +1543,103 @@ mod tests {
                 assert_ne!(actual, stale_pin);
             }
             other => panic!("expected LockDigestMismatch, got {other:?}"),
+        }
+    }
+
+    /// A manifest that declares a layer `size` past the blob ceiling is
+    /// rejected before the blob is ever requested. The blob endpoint is
+    /// a trap that 501s on any hit — the pre-check must fire first.
+    #[test]
+    fn fetch_with_opts_rejects_oversize_declared_layer() {
+        let server = MockServer::start();
+        let repo = "team/huge";
+        let tarball = helm_tarball("nginx");
+        let layer_digest = format!("sha256:{}", hex_encode(&Sha256::digest(&tarball)));
+        // Manifest lies about the layer size: 4 GiB, well past MAX_BLOB_BYTES.
+        let manifest = serde_json::json!({
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": {
+                "mediaType": "application/vnd.cncf.helm.config.v1+json",
+                "size": 2,
+                "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            },
+            "layers": [{
+                "mediaType": HELM_CHART_LAYER_MEDIA_TYPE,
+                "size": 4u64 * 1024 * 1024 * 1024,
+                "digest": layer_digest,
+            }],
+        });
+
+        server.mock(|when, then| {
+            when.method(GET).path_contains("manifests");
+            then.status(200)
+                .body(serde_json::to_vec(&manifest).unwrap());
+        });
+        let blob_trap = server.mock(|when, then| {
+            when.method(GET).path_contains("blobs");
+            then.status(501);
+        });
+
+        let cache = tempfile::tempdir().unwrap();
+        let creds = oci_auth::CredsStore::empty();
+        let err = fetch_with_opts(
+            &mock_oci_ref(&server, repo),
+            "1.0.0",
+            cache.path(),
+            &FetchOpts {
+                expected_digest: None,
+                creds: &creds,
+                cosign_public_key_pem: None,
+            },
+        )
+        .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                OciFetchError::Transport(TransportError::ResponseTooLarge { .. })
+            ),
+            "expected ResponseTooLarge, got {err:?}"
+        );
+        // The pre-check fired before the blob was requested.
+        blob_trap.assert_hits(0);
+    }
+
+    /// A gzip that decompresses past the ceiling aborts with a typed
+    /// extraction error rather than filling the disk. We build a small
+    /// fixture and extract with a tiny cap by routing through a helper
+    /// that mirrors `extract_blob`'s capped unpack at a test-sized cap.
+    #[test]
+    fn extract_blob_rejects_decompression_bomb() {
+        // ~1 MiB of highly compressible zeros packed into a tar member;
+        // the compressed tarball is tiny but the decompressed stream is
+        // far past the 4 KiB test cap we apply below.
+        let mut buf = Vec::new();
+        {
+            let gz = flate2::write::GzEncoder::new(&mut buf, flate2::Compression::default());
+            let mut tar_b = tar::Builder::new(gz);
+            let big = vec![0u8; 1024 * 1024];
+            let mut hdr = tar::Header::new_gnu();
+            hdr.set_size(big.len() as u64);
+            hdr.set_mode(0o644);
+            hdr.set_cksum();
+            tar_b
+                .append_data(&mut hdr, "bomb/Chart.yaml", &big[..])
+                .unwrap();
+            tar_b.into_inner().unwrap().finish().unwrap();
+        }
+
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("sha256").join("bomb");
+        let err = extract_blob_capped(&buf, &dest, ArchiveFormat::GzipTar, 4096).unwrap_err();
+        match err {
+            OciFetchError::Extract(msg) => {
+                assert!(
+                    msg.contains("decompression bomb") || msg.contains("decompressed size"),
+                    "unexpected extract message: {msg}"
+                );
+            }
+            other => panic!("expected Extract error, got {other:?}"),
         }
     }
 }

@@ -4,6 +4,63 @@
 //! verified on every pull. No cosign; `.prov`/GPG is a future opt-in.
 
 use std::collections::BTreeMap;
+use std::io::Read;
+
+/// Ceiling on a repo `index.yaml` body. Indexes list every published
+/// chart version; even a large public repo is a few MiB. 32 MiB bounds
+/// a hostile server streaming an endless index into memory.
+const MAX_INDEX_BYTES: u64 = 32 * 1024 * 1024;
+
+/// Ceiling on a downloaded chart `.tgz`. Helm charts are sub-MiB in
+/// practice; 1 GiB bounds the buffered download without OOM. The digest
+/// is only verifiable after the full body is read, so this cap is the
+/// backstop against a server that streams without bound.
+const MAX_TARBALL_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// Ceiling on the *decompressed* chart tree. The pinned digest covers
+/// the compressed `.tgz` only, so a small valid-digest gzip could
+/// expand to fill the disk. 2 GiB is generous for any real chart.
+const MAX_DECOMPRESSED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
+/// Sentinel embedded in the `io::Error` raised by the decompression
+/// cap so `extract_and_hash` can map it to a typed error.
+const DECOMPRESSION_LIMIT_MARKER: &str = "akua: decompressed size limit exceeded";
+
+/// A `Read` adapter that aborts once more than `limit` bytes have been
+/// pulled through it — used to bound the decompressed chart tree.
+struct CappedReader<R> {
+    inner: R,
+    read: u64,
+    limit: u64,
+}
+
+impl<R: Read> Read for CappedReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.read = self.read.saturating_add(n as u64);
+        if self.read > self.limit {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                DECOMPRESSION_LIMIT_MARKER,
+            ));
+        }
+        Ok(n)
+    }
+}
+
+/// Walk an error's `source()` chain looking for `needle` in any
+/// `Display` rendering. `tar` wraps the underlying io error, so the
+/// decompression-cap sentinel can sit a level or two down.
+fn source_chain_contains(e: &(dyn std::error::Error + 'static), needle: &str) -> bool {
+    let mut cur: Option<&(dyn std::error::Error + 'static)> = Some(e);
+    while let Some(err) = cur {
+        if err.to_string().contains(needle) {
+            return true;
+        }
+        cur = err.source();
+    }
+    false
+}
 
 /// One entry in a repo's `index.yaml` `entries.<chart>[]` list. Only
 /// the fields akua needs; serde ignores the rest.
@@ -52,6 +109,17 @@ pub enum HelmRepoFetchError {
     BadRequirement { req: String, detail: String },
     #[error("fetching {url}: {detail}")]
     Http { url: String, detail: String },
+    #[error(
+        "index for `{chart}` points its tarball at an http:// URL (`{url}`) but the repo was \
+         fetched over https:// — refusing the scheme downgrade"
+    )]
+    SchemeDowngrade { chart: String, url: String },
+    #[error("response from {url} exceeds the {limit}-byte ceiling")]
+    ResponseTooLarge { url: String, limit: u64 },
+    #[error(
+        "decompressed chart `{chart}` exceeds the {limit}-byte ceiling (possible decompression bomb)"
+    )]
+    DecompressionLimit { chart: String, limit: u64 },
     #[error("digest mismatch for `{chart}`: expected {expected}, got {actual}")]
     DigestMismatch {
         chart: String,
@@ -133,15 +201,36 @@ pub fn select_version(
 /// Resolve a tarball URL from `index.yaml` against the repo base.
 /// Absolute (`http://`/`https://`) URLs pass through; relative ones
 /// are joined to `<repo>/`.
-pub fn resolve_tarball_url(repo: &str, url: &str) -> String {
-    if url.starts_with("http://") || url.starts_with("https://") {
-        return url.to_string();
+///
+/// Scheme-downgrade guard: if the repo itself was fetched over
+/// `https://` (the index came from a TLS-protected channel) but the
+/// index hands back an absolute `http://` tarball URL, refuse it. A
+/// MITM that can rewrite an index entry could otherwise downgrade the
+/// chart download to plaintext; the digest pin only protects against
+/// tampering *after* a trusted digest is recorded, not the first pull.
+/// `chart` is threaded through only for the error message.
+pub fn resolve_tarball_url(
+    repo: &str,
+    url: &str,
+    chart: &str,
+) -> Result<String, HelmRepoFetchError> {
+    if url.starts_with("https://") {
+        return Ok(url.to_string());
     }
-    format!(
+    if url.starts_with("http://") {
+        if repo.starts_with("https://") {
+            return Err(HelmRepoFetchError::SchemeDowngrade {
+                chart: chart.to_string(),
+                url: url.to_string(),
+            });
+        }
+        return Ok(url.to_string());
+    }
+    Ok(format!(
         "{}/{}",
         repo.trim_end_matches('/'),
         url.trim_start_matches('/')
-    )
+    ))
 }
 
 use std::path::{Path, PathBuf};
@@ -180,23 +269,51 @@ pub fn extract_and_hash(
     let dest = cache_dir_for(cache_root, &digest);
     let root = dest.join(chart_dir_name);
     if !root.join("Chart.yaml").is_file() {
-        std::fs::create_dir_all(&dest).map_err(|source| HelmRepoFetchError::Io {
-            path: dest.clone(),
-            source,
-        })?;
-        let gz = flate2::read::GzDecoder::new(tgz);
-        let mut ar = tar::Archive::new(gz);
-        // tar crate rejects `..`/absolute members by default (no
-        // set_overwrite/preserve escape), so extraction stays within `dest`.
-        ar.unpack(&dest).map_err(|source| HelmRepoFetchError::Io {
-            path: dest.clone(),
-            source,
-        })?;
+        unpack_tgz_capped(tgz, &dest, chart_dir_name, MAX_DECOMPRESSED_BYTES)?;
     }
     Ok(Fetched {
         root_dir: root,
         digest,
         version: String::new(),
+    })
+}
+
+/// Decompress + unpack `tgz` into `dest`, capping the *decompressed*
+/// byte stream at `decompressed_limit`. The pinned digest covers the
+/// compressed `.tgz` only, so a small valid-digest gzip could expand to
+/// fill the disk; the cap surfaces as a typed `DecompressionLimit`.
+/// Split from `extract_and_hash` so tests can trip the guard with a
+/// small ceiling without materializing a multi-GiB fixture.
+fn unpack_tgz_capped(
+    tgz: &[u8],
+    dest: &Path,
+    chart_dir_name: &str,
+    decompressed_limit: u64,
+) -> Result<(), HelmRepoFetchError> {
+    std::fs::create_dir_all(dest).map_err(|source| HelmRepoFetchError::Io {
+        path: dest.to_path_buf(),
+        source,
+    })?;
+    let gz = flate2::read::GzDecoder::new(tgz);
+    let mut ar = tar::Archive::new(CappedReader {
+        inner: gz,
+        read: 0,
+        limit: decompressed_limit,
+    });
+    // tar crate rejects `..`/absolute members by default (no
+    // set_overwrite/preserve escape), so extraction stays within `dest`.
+    ar.unpack(dest).map_err(|source| {
+        if source_chain_contains(&source, DECOMPRESSION_LIMIT_MARKER) {
+            HelmRepoFetchError::DecompressionLimit {
+                chart: chart_dir_name.to_string(),
+                limit: decompressed_limit,
+            }
+        } else {
+            HelmRepoFetchError::Io {
+                path: dest.to_path_buf(),
+                source,
+            }
+        }
     })
 }
 
@@ -250,11 +367,11 @@ pub fn fetch(
         })?;
 
     let index_url = format!("{}/index.yaml", repo.trim_end_matches('/'));
-    let index_bytes = http_get(&client, &index_url, opts.auth)?;
+    let index_bytes = http_get(&client, &index_url, opts.auth, MAX_INDEX_BYTES)?;
     let index = parse_index(&index_bytes)?;
     let (version, tgz_url) = select_version(&index, chart, version_req)?;
-    let abs_url = resolve_tarball_url(repo, &tgz_url);
-    let tgz = http_get(&client, &abs_url, opts.auth)?;
+    let abs_url = resolve_tarball_url(repo, &tgz_url, chart)?;
+    let tgz = http_get(&client, &abs_url, opts.auth, MAX_TARBALL_BYTES)?;
 
     let digest = format!("sha256:{}", sha256_hex(&tgz));
     if let Some(expected) = opts.expected_digest {
@@ -275,6 +392,7 @@ fn http_get(
     client: &reqwest::blocking::Client,
     url: &str,
     auth: Option<&crate::host_auth::HostAuthMap>,
+    max_bytes: u64,
 ) -> Result<Vec<u8>, HelmRepoFetchError> {
     let mut req = client.get(url);
     if let Some(map) = auth {
@@ -292,12 +410,31 @@ fn http_get(
             detail: format!("HTTP {}", resp.status()),
         });
     }
-    resp.bytes()
-        .map(|b| b.to_vec())
+    // Reject early when the server declares an oversize body, then
+    // stream through a capped reader so a missing/​lying Content-Length
+    // can't push us past the ceiling.
+    if let Some(declared) = resp.content_length() {
+        if declared > max_bytes {
+            return Err(HelmRepoFetchError::ResponseTooLarge {
+                url: url.to_string(),
+                limit: max_bytes,
+            });
+        }
+    }
+    let mut buf = Vec::new();
+    resp.take(max_bytes.saturating_add(1))
+        .read_to_end(&mut buf)
         .map_err(|e| HelmRepoFetchError::Http {
             url: url.to_string(),
             detail: e.to_string(),
-        })
+        })?;
+    if buf.len() as u64 > max_bytes {
+        return Err(HelmRepoFetchError::ResponseTooLarge {
+            url: url.to_string(),
+            limit: max_bytes,
+        });
+    }
+    Ok(buf)
 }
 
 #[cfg(test)]
@@ -375,16 +512,47 @@ entries:
     fn resolves_relative_and_absolute_urls() {
         let repo = "https://go.temporal.io/helm-charts";
         assert_eq!(
-            resolve_tarball_url(repo, "https://cdn.example.com/temporal-0.62.0.tgz"),
+            resolve_tarball_url(
+                repo,
+                "https://cdn.example.com/temporal-0.62.0.tgz",
+                "temporal"
+            )
+            .unwrap(),
             "https://cdn.example.com/temporal-0.62.0.tgz"
         );
         assert_eq!(
-            resolve_tarball_url(repo, "temporal-0.61.0.tgz"),
+            resolve_tarball_url(repo, "temporal-0.61.0.tgz", "temporal").unwrap(),
             "https://go.temporal.io/helm-charts/temporal-0.61.0.tgz"
         );
         assert_eq!(
-            resolve_tarball_url("https://go.temporal.io/helm-charts/", "temporal-0.61.0.tgz"),
+            resolve_tarball_url(
+                "https://go.temporal.io/helm-charts/",
+                "temporal-0.61.0.tgz",
+                "temporal"
+            )
+            .unwrap(),
             "https://go.temporal.io/helm-charts/temporal-0.61.0.tgz"
+        );
+    }
+
+    #[test]
+    fn rejects_http_tarball_url_from_https_repo() {
+        // A MITM that rewrites an index entry could point the chart
+        // download at plaintext http; refuse the downgrade.
+        let repo = "https://go.temporal.io/helm-charts";
+        let err = resolve_tarball_url(repo, "http://evil.example.com/temporal.tgz", "temporal")
+            .unwrap_err();
+        assert!(matches!(err, HelmRepoFetchError::SchemeDowngrade { .. }));
+    }
+
+    #[test]
+    fn allows_http_tarball_url_from_http_repo() {
+        // A repo intentionally served over plaintext http (local mirror,
+        // test server) may hand back http tarball URLs — no downgrade.
+        let repo = "http://127.0.0.1:8080/charts";
+        assert_eq!(
+            resolve_tarball_url(repo, "http://127.0.0.1:8080/demo.tgz", "demo").unwrap(),
+            "http://127.0.0.1:8080/demo.tgz"
         );
     }
 
@@ -401,6 +569,33 @@ entries:
         let cached = fetch_from_cache(cache.path(), &first.digest, "demo").expect("cached");
         assert_eq!(cached.digest, first.digest);
         assert!(cached.root_dir.join("Chart.yaml").is_file());
+    }
+
+    #[test]
+    fn unpack_tgz_capped_rejects_decompression_bomb() {
+        // ~1 MiB of zeros compresses to a tiny tgz but blows past the
+        // 4 KiB test cap — the guard must abort with a typed error
+        // rather than writing the full payload to disk.
+        let mut buf = Vec::new();
+        {
+            let gz = flate2::write::GzEncoder::new(&mut buf, flate2::Compression::default());
+            let mut tar = tar::Builder::new(gz);
+            let big = vec![0u8; 1024 * 1024];
+            let mut h = tar::Header::new_gnu();
+            h.set_size(big.len() as u64);
+            h.set_mode(0o644);
+            h.set_cksum();
+            tar.append_data(&mut h, "demo/Chart.yaml", &big[..])
+                .unwrap();
+            tar.into_inner().unwrap().finish().unwrap();
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("unpacked");
+        let err = unpack_tgz_capped(&buf, &dest, "demo", 4096).unwrap_err();
+        assert!(
+            matches!(err, HelmRepoFetchError::DecompressionLimit { .. }),
+            "expected DecompressionLimit, got {err:?}"
+        );
     }
 
     /// A minimal in-process HTTP/1.1 server for the online-fetch tests.
