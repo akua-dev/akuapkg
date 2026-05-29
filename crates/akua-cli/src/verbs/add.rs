@@ -44,6 +44,12 @@ pub enum AddSource<'a> {
     Oci(&'a str),
     Git(&'a str),
     Path(&'a str),
+    /// HTTPS Helm repository (`repo` + `chart`, pairs with `version` in
+    /// [`AddArgs`]).
+    Repo {
+        repo: &'a str,
+        chart: &'a str,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -269,6 +275,10 @@ fn build_dependency(
         AddSource::Oci(s) => dep.oci = Some((*s).to_string()),
         AddSource::Git(s) => dep.git = Some((*s).to_string()),
         AddSource::Path(s) => dep.path = Some((*s).to_string()),
+        AddSource::Repo { repo, chart } => {
+            dep.repo = Some((*repo).to_string());
+            dep.chart = Some((*chart).to_string());
+        }
     }
     dep
 }
@@ -278,12 +288,14 @@ fn source_label(source: &AddSource<'_>) -> &'static str {
         AddSource::Oci(_) => "oci",
         AddSource::Git(_) => "git",
         AddSource::Path(_) => "path",
+        AddSource::Repo { .. } => "helm",
     }
 }
 
 fn source_ref<'a>(source: &'a AddSource<'a>) -> &'a str {
     match source {
         AddSource::Oci(s) | AddSource::Git(s) | AddSource::Path(s) => s,
+        AddSource::Repo { repo, .. } => repo,
     }
 }
 
@@ -453,6 +465,61 @@ edition = "akua.dev/v1alpha1"
         let a = args(ws.path(), "broken", AddSource::Oci("oci://a"));
         let err = run(&Context::human(), &a, &mut Vec::new()).unwrap_err();
         assert_eq!(err.to_structured().code, codes::E_ADD_INVALID_DEP);
+    }
+
+    #[test]
+    fn adds_helm_repo_dep_with_repo_chart_version() {
+        let ws = workspace();
+        let a = AddArgs {
+            version: Some("0.62.0"),
+            ..args(
+                ws.path(),
+                "temporal",
+                AddSource::Repo {
+                    repo: "https://go.temporal.io/helm-charts",
+                    chart: "temporal",
+                },
+            )
+        };
+        run(&Context::human(), &a, &mut Vec::new()).expect("run");
+
+        let dep = AkuaManifest::load(ws.path())
+            .unwrap()
+            .dependencies
+            .remove("temporal")
+            .unwrap();
+        assert_eq!(
+            dep.repo.as_deref(),
+            Some("https://go.temporal.io/helm-charts")
+        );
+        assert_eq!(dep.chart.as_deref(), Some("temporal"));
+        assert_eq!(dep.version.as_deref(), Some("0.62.0"));
+        assert!(dep.oci.is_none());
+        assert!(dep.git.is_none());
+    }
+
+    #[test]
+    fn helm_repo_source_label_is_helm() {
+        let ws = workspace();
+        let a = AddArgs {
+            version: Some("1.0.0"),
+            ..args(
+                ws.path(),
+                "myapp",
+                AddSource::Repo {
+                    repo: "https://charts.example.com",
+                    chart: "myapp",
+                },
+            )
+        };
+        let ctx = Context::json();
+        let mut stdout = Vec::new();
+        run(&ctx, &a, &mut stdout).expect("run");
+
+        let parsed: serde_json::Value =
+            serde_json::from_str(String::from_utf8(stdout).unwrap().trim()).unwrap();
+        assert_eq!(parsed["source"], "helm");
+        assert_eq!(parsed["source_ref"], "https://charts.example.com");
     }
 
     #[test]

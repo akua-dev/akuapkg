@@ -142,6 +142,37 @@ export interface VerifyOptions {
 	publicKey?: string;
 }
 
+export interface AddOutput {
+	name: string;
+	source: string;
+	source_ref: string;
+	version?: string;
+	replaced: boolean;
+}
+
+export interface AddOptions {
+	/** Workspace root (dir containing `akua.toml`). Default: `.`. */
+	workspace?: string;
+	/** OCI source URL (e.g. `oci://ghcr.io/foo/charts/bar`). */
+	oci?: string;
+	/** Git source URL. */
+	git?: string;
+	/** Local filesystem path. */
+	path?: string;
+	/** HTTPS Helm-repo URL (pairs with `chart`). */
+	repo?: string;
+	/** Chart name within the Helm repo (required with `repo`). */
+	chart?: string;
+	/** Version constraint. Required for OCI and Helm-repo deps. */
+	version?: string;
+	/** Git tag (alternative to `rev`). */
+	tag?: string;
+	/** Git commit SHA (alternative to `tag`). */
+	rev?: string;
+	/** Overwrite an existing entry under `name` instead of erroring. */
+	force?: boolean;
+}
+
 export interface CheckOptions {
 	/** Workspace root (dir containing `akua.toml` + `akua.lock`). Default: `.`. */
 	workspace?: string;
@@ -313,6 +344,32 @@ export class Akua {
 		} finally {
 			await rm(tmp, { recursive: true, force: true });
 		}
+	}
+
+	/**
+	 * Insert a dependency into `akua.toml`. Mirrors `akua add --<source>`.
+	 * Pass exactly one of `oci`, `git`, `path`, or `repo` (the latter
+	 * requires `chart` too). The manifest edit runs in-process via the
+	 * napi addon; the resolver best-effortly updates `akua.lock`.
+	 */
+	async add(name: string, opts: AddOptions = {}): Promise<AddOutput> {
+		const napi = loadNapi();
+		const result = callNapi<AddOutput>(() =>
+			napi.add({
+				workspace: opts.workspace ?? '.',
+				name,
+				oci: opts.oci,
+				git: opts.git,
+				path: opts.path,
+				repo: opts.repo,
+				chart: opts.chart,
+				version: opts.version,
+				tag: opts.tag,
+				rev: opts.rev,
+				force: opts.force,
+			}),
+		);
+		return result;
 	}
 
 	/**

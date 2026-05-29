@@ -194,6 +194,87 @@ pub fn check(args: NapiCheckArgs) -> Result<serde_json::Value> {
 }
 
 // ---------------------------------------------------------------------------
+// add — insert a dependency into akua.toml
+// ---------------------------------------------------------------------------
+
+#[napi(object)]
+pub struct NapiAddArgs {
+    /// Workspace root containing `akua.toml`. Defaults to `.`.
+    pub workspace: Option<String>,
+
+    /// Local alias the dep is keyed under in `[dependencies]`.
+    pub name: String,
+
+    /// OCI source URL (e.g. `oci://ghcr.io/foo/charts/bar`).
+    pub oci: Option<String>,
+
+    /// Git source URL.
+    pub git: Option<String>,
+
+    /// Local filesystem path.
+    pub path: Option<String>,
+
+    /// HTTPS Helm-repo URL (pairs with `chart`).
+    pub repo: Option<String>,
+
+    /// Chart name within the Helm repo (required with `repo`).
+    pub chart: Option<String>,
+
+    /// Version constraint. Required for OCI and Helm-repo deps.
+    pub version: Option<String>,
+
+    /// Git tag (alternative to `rev`).
+    pub tag: Option<String>,
+
+    /// Git commit SHA (alternative to `tag`).
+    pub rev: Option<String>,
+
+    /// Overwrite an existing entry under `name` instead of erroring.
+    pub force: Option<bool>,
+}
+
+#[napi]
+pub fn add(args: NapiAddArgs) -> Result<serde_json::Value> {
+    let workspace_str = args.workspace.unwrap_or_else(|| ".".to_string());
+    let workspace = Path::new(&workspace_str);
+    let name = args.name;
+    let source = match (
+        args.oci.as_deref(),
+        args.git.as_deref(),
+        args.path.as_deref(),
+        args.repo.as_deref(),
+    ) {
+        (Some(s), None, None, None) => verbs::add::AddSource::Oci(s),
+        (None, Some(s), None, None) => verbs::add::AddSource::Git(s),
+        (None, None, Some(s), None) => verbs::add::AddSource::Path(s),
+        (None, None, None, Some(r)) => {
+            let c = args.chart.as_deref().ok_or_else(|| {
+                Error::from_reason("`repo` requires `chart` — pass chart: \"<chart-name>\"")
+            })?;
+            verbs::add::AddSource::Repo { repo: r, chart: c }
+        }
+        _ => {
+            return Err(Error::from_reason(
+                "add: exactly one of `oci`, `git`, `path`, or `repo` must be provided",
+            ))
+        }
+    };
+    let verb_args = verbs::add::AddArgs {
+        workspace,
+        name: &name,
+        source,
+        version: args.version.as_deref(),
+        tag: args.tag.as_deref(),
+        rev: args.rev.as_deref(),
+        force: args.force.unwrap_or(false),
+    };
+    invoke_verb(|ctx, stdout| {
+        verbs::add::run(ctx, &verb_args, stdout)
+            .map_err(|e| into_napi(e.to_structured(), e.exit_code()))
+    })
+}
+
+// ---------------------------------------------------------------------------
 // tree / diff — workspace + chart-comparison verbs
 // ---------------------------------------------------------------------------
 

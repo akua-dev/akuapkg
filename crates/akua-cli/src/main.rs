@@ -117,7 +117,7 @@ enum Commands {
     /// Pure manifest edit — no OCI fetch, no lockfile mutation.
     #[command(group(ArgGroup::new("source")
         .required(true)
-        .args(["oci", "git", "path"])))]
+        .args(["oci", "git", "path", "repo"])))]
     Add {
         #[command(flatten)]
         args: UniversalArgs,
@@ -137,7 +137,15 @@ enum Commands {
         #[arg(long)]
         path: Option<String>,
 
-        /// Version constraint. Required for OCI deps.
+        /// HTTPS Helm-repo URL (pairs with --chart).
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Chart name within the Helm repo (required with --repo).
+        #[arg(long)]
+        chart: Option<String>,
+
+        /// Version constraint. Required for OCI and Helm-repo deps.
         #[arg(long)]
         version: Option<String>,
 
@@ -926,6 +934,8 @@ fn dispatch(command: Commands) -> ExitCode {
             oci,
             git,
             path,
+            repo,
+            chart,
             version,
             tag,
             rev,
@@ -937,6 +947,8 @@ fn dispatch(command: Commands) -> ExitCode {
             oci.as_deref(),
             git.as_deref(),
             path.as_deref(),
+            repo.as_deref(),
+            chart.as_deref(),
             version.as_deref(),
             tag.as_deref(),
             rev.as_deref(),
@@ -1369,6 +1381,8 @@ fn run_add(
     oci: Option<&str>,
     git: Option<&str>,
     path: Option<&str>,
+    repo: Option<&str>,
+    chart: Option<&str>,
     version: Option<&str>,
     tag: Option<&str>,
     rev: Option<&str>,
@@ -1376,10 +1390,24 @@ fn run_add(
     workspace: &std::path::Path,
 ) -> ExitCode {
     let ctx = resolve_ctx(args);
-    let source = match (oci, git, path) {
-        (Some(s), None, None) => add_verb::AddSource::Oci(s),
-        (None, Some(s), None) => add_verb::AddSource::Git(s),
-        (None, None, Some(s)) => add_verb::AddSource::Path(s),
+    let source = match (oci, git, path, repo) {
+        (Some(s), None, None, None) => add_verb::AddSource::Oci(s),
+        (None, Some(s), None, None) => add_verb::AddSource::Git(s),
+        (None, None, Some(s), None) => add_verb::AddSource::Path(s),
+        (None, None, None, Some(r)) => {
+            let c = match chart {
+                Some(c) => c,
+                None => {
+                    let e = add_verb::AddError::Validate(
+                        akua_core::mod_file::ManifestError::HelmMissingChart {
+                            name: name.to_string(),
+                        },
+                    );
+                    return emit_structured(&ctx, &e.to_structured(), e.exit_code());
+                }
+            };
+            add_verb::AddSource::Repo { repo: r, chart: c }
+        }
         // The clap ArgGroup makes any other combination unreachable;
         // `unreachable!` here would surface a meaningful panic if
         // someone changes the group config without realising.
