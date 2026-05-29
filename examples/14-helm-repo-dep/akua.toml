@@ -1,0 +1,16 @@
+[package]
+name    = "helm-repo-dep"
+version = "0.1.0"
+edition = "akua.dev/v1alpha1"
+# podinfo is not cosign-signed in the classic Helm repo. Production workspaces
+# pulling from a signed registry should leave the default (`true`) on.
+strict_signing = false
+
+[dependencies.podinfo]
+# Classic HTTPS Helm repository — resolved against index.yaml, pinned by
+# `.tgz` sha256 in akua.lock. Same dependency machinery as OCI: digest-
+# verified on every pull, locked to an exact version so the example is
+# stable as new podinfo releases ship.
+repo    = "https://stefanprodan.github.io/podinfo"
+chart   = "podinfo"
+version = "6.12.0"
