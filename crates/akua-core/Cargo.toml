@@ -51,6 +51,7 @@ engine-kustomize = ["dep:kustomize-engine-wasm"]
 # for offline-only builds (lockfile-only, no resolution against
 # remote registries).
 oci-fetch = ["dep:reqwest", "dep:flate2", "dep:tar"]
+helm-fetch = ["dep:reqwest", "dep:flate2", "dep:tar", "dep:semver"]
 # Git chart fetch. Pulls charts hosted in git repos via `gix` (pure
 # Rust, no shell-out). Disabled by default — the dep tree is large
 # and the feature is opt-in for ops who actually use git charts.
@@ -94,6 +95,7 @@ tempfile = { version = "3", optional = true }
 # `ts-export` / `schema-export` features are enabled.
 ts-rs = { version = "12", optional = true }
 schemars = { version = "1", optional = true }
+semver = { version = "1", optional = true }
 
 # Host-only deps — compiled into the CLI binary that *hosts* the
 # render worker, not into the worker itself. Stay gated off wasm32:
