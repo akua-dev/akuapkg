@@ -51,7 +51,7 @@ engine-kustomize = ["dep:kustomize-engine-wasm"]
 # for offline-only builds (lockfile-only, no resolution against
 # remote registries).
 oci-fetch = ["dep:reqwest", "dep:flate2", "dep:tar"]
-helm-fetch = ["dep:reqwest", "dep:flate2", "dep:tar", "dep:semver"]
+helm-fetch = ["dep:reqwest", "dep:flate2", "dep:tar", "dep:semver", "dep:sha2"]
 # Git chart fetch. Pulls charts hosted in git repos via `gix` (pure
 # Rust, no shell-out). Disabled by default — the dep tree is large
 # and the feature is opt-in for ops who actually use git charts.

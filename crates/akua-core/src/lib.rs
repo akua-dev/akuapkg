@@ -70,6 +70,8 @@ pub mod export;
 pub mod git_fetcher;
 #[cfg(all(feature = "engine-kcl", feature = "engine-helm"))]
 pub mod helm;
+#[cfg(feature = "helm-fetch")]
+pub mod helm_repo_fetcher;
 pub(crate) mod hex;
 pub mod host_auth;
 #[cfg(feature = "engine-kcl")]
