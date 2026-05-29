@@ -178,8 +178,9 @@ struct RenderFrame {
     /// Akua-package deps available to `pkg.render(package = "<alias>")`.
     /// Alias is the dep name from this Package's `[dependencies]`;
     /// value is the absolute directory holding the dep's `package.k`.
-    /// Empty for frames pushed without dep info (tests, inner-render
-    /// scopes — nested deps resolution is a follow-up).
+    /// Built from resolved charts at both the root and inner-render
+    /// scopes (`enter_for_render`); empty only for frames entered
+    /// without resolved deps (a deps-less Package or a bare test entry).
     resolved_pkgs: BTreeMap<String, PathBuf>,
     /// Resolver context inherited from the outermost render entry, so a
     /// composed sub-package (`pkg.render`) can resolve its OWN
