@@ -135,6 +135,16 @@ pub enum ResolvedSource {
         tag_or_rev: String,
         replace_path: String,
     },
+
+    /// Helm-repo-sourced dep, fetched via `helm_repo_fetcher`. `digest`
+    /// is the `.tgz` sha256 (same value used as the cache key and the
+    /// lockfile pin), mirroring how OCI uses its blob digest.
+    Helm {
+        repo: String,
+        chart: String,
+        version: String,
+        digest: String,
+    },
 }
 
 impl ResolvedSource {
@@ -152,6 +162,7 @@ impl ResolvedSource {
             ResolvedSource::Path { .. } => "path",
             ResolvedSource::Oci { .. } | ResolvedSource::OciReplaced { .. } => "oci",
             ResolvedSource::Git { .. } | ResolvedSource::GitReplaced { .. } => "git",
+            ResolvedSource::Helm { .. } => "helm",
         }
     }
 
@@ -197,6 +208,15 @@ impl ResolvedSource {
                     path: replace_path.clone(),
                 }),
             ),
+            // Encode the chart in the source-ref fragment so the lockfile
+            // shape (name/version/source/digest) is unchanged. The digest
+            // already pins the exact `.tgz`; version is the resolved semver.
+            ResolvedSource::Helm {
+                repo,
+                chart,
+                version,
+                ..
+            } => (format!("helm+{repo}#{chart}"), version.clone(), None),
         }
     }
 }
@@ -268,6 +288,15 @@ pub enum ChartResolveError {
         name: String,
         #[source]
         source: crate::oci_fetcher::OciFetchError,
+    },
+
+    /// A `helm_repo_fetcher::fetch` call failed.
+    #[cfg(feature = "helm-fetch")]
+    #[error("chart `{name}`: helm-repo fetch failed: {source}")]
+    HelmFetch {
+        name: String,
+        #[source]
+        source: crate::helm_repo_fetcher::HelmRepoFetchError,
     },
 
     /// A `git_fetcher::fetch` call failed.
@@ -433,36 +462,31 @@ pub fn resolve_with_options(
             continue;
         }
         let spec = dep.spec();
-        // Helm-repo deps — vendored or remote — have no resolver yet, so a
-        // `repo` dep is explicitly unsupported rather than run through
-        // vendor-first with a borrowed source shape. Guarding here keeps
-        // the helm URL out of every downstream source variant.
-        if matches!(spec, DependencySpec::Helm { .. }) {
-            return Err(ChartResolveError::UnsupportedSource {
-                name: name.clone(),
-                kind: DependencySource::Helm,
-                reason: "helm-repo dependencies are not yet supported",
-            });
-        }
-        // Vendor-first across all dep kinds — install repos GC
-        // canonical sources post-vendor; pulled Packages arrive
-        // pre-vendored.
-        let vendor_kind = match spec {
-            DependencySpec::Path { declared } => VendorKind::Path { declared },
-            DependencySpec::Oci { oci, version } => VendorKind::Oci {
-                oci,
-                version: version.to_string(),
-            },
-            DependencySpec::Git { git, .. } => VendorKind::Git {
-                git,
-                tag_or_rev: spec
-                    .tag_or_rev()
-                    .unwrap_or(VENDORED_LOCK_FALLBACK)
-                    .to_string(),
-            },
-            DependencySpec::Helm { .. } => unreachable!("helm guarded above"),
+        // Vendor-first across path/oci/git — install repos GC canonical
+        // sources post-vendor; pulled Packages arrive pre-vendored. Helm
+        // skips this: vendored-helm embedding is a follow-up, so a `repo`
+        // dep always fetches directly from its source.
+        let vendored = if matches!(spec, DependencySpec::Helm { .. }) {
+            None
+        } else {
+            let vendor_kind = match spec {
+                DependencySpec::Path { declared } => VendorKind::Path { declared },
+                DependencySpec::Oci { oci, version } => VendorKind::Oci {
+                    oci,
+                    version: version.to_string(),
+                },
+                DependencySpec::Git { git, .. } => VendorKind::Git {
+                    git,
+                    tag_or_rev: spec
+                        .tag_or_rev()
+                        .unwrap_or(VENDORED_LOCK_FALLBACK)
+                        .to_string(),
+                },
+                DependencySpec::Helm { .. } => unreachable!("helm skips vendor-first"),
+            };
+            resolve_from_vendor(name, workspace_root, dep, vendor_kind)?
         };
-        if let Some(chart) = resolve_from_vendor(name, workspace_root, dep, vendor_kind)? {
+        if let Some(chart) = vendored {
             entries.insert(name.clone(), chart);
             continue;
         }
@@ -478,7 +502,11 @@ pub fn resolve_with_options(
             )?,
             DependencySpec::Oci { oci, .. } => resolve_oci(name, dep, oci, opts)?,
             DependencySpec::Git { git, .. } => resolve_git(name, dep, git, opts)?,
-            DependencySpec::Helm { .. } => unreachable!("helm guarded above"),
+            DependencySpec::Helm {
+                repo,
+                chart,
+                version,
+            } => resolve_helm(name, repo, chart, version, opts)?,
         };
         entries.insert(name.clone(), chart);
     }
@@ -659,6 +687,94 @@ fn resolve_oci(
     })
 }
 
+/// Resolve a Helm-repo dep: fetch (or retrieve from cache) via
+/// [`crate::helm_repo_fetcher`], capture the `.tgz` sha256 into
+/// [`ResolvedSource::Helm`]. Mirrors [`resolve_oci`] — the digest is
+/// the cache key, the lockfile pin, and the fetcher-verified value.
+#[cfg(feature = "helm-fetch")]
+fn resolve_helm(
+    name: &str,
+    repo: &str,
+    chart: &str,
+    version: &str,
+    opts: &ResolverOptions,
+) -> Result<ResolvedChart, ChartResolveError> {
+    let cache_root = opts
+        .cache_root
+        .clone()
+        .unwrap_or_else(default_helm_cache_root);
+    let expected = opts.expected_digests.get(name).map(String::as_str);
+
+    let fetched = if opts.offline {
+        let digest = expected.ok_or_else(|| ChartResolveError::UnsupportedSource {
+            name: name.to_string(),
+            kind: DependencySource::Helm,
+            reason: "offline mode needs a lockfile-pinned digest — run `akua add` first",
+        })?;
+        crate::helm_repo_fetcher::fetch_from_cache(&cache_root, digest, chart).ok_or_else(|| {
+            ChartResolveError::UnsupportedSource {
+                name: name.to_string(),
+                kind: DependencySource::Helm,
+                reason: "offline mode and the helm cache doesn't have this dep — run `akua add` online first",
+            }
+        })?
+    } else {
+        let fetch_opts = crate::helm_repo_fetcher::FetchOpts {
+            expected_digest: expected,
+            auth: opts.auth.as_ref(),
+        };
+        crate::helm_repo_fetcher::fetch(repo, chart, version, &cache_root, &fetch_opts).map_err(
+            |source| ChartResolveError::HelmFetch {
+                name: name.to_string(),
+                source,
+            },
+        )?
+    };
+
+    // Offline cache lookup doesn't know the resolved version; the lockfile
+    // (consulted only when re-pinning online) already has it, and render
+    // doesn't use this field, so falling back to the declared value is safe.
+    let resolved_version = if fetched.version.is_empty() {
+        version.to_string()
+    } else {
+        fetched.version.clone()
+    };
+    Ok(ResolvedChart {
+        name: name.to_string(),
+        abs_path: fetched.root_dir,
+        sha256: fetched.digest.clone(),
+        kind: PackageKind::HelmChart,
+        source: ResolvedSource::Helm {
+            repo: repo.to_string(),
+            chart: chart.to_string(),
+            version: resolved_version,
+            digest: fetched.digest,
+        },
+    })
+}
+
+#[cfg(not(feature = "helm-fetch"))]
+fn resolve_helm(
+    name: &str,
+    _repo: &str,
+    _chart: &str,
+    _version: &str,
+    _opts: &ResolverOptions,
+) -> Result<ResolvedChart, ChartResolveError> {
+    Err(ChartResolveError::UnsupportedSource {
+        name: name.to_string(),
+        kind: DependencySource::Helm,
+        reason: "this build lacks the `helm-fetch` feature",
+    })
+}
+
+/// Default helm cache root. Same resolver as OCI/git, sibling subdir
+/// so the caches don't mix.
+#[cfg(feature = "helm-fetch")]
+fn default_helm_cache_root() -> PathBuf {
+    default_cache_root("helm")
+}
+
 /// Resolve a git-sourced dep: clone + checkout via `git_fetcher`,
 /// digest (commit SHA) written into [`ResolvedSource::Git`].
 #[cfg(feature = "git-fetch")]
@@ -778,7 +894,7 @@ fn default_git_cache_root() -> PathBuf {
     default_cache_root("git")
 }
 
-#[cfg(any(feature = "oci-fetch", feature = "git-fetch"))]
+#[cfg(any(feature = "oci-fetch", feature = "git-fetch", feature = "helm-fetch"))]
 fn default_cache_root(subdir: &str) -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
         if !xdg.is_empty() {
@@ -1452,17 +1568,17 @@ edition = "akua.dev/v1alpha1"
     }
 
     #[test]
-    fn vendored_helm_dep_errors_rather_than_mishandled() {
-        // A helm-repo dep with a pre-existing vendor dir must surface a
-        // clear UnsupportedSource error — never resolve through the
-        // vendor-first path and write the helm URL into another source's
-        // lockfile shape.
+    fn helm_dep_skips_vendor_first_and_needs_a_pinned_digest_offline() {
+        // Helm-repo deps don't go through vendor-first (vendored-helm
+        // embedding is deferred). Offline with no lockfile-pinned digest,
+        // the resolver can't fetch, so it surfaces a clear
+        // UnsupportedSource(Helm) — even if a vendor dir happens to exist.
         let ws = tempfile::tempdir().unwrap();
         write_minimal_chart(&ws.path().join(".akua/vendor/temporal"));
         let manifest = minimal_manifest(
             r#"temporal = { repo = "https://go.temporal.io/helm-charts", chart = "temporal", version = "0.62.0" }"#,
         );
-        let err = resolve(&manifest, ws.path()).expect_err("helm dep must be unsupported");
+        let err = resolve(&manifest, ws.path()).expect_err("offline helm dep must be unsupported");
         assert!(
             matches!(
                 err,
@@ -1473,6 +1589,33 @@ edition = "akua.dev/v1alpha1"
             ),
             "expected UnsupportedSource(Helm), got: {err:?}"
         );
+    }
+
+    #[test]
+    #[cfg(feature = "helm-fetch")]
+    fn resolves_helm_repo_dep_offline_from_cache() {
+        let cache = tempfile::tempdir().unwrap();
+        let tgz = crate::helm_repo_fetcher::tests::demo_tgz();
+        let primed =
+            crate::helm_repo_fetcher::extract_and_hash(&tgz, cache.path(), "demo").unwrap();
+
+        let ws = tempfile::tempdir().unwrap();
+        let manifest = minimal_manifest(
+            r#"demo = { repo = "https://example.com/charts", chart = "demo", version = "0.1.0" }"#,
+        );
+        let mut expected = std::collections::BTreeMap::new();
+        expected.insert("demo".to_string(), primed.digest.clone());
+        let opts = ResolverOptions {
+            cache_root: Some(cache.path().to_path_buf()),
+            offline: true,
+            expected_digests: expected,
+            ..Default::default()
+        };
+        let resolved = resolve_with_options(&manifest, ws.path(), &opts).unwrap();
+        let chart = resolved.entries.get("demo").unwrap();
+        assert!(chart.abs_path.join("Chart.yaml").is_file());
+        assert_eq!(chart.sha256, primed.digest);
+        assert!(matches!(chart.source, ResolvedSource::Helm { .. }));
     }
 
     #[test]
