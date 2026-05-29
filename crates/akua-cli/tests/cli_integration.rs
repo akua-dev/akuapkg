@@ -219,14 +219,16 @@ fn render_path_escape_emits_e_path_escape_with_remediation_suggestion() {
         "[package]\nname = \"escaper\"\nversion = \"0.1.0\"\nedition = \"akua.dev/v1alpha1\"\n[dependencies]\n",
     )
     .unwrap();
-    // pkg.render takes a path that escapes the Package dir. The
-    // sandboxed render path collapses this to KclEval(string), so
-    // the test also exercises the ESCAPE_MARKER stringly-typed
-    // sniffer in render.rs::to_structured.
+    // kustomize.build takes a within-Package path; here it escapes the
+    // Package dir. The sandboxed render path collapses this to
+    // KclEval(string), so the test also exercises the ESCAPE_MARKER
+    // stringly-typed sniffer in render.rs::to_structured. (pkg.render no
+    // longer takes a path — composition is typed-alias-only — so the
+    // path-escape guard is exercised through a path-taking engine.)
     std::fs::write(
         pkg.join("package.k"),
-        "import akua.pkg\n\
-         _ = pkg.render(pkg.Render { path = \"../../../etc\" })\n\
+        "import akua.kustomize\n\
+         _ = kustomize.build(kustomize.Build { path = \"../../../etc\" })\n\
          resources = _\n",
     )
     .unwrap();
@@ -295,15 +297,19 @@ fn render_pkg_render_cycle_emits_e_render_cycle() {
     let dir = tempdir();
     let pkg = dir.path().join("self-cyclic");
     std::fs::create_dir_all(&pkg).unwrap();
+    // The Package declares ITSELF as a dep (`me = { path = "." }`) and
+    // composes itself by alias — re-entry trips the render-stack cycle
+    // guard. (pkg.render is typed-alias-only now; the self-reference is
+    // the reachable cycle shape.)
     std::fs::write(
         pkg.join("akua.toml"),
-        "[package]\nname = \"self-cyclic\"\nversion = \"0.1.0\"\nedition = \"akua.dev/v1alpha1\"\n[dependencies]\n",
+        "[package]\nname = \"self-cyclic\"\nversion = \"0.1.0\"\nedition = \"akua.dev/v1alpha1\"\n[dependencies]\nme = { path = \".\" }\n",
     )
     .unwrap();
     std::fs::write(
         pkg.join("package.k"),
         "import akua.pkg\n\
-         _self = pkg.render(pkg.Render { path = \"./package.k\" })\n\
+         _self = pkg.render(pkg.Render { package = \"me\" })\n\
          resources = _self\n",
     )
     .unwrap();
@@ -349,13 +355,13 @@ fn render_pkg_render_patches_apply_to_inner_resources() {
     .unwrap();
     std::fs::write(
         outer.join("akua.toml"),
-        "[package]\nname = \"outer\"\nversion = \"0.1.0\"\nedition = \"akua.dev/v1alpha1\"\n",
+        "[package]\nname = \"outer\"\nversion = \"0.1.0\"\nedition = \"akua.dev/v1alpha1\"\n[dependencies]\ninner = { path = \"./inner\" }\n",
     )
     .unwrap();
     std::fs::write(
         outer.join("package.k"),
         "import akua.pkg\n\
-         _up = pkg.render(pkg.Render { path = \"./inner\" })\n\
+         _up = pkg.render(pkg.Render { package = \"inner\" })\n\
          resources = [r | {metadata.labels = {\"patched\" = \"yes\"}} for r in _up]\n",
     )
     .unwrap();

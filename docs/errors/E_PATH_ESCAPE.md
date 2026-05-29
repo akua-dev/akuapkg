@@ -19,11 +19,11 @@ See [`docs/security-model.md`](../security-model.md) for the full threat model.
 
 ## How to fix it
 
-Two correct paths, in order of preference:
+Both correct paths declare the dependency in `akua.toml` and compose it by its typed alias — user code never writes a filesystem path. `pkg.render` accepts `package = "<alias>"` only; there is no `path = "..."` form.
 
 ### 1. Vendor the dependency as a subdirectory
 
-If you control the layout, move (or copy) the upstream into a subdirectory of your Package:
+If you control the layout, move (or copy) the upstream into a subdirectory of your Package and declare it as a workspace-local path dep:
 
 ```
 my-install/
@@ -35,18 +35,24 @@ my-install/
         └── package.k
 ```
 
-Then your plugin call uses a Package-relative path:
+```toml
+# akua.toml
+[dependencies]
+upstream = { path = "./vendor/upstream" }   # workspace-local; canonicalizes under the Package root
+```
+
+Then compose it by alias:
 
 ```kcl
-_up = pkg.render({
-    path = "./vendor/upstream"
-    inputs = { ... }
+_up = pkg.render(pkg.Render {
+    package = "upstream"
+    inputs  = { ... }
 })
 ```
 
 This is the right answer for monorepo / co-developed pairs where vendoring is acceptable. The vendored copy is part of the Package's signed surface.
 
-### 2. Declare the dep in `akua.toml` and reference the resolved alias
+### 2. Declare a separately versioned dep in `akua.toml`
 
 For separately versioned dependencies (especially OCI-published ones), declare it in `akua.toml`:
 

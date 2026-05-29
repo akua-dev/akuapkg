@@ -24,7 +24,17 @@ fn renders_pkg_compose_against_golden() {
 
     let manifest = AkuaManifest::load(&dir).expect("load akua.toml");
     let resolved = chart_resolver::resolve(&manifest, &dir).expect("resolve charts");
-    assert!(resolved.entries.is_empty());
+    // The `shared` sub-package is a typed path dep — it resolves to one
+    // entry classified as an Akua (KCL) package, addressable by alias
+    // via `pkg.render(package = "shared")`.
+    assert_eq!(resolved.entries.len(), 1, "shared dep resolves");
+    assert!(
+        resolved
+            .entries
+            .get("shared")
+            .is_some_and(akua_core::chart_resolver::ResolvedChart::is_akua_package),
+        "shared classifies as an Akua package"
+    );
 
     let package = PackageK::load(&dir.join("package.k")).expect("load package.k");
     let inputs = serde_yaml::from_slice::<serde_yaml::Value>(

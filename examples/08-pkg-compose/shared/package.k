@@ -1,6 +1,7 @@
 # Inner Package — a reusable ConfigMap emitter consumed by the outer
-# Package via `pkg.render`. Lives in its own directory so the import
-# site uses `pkg.render({ path = "./shared", inputs = { ... } })`.
+# Package via `pkg.render`. Lives in its own directory, declared as the
+# `shared` dep in the outer's akua.toml; the import site composes it
+# with `pkg.render(pkg.Render { package = "shared", inputs = { ... } })`.
 
 import akua.ctx
 

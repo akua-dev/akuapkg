@@ -15,6 +15,14 @@ minor bump in the SDK.
 
 ## [Unreleased]
 
+### Removed
+
+- **Untyped `pkg.render({ path = "..." })` composition form (breaking)** ([pkg_render.rs](crates/akua-core/src/pkg_render.rs), [stdlib/akua/pkg.k](crates/akua-core/stdlib/akua/pkg.k)). Cross-Package composition now goes through typed dep aliases only: `pkg.render(pkg.Render { package = "<alias>" })`, where `<alias>` is declared under `[dependencies]` in the calling Package's `akua.toml`. Supplying `path` (or no target) is a hard error directing the user to the alias form — honoring CLAUDE.md's "No filesystem paths in user-authored KCL." Path *dependencies* in `akua.toml` (`{ path = "./..." }`) stay valid; only the inline `pkg.render` path call is gone. Migrate by declaring the sub-package as a dep and composing it by alias (see `examples/08-pkg-compose`).
+
+### Changed
+
+- **Nested renders resolve typed aliases** ([package_k.rs](crates/akua-core/src/package_k.rs)). A composed sub-package can now use `pkg.render(package = "<alias>")` against deps declared in its *own* `akua.toml`, not just at the root. `render_opts` enters each render frame with the dep-alias map derived from that frame's resolved charts (`RenderScope::enter_for_render`), with budget inheritance preserved. This is the enabling change that let the untyped `path` form be removed.
+
 ## [0.8.14] — 2026-05-29
 
 Real-world Helm rendering. This release makes akua render the charts

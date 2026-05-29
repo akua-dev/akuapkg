@@ -4,3 +4,8 @@ version = "0.1.0"
 edition = "akua.dev/v1alpha1"
 
 [dependencies]
+# The reusable inner Package, composed twice (frontend + backend) via
+# `pkg.render(pkg.Render { package = "shared", ... })`. Declared here as
+# a workspace-local path dep so the composition resolves by typed alias
+# — no filesystem paths in the Package program.
+shared = { path = "./shared" }

@@ -167,18 +167,20 @@ impl PackageK {
         crate::kcl_plugin::install_builtin_plugins();
 
         // Push self onto the render stack so plugin handlers can
-        // resolve user-supplied relative paths (helm chart dirs,
-        // nested package refs) against this Package's directory.
-        // Resolved chart paths are registered as allowed absolute
-        // roots so `helm.template(nginx.path, ...)` survives the
-        // path-escape guard. Dropped on return — nested renders
-        // (pkg.render) stack naturally.
-        let allowed_roots: Vec<PathBuf> = charts
-            .entries
-            .values()
-            .map(|c| c.abs_path.clone())
-            .collect();
-        let _scope = crate::kcl_plugin::RenderScope::enter_with(&self.path, &allowed_roots, strict);
+        // resolve user-supplied relative paths (helm chart dirs)
+        // against this Package's directory. `enter_for_render` derives
+        // BOTH the allowed-roots (resolved chart dirs, so
+        // `helm.template(nginx.path, ...)` survives the path-escape
+        // guard) AND the `resolved_pkgs` alias map (dep dirs that
+        // contain a `package.k`, so `pkg.render(package = "<alias>")`
+        // resolves) from `charts`. Using it here — rather than
+        // `enter_with`, which left `resolved_pkgs` empty — is what lets
+        // a NESTED render resolve typed aliases against its OWN
+        // manifest's deps. Budget inheritance is preserved:
+        // `enter_for_render` snapshots the parent frame's budget via
+        // `top_frame_budget()` exactly as `enter_with` did. Dropped on
+        // return — nested renders (pkg.render) stack naturally.
+        let _scope = crate::kcl_plugin::RenderScope::enter_for_render(&self.path, charts, strict);
 
         // Materialize `charts/` alongside the static `akua/` stdlib.
         // TempDir dropped at end of scope, after `exec_program` has

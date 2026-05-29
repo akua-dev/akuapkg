@@ -8,9 +8,10 @@ the results. Renders end-to-end today (pure KCL; no helm needed).
 
 | file | purpose |
 |---|---|
-| `package.k` | Outer Package; calls `pkg.render("./shared", ...)` twice with distinct inputs. |
+| `package.k` | Outer Package; calls `pkg.render(pkg.Render { package = "shared", ... })` twice with distinct inputs. |
 | `shared/package.k` | Inner Package; emits one ConfigMap parameterized by `name` + `payload`. |
-| `akua.toml` | Outer manifest — no external deps. |
+| `shared/akua.toml` | Inner manifest — marks `shared/` as an Akua package. |
+| `akua.toml` | Outer manifest — declares `shared` as a workspace-local path dep. |
 | `inputs.example.yaml` | Per-component inputs, auto-discovered by `akua render`. |
 
 ## Render
@@ -36,8 +37,8 @@ rendered/
 ## How `pkg.render` works
 
 `pkg.render` is a synchronous KCL host plugin: the handler resolves
-the path against the calling Package's directory (with the same
-sandbox guard `helm.template` and `kustomize.build` use), calls
+the `package` alias against the calling Package's `akua.toml`
+`[dependencies]` (no filesystem paths in user code), calls
 `PackageK::load(...).render(inputs)` inline, and returns the inner
 resources list directly to the caller. Because the return is a real
 list, list-comprehension patches and filter expressions on the

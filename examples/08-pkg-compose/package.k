@@ -1,7 +1,7 @@
 # Outer Package: composes two ConfigMaps from a reusable nested
 # Package via `pkg.render`. Exercises akua's Package-of-Packages
-# composition — the inner Package lives at ./shared/ and is loaded
-# + rendered fresh for each `pkg.render` call.
+# composition — the inner Package is declared as the `shared` dep in
+# akua.toml and loaded + rendered fresh for each `pkg.render` call.
 #
 # Render:
 #
@@ -26,19 +26,20 @@ schema Input:
 
 input: Input = ctx.input()
 
-# Each call loads + renders `./shared/package.k` synchronously
-# with the supplied inputs and returns the inner resources list.
+# Each call loads + renders the `shared` dep synchronously with the
+# supplied inputs and returns the inner resources list. `package` is
+# the dep alias from akua.toml — no filesystem path in the program.
 _frontend = pkg.render(pkg.Render {
-    path   = "./shared"
-    inputs = {
+    package = "shared"
+    inputs  = {
         name    = input.frontend.name
         payload = input.frontend.data
     }
 })
 
 _backend = pkg.render(pkg.Render {
-    path   = "./shared"
-    inputs = {
+    package = "shared"
+    inputs  = {
         name    = input.backend.name
         payload = input.backend.data
     }
