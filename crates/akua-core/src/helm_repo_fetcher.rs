@@ -99,12 +99,6 @@ pub enum HelmRepoFetchError {
     },
     #[error("chart `{chart}`@`{version}` has no download URL in the index")]
     NoUrl { chart: String, version: String },
-    #[error("invalid version `{version}` in index for `{chart}`: {detail}")]
-    BadVersion {
-        chart: String,
-        version: String,
-        detail: String,
-    },
     #[error("invalid version requirement `{req}`: {detail}")]
     BadRequirement { req: String, detail: String },
     #[error("fetching {url}: {detail}")]
@@ -163,12 +157,20 @@ pub fn select_version(
 
     let mut best: Option<(semver::Version, &IndexEntry)> = None;
     for entry in entries {
-        let ver =
-            semver::Version::parse(&entry.version).map_err(|e| HelmRepoFetchError::BadVersion {
-                chart: chart.to_string(),
-                version: entry.version.clone(),
-                detail: e.to_string(),
-            })?;
+        // Helm-compatibility: a leading `v` is a git-tag convention, not
+        // part of the SemVer spec, but Helm's resolver (Masterminds/semver)
+        // tolerates it by stripping. Strip a single leading `v` before
+        // parsing; skip only entries that are STILL unparseable afterwards
+        // rather than aborting the whole resolution on the first bad one
+        // (the loft-sh `vcluster` index ships 7 `v`-prefixed pre-release
+        // tags alongside 625 plain-SemVer versions). Comparisons use the
+        // normalized `Version`; the download URL is taken from the entry's
+        // own `urls`, so normalization never perturbs URL/digest selection.
+        let raw = entry.version.strip_prefix('v').unwrap_or(&entry.version);
+        let ver = match semver::Version::parse(raw) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
         if !req.matches(&ver) {
             continue;
         }
@@ -492,6 +494,121 @@ entries:
         let idx = parse_index(FIXTURE).unwrap();
         let (v, _) = select_version(&idx, "temporal", ">=0.60, <0.63").unwrap();
         assert_eq!(v, "0.62.0", "highest satisfying version");
+    }
+
+    /// A leading `v` is a git-tag convention, not part of the SemVer
+    /// spec. Helm's own resolver (Masterminds/semver) strips it; akua
+    /// must too. The entry `v0.28.0-next.12` is a valid SemVer once the
+    /// `v` is removed — it must be ACCEPTED (and normalized), not skipped.
+    #[test]
+    fn strips_leading_v_and_accepts_prefixed_prerelease() {
+        const IDX: &[u8] = br#"
+apiVersion: v1
+entries:
+  vcluster:
+    - version: v0.28.0-next.12
+      urls: ["vcluster-v0.28.0-next.12.tgz"]
+"#;
+        let idx = parse_index(IDX).unwrap();
+        // A pre-release req only matches the matching pre-release; this
+        // proves the `v`-prefixed entry was parsed (not skipped).
+        let (v, url) = select_version(&idx, "vcluster", "=0.28.0-next.12").unwrap();
+        assert_eq!(
+            v, "0.28.0-next.12",
+            "leading `v` stripped, version normalized"
+        );
+        assert_eq!(
+            url, "vcluster-v0.28.0-next.12.tgz",
+            "download URL comes from the original entry, untouched by normalization"
+        );
+    }
+
+    /// A genuinely-malformed entry must be skipped (not abort the whole
+    /// resolution), letting a valid sibling resolve.
+    #[test]
+    fn skips_truly_malformed_entries() {
+        const IDX: &[u8] = br#"
+apiVersion: v1
+entries:
+  vcluster:
+    - version: garbage
+      urls: ["garbage.tgz"]
+    - version: 0.34.0
+      urls: ["vcluster-0.34.0.tgz"]
+"#;
+        let idx = parse_index(IDX).unwrap();
+        let (v, url) = select_version(&idx, "vcluster", "0.34.0").unwrap();
+        assert_eq!(v, "0.34.0");
+        assert_eq!(url, "vcluster-0.34.0.tgz");
+    }
+
+    /// Mix of `v`-prefixed pre-releases, plain releases, and garbage —
+    /// requesting `0.34.0` must resolve to exactly `0.34.0` rather than
+    /// aborting on the first non-strict entry.
+    #[test]
+    fn resolves_target_amid_v_prefixed_and_garbage() {
+        const IDX: &[u8] = br#"
+apiVersion: v1
+entries:
+  vcluster:
+    - version: v0.28.0-next.12
+      urls: ["vcluster-v0.28.0-next.12.tgz"]
+    - version: v0.28.0-next.5
+      urls: ["vcluster-v0.28.0-next.5.tgz"]
+    - version: garbage
+      urls: ["garbage.tgz"]
+    - version: 0.34.0
+      urls: ["vcluster-0.34.0.tgz"]
+"#;
+        let idx = parse_index(IDX).unwrap();
+        let (v, url) = select_version(&idx, "vcluster", "0.34.0").unwrap();
+        assert_eq!(v, "0.34.0");
+        assert_eq!(url, "vcluster-0.34.0.tgz");
+    }
+
+    /// Regression mirroring the live loft-sh `vcluster` index that broke
+    /// `akua lock`: plain releases (0.34.0, 0.34.1), a few `v`-prefixed
+    /// pre-release tags (the 7 that aborted strict parsing), and a couple
+    /// plain pre-releases. Requesting `0.34.0` must resolve to exactly
+    /// `0.34.0` and excludes pre-releases (req names none).
+    #[test]
+    fn resolves_loftsh_like_vcluster_index() {
+        const IDX: &[u8] = br#"
+apiVersion: v1
+entries:
+  vcluster:
+    - version: v0.28.0-next.12
+      urls: ["charts/vcluster-v0.28.0-next.12.tgz"]
+    - version: v0.28.0-next.11
+      urls: ["charts/vcluster-v0.28.0-next.11.tgz"]
+    - version: 0.34.1
+      urls: ["charts/vcluster-0.34.1.tgz"]
+    - version: 0.34.0
+      urls: ["charts/vcluster-0.34.0.tgz"]
+    - version: 0.34.0-rc.1
+      urls: ["charts/vcluster-0.34.0-rc.1.tgz"]
+    - version: 0.33.0
+      urls: ["charts/vcluster-0.33.0.tgz"]
+"#;
+        let idx = parse_index(IDX).unwrap();
+        // `=0.34.0` pins exactly (a bare `0.34.0` is a caret range that
+        // would pick the higher `0.34.1`). The point of the regression is
+        // that the `v`-prefixed pre-release siblings no longer abort the
+        // whole resolution before the target is even considered.
+        let (v, url) = select_version(&idx, "vcluster", "=0.34.0").unwrap();
+        assert_eq!(
+            v, "0.34.0",
+            "exact target resolves despite v-prefixed siblings"
+        );
+        assert_eq!(url, "charts/vcluster-0.34.0.tgz");
+
+        // And a caret request resolves to the highest plain release in the
+        // 0.34.x line (0.34.1), confirming pre-releases stay excluded.
+        let (caret, _) = select_version(&idx, "vcluster", "0.34.0").unwrap();
+        assert_eq!(
+            caret, "0.34.1",
+            "caret picks highest non-prerelease in range"
+        );
     }
 
     #[test]
