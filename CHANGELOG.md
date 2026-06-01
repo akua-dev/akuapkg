@@ -15,6 +15,12 @@ minor bump in the SDK.
 
 ## [Unreleased]
 
+## [0.8.19] — 2026-06-01
+
+### Fixed
+
+- **helm-repo dep resolution tolerates `v`-prefixed chart versions** ([helm_repo_fetcher.rs](crates/akua-core/src/helm_repo_fetcher.rs)). The resolver parsed every Helm repo index entry with strict SemVer and aborted the entire resolution on the first non-conforming entry, so a chart whose index publishes `v`-prefixed tags (e.g. loft-sh's `vcluster`: `v0.28.0-next.12`) failed with `E_DEP_RESOLVE` even when a valid target version was published. A single leading `v` is now stripped before parsing (matching Helm's Masterminds/semver behavior) and an entry is skipped only if it is *still* unparseable — valid `v`-prefixed versions resolve, truly-malformed entries are ignored, and `NoMatchingVersion` continues to list the index's raw version strings.
+
 ## [0.8.18] — 2026-05-29
 
 ### Fixed
