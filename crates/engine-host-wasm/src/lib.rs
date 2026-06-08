@@ -618,19 +618,15 @@ mod tests {
     #[test]
     fn engine_memory_cap_is_bounded_and_generous() {
         // Must be > 512 MiB so large real charts fit.
-        assert!(
-            ENGINE_MEMORY_CAP_BYTES > 512 * 1024 * 1024,
-            "cap is too small for large charts: {} bytes",
-            ENGINE_MEMORY_CAP_BYTES
-        );
+        const {
+            assert!(ENGINE_MEMORY_CAP_BYTES > 512 * 1024 * 1024);
+        }
         // Must be ≤ 4 GiB — WASM linear memory is 32-bit addressed,
         // so anything larger is unreachable anyway; capping here
         // prevents a silent no-op ceiling from drifting upward.
-        assert!(
-            ENGINE_MEMORY_CAP_BYTES <= 4 * 1024 * 1024 * 1024,
-            "cap exceeds wasm32 address space: {} bytes",
-            ENGINE_MEMORY_CAP_BYTES
-        );
+        const {
+            assert!(ENGINE_MEMORY_CAP_BYTES <= 4 * 1024 * 1024 * 1024);
+        }
     }
 
     /// ENGINE_EPOCH_DEADLINE is finite and generous: > 60 ticks so
@@ -640,15 +636,13 @@ mod tests {
     #[test]
     fn engine_epoch_deadline_is_finite_and_generous() {
         // > 60 ticks (6 s) — must not trip real charts.
-        assert!(
-            ENGINE_EPOCH_DEADLINE > 60,
-            "deadline {ENGINE_EPOCH_DEADLINE} is dangerously close to real chart runtimes"
-        );
+        const {
+            assert!(ENGINE_EPOCH_DEADLINE > 60);
+        }
         // < u64::MAX — must be enforceable by a real ticker.
-        assert!(
-            ENGINE_EPOCH_DEADLINE < u64::MAX,
-            "epoch deadline is effectively infinite — DoS cap is not enforced"
-        );
+        const {
+            assert!(ENGINE_EPOCH_DEADLINE < u64::MAX);
+        }
     }
 
     /// A well-formed wasm module that exports `memory` and all required
