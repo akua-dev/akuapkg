@@ -382,6 +382,13 @@ impl Session {
     /// ABI: `(input_ptr, input_len) -> result_ptr`, result is
     /// NUL-terminated so we probe length via `<prefix>_result_len`.
     pub fn call(&mut self, input: &[u8]) -> Result<Vec<u8>, EngineHostError> {
+        // Sessions are intentionally persistent, but epoch deadlines
+        // are relative to the shared Engine's current epoch. Refill
+        // the per-call budget before any guest code runs so a hot
+        // session reused after its original budget elapsed does not
+        // trap immediately on the stale initialization deadline.
+        self.store.set_epoch_deadline(ENGINE_EPOCH_DEADLINE);
+
         let input_ptr = copy_in(&mut self.store, &self.malloc, self.memory, input)?;
         let result_ptr = self
             .entry
@@ -671,5 +678,40 @@ mod tests {
             result.is_ok(),
             "valid module with full ABI should initialize under resource caps"
         );
+    }
+
+    #[test]
+    fn session_call_refreshes_epoch_deadline_after_idle_reuse() {
+        let wasm = wat::parse_str(
+            r#"(module
+                (memory (export "memory") 1)
+                (func (export "_initialize"))
+                (func (export "fake_malloc") (param i32) (result i32) i32.const 0)
+                (func (export "fake_free") (param i32))
+                (func (export "fake_result_len") (param i32) (result i32) i32.const 0)
+                (func (export "fake_entry") (param i32 i32) (result i32)
+                    (local $i i32)
+                    i32.const 1000
+                    local.set $i
+                    loop $spin
+                        local.get $i
+                        i32.const 1
+                        i32.sub
+                        local.tee $i
+                        br_if $spin
+                    end
+                    i32.const 0)
+            )"#,
+        )
+        .unwrap();
+        let mut session = Session::init_from_wasm(&wasm, TEST_SPEC).expect("init");
+
+        for _ in 0..=ENGINE_EPOCH_DEADLINE {
+            shared_engine().increment_epoch();
+        }
+
+        session
+            .call(b"")
+            .expect("reused session should refresh its epoch deadline before each call");
     }
 }
