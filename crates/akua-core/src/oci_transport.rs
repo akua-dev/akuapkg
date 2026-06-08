@@ -463,7 +463,7 @@ mod tests {
         // the old byte slice would panic here.
         let body = "🦀".repeat(200);
         let truncated = truncate_error_body(&body);
-        assert_eq!(truncated.chars().count(), 200.min(300));
+        assert_eq!(truncated.chars().count(), 200);
         assert_eq!(truncated, "🦀".repeat(200));
     }
 
