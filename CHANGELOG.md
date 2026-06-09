@@ -15,6 +15,12 @@ minor bump in the SDK.
 
 ## [Unreleased]
 
+## [0.8.20] — 2026-06-09
+
+### Fixed
+
+- **Render budget handling is stable across persistent nested engine sessions** ([engine-host-wasm](crates/engine-host-wasm/src/lib.rs), [render.rs](crates/akua-cli/src/verbs/render.rs)). Helm/Kustomize sessions now refresh their Wasmtime epoch deadline before each call, so a reused session no longer inherits a stale expired deadline after idle time. Worker interrupt traps are also classified as `E_RENDER_BUDGET_DEADLINE` and return the timeout exit code instead of surfacing as generic KCL evaluation failures.
+
 ## [0.8.19] — 2026-06-01
 
 ### Fixed
