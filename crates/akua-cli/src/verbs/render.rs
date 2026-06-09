@@ -39,6 +39,10 @@ const DEPTH_BUDGET_MARKER: &str = "render depth limit";
 /// was already in the past.
 const DEADLINE_BUDGET_MARKER: &str = "wall-clock budget exhausted";
 
+/// Wasmtime epoch interruption surfaced from either the render worker
+/// Store or a nested engine Store.
+const INTERRUPT_TRAP_MARKER: &str = "wasm trap: interrupt";
+
 /// The worker's render response overflowed the host's bounded stdout
 /// pipe. Substring of [`crate::render_worker::WorkerError::RenderOutputTooLarge`]'s
 /// `Display`, which `worker_to_render_err` threads through `KclEval`.
@@ -63,7 +67,7 @@ const DEPTH_BUDGET_SUGGESTION: &str =
     "Recursive `pkg.render` exceeded the depth cap (default 16). Flatten the composition chain.";
 
 const DEADLINE_BUDGET_SUGGESTION: &str =
-    "The wall-clock deadline installed by the outer caller had already expired before the nested `pkg.render` could run. Raise the deadline or split the work.";
+    "The render exhausted its wall-clock budget. Pass or increase `--timeout`, or split the work.";
 
 const OUTPUT_TOO_LARGE_SUGGESTION: &str =
     "The Package rendered but its manifest set is too large to deliver from the sandbox. Split it into smaller Packages composed via `pkg.render`, or narrow the chart values so fewer resources are emitted.";
@@ -87,6 +91,11 @@ const KCL_EVAL_MARKER_TABLE: &[(&str, &str, &str)] = &[
     ),
     (
         DEADLINE_BUDGET_MARKER,
+        codes::E_RENDER_BUDGET_DEADLINE,
+        DEADLINE_BUDGET_SUGGESTION,
+    ),
+    (
+        INTERRUPT_TRAP_MARKER,
         codes::E_RENDER_BUDGET_DEADLINE,
         DEADLINE_BUDGET_SUGGESTION,
     ),
@@ -210,15 +219,11 @@ impl RenderError {
                 // Plugin errors flow back through KCL's `__kcl_PanicInfo__`
                 // envelope as an opaque string — we can't pattern-match
                 // on the typed `PathError` variant here. Sniff for the
-                // strict-mode marker the `resolve_in_package` error
-                // carries so the CLI surfaces a distinct code + hint
-                // instead of the generic `E_RENDER_KCL`.
-                match KCL_EVAL_MARKER_TABLE
-                    .iter()
-                    .find(|(marker, _, _)| msg.contains(marker))
-                {
-                    Some((_, code, suggestion)) => StructuredError::new(*code, msg.clone())
-                        .with_suggestion(*suggestion)
+                // stable markers so the CLI surfaces distinct codes
+                // + hints instead of the generic `E_RENDER_KCL`.
+                match kcl_eval_marker(msg) {
+                    Some((_, code, suggestion)) => StructuredError::new(code, msg.clone())
+                        .with_suggestion(suggestion)
                         .with_default_docs(),
                     None => StructuredError::new(codes::E_RENDER_KCL, msg.clone())
                         .with_default_docs(),
@@ -327,9 +332,22 @@ impl RenderError {
                 ExitCode::SystemError
             }
             RenderError::StdoutWrite(_) => ExitCode::SystemError,
+            RenderError::PackageK(PackageKError::KclEval(msg))
+                if kcl_eval_marker(msg)
+                    .is_some_and(|(_, code, _)| code == codes::E_RENDER_BUDGET_DEADLINE) =>
+            {
+                ExitCode::Timeout
+            }
             _ => ExitCode::UserError,
         }
     }
+}
+
+fn kcl_eval_marker(msg: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    KCL_EVAL_MARKER_TABLE
+        .iter()
+        .copied()
+        .find(|(marker, _, _)| msg.contains(marker))
 }
 
 pub fn run<W: Write>(
@@ -740,6 +758,7 @@ mod tests {
             ("CYCLE_MARKER", CYCLE_MARKER),
             ("DEPTH_BUDGET_MARKER", DEPTH_BUDGET_MARKER),
             ("DEADLINE_BUDGET_MARKER", DEADLINE_BUDGET_MARKER),
+            ("INTERRUPT_TRAP_MARKER", INTERRUPT_TRAP_MARKER),
             ("OUTPUT_TOO_LARGE_MARKER", OUTPUT_TOO_LARGE_MARKER),
         ];
         for (i, (a_name, a)) in markers.iter().enumerate() {
@@ -771,6 +790,25 @@ mod tests {
                 structured.code
             );
         }
+    }
+
+    #[test]
+    fn worker_interrupt_trap_routes_to_timeout_budget_error() {
+        let err = worker_to_render_err(crate::render_worker::WorkerError::Trap(
+            "error while executing at wasm backtrace:\nCaused by:\n    wasm trap: interrupt"
+                .to_string(),
+        ));
+        let structured = err.to_structured();
+
+        assert_eq!(structured.code, codes::E_RENDER_BUDGET_DEADLINE);
+        assert_eq!(err.exit_code(), ExitCode::Timeout);
+        assert!(
+            structured
+                .suggestion
+                .as_deref()
+                .is_some_and(|s| s.contains("--timeout")),
+            "timeout suggestion should mention --timeout, got {structured:?}"
+        );
     }
 
     const MINIMAL_PACKAGE: &str = r#"

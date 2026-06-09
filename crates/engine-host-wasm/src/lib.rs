@@ -382,6 +382,13 @@ impl Session {
     /// ABI: `(input_ptr, input_len) -> result_ptr`, result is
     /// NUL-terminated so we probe length via `<prefix>_result_len`.
     pub fn call(&mut self, input: &[u8]) -> Result<Vec<u8>, EngineHostError> {
+        // Sessions are intentionally persistent, but epoch deadlines
+        // are relative to the shared Engine's current epoch. Refill
+        // the per-call budget before any guest code runs so a hot
+        // session reused after its original budget elapsed does not
+        // trap immediately on the stale initialization deadline.
+        self.store.set_epoch_deadline(ENGINE_EPOCH_DEADLINE);
+
         let input_ptr = copy_in(&mut self.store, &self.malloc, self.memory, input)?;
         let result_ptr = self
             .entry
@@ -611,19 +618,15 @@ mod tests {
     #[test]
     fn engine_memory_cap_is_bounded_and_generous() {
         // Must be > 512 MiB so large real charts fit.
-        assert!(
-            ENGINE_MEMORY_CAP_BYTES > 512 * 1024 * 1024,
-            "cap is too small for large charts: {} bytes",
-            ENGINE_MEMORY_CAP_BYTES
-        );
+        const {
+            assert!(ENGINE_MEMORY_CAP_BYTES > 512 * 1024 * 1024);
+        }
         // Must be ≤ 4 GiB — WASM linear memory is 32-bit addressed,
         // so anything larger is unreachable anyway; capping here
         // prevents a silent no-op ceiling from drifting upward.
-        assert!(
-            ENGINE_MEMORY_CAP_BYTES <= 4 * 1024 * 1024 * 1024,
-            "cap exceeds wasm32 address space: {} bytes",
-            ENGINE_MEMORY_CAP_BYTES
-        );
+        const {
+            assert!(ENGINE_MEMORY_CAP_BYTES <= 4 * 1024 * 1024 * 1024);
+        }
     }
 
     /// ENGINE_EPOCH_DEADLINE is finite and generous: > 60 ticks so
@@ -633,15 +636,13 @@ mod tests {
     #[test]
     fn engine_epoch_deadline_is_finite_and_generous() {
         // > 60 ticks (6 s) — must not trip real charts.
-        assert!(
-            ENGINE_EPOCH_DEADLINE > 60,
-            "deadline {ENGINE_EPOCH_DEADLINE} is dangerously close to real chart runtimes"
-        );
+        const {
+            assert!(ENGINE_EPOCH_DEADLINE > 60);
+        }
         // < u64::MAX — must be enforceable by a real ticker.
-        assert!(
-            ENGINE_EPOCH_DEADLINE < u64::MAX,
-            "epoch deadline is effectively infinite — DoS cap is not enforced"
-        );
+        const {
+            assert!(ENGINE_EPOCH_DEADLINE < u64::MAX);
+        }
     }
 
     /// A well-formed wasm module that exports `memory` and all required
@@ -671,5 +672,40 @@ mod tests {
             result.is_ok(),
             "valid module with full ABI should initialize under resource caps"
         );
+    }
+
+    #[test]
+    fn session_call_refreshes_epoch_deadline_after_idle_reuse() {
+        let wasm = wat::parse_str(
+            r#"(module
+                (memory (export "memory") 1)
+                (func (export "_initialize"))
+                (func (export "fake_malloc") (param i32) (result i32) i32.const 0)
+                (func (export "fake_free") (param i32))
+                (func (export "fake_result_len") (param i32) (result i32) i32.const 0)
+                (func (export "fake_entry") (param i32 i32) (result i32)
+                    (local $i i32)
+                    i32.const 1000
+                    local.set $i
+                    loop $spin
+                        local.get $i
+                        i32.const 1
+                        i32.sub
+                        local.tee $i
+                        br_if $spin
+                    end
+                    i32.const 0)
+            )"#,
+        )
+        .unwrap();
+        let mut session = Session::init_from_wasm(&wasm, TEST_SPEC).expect("init");
+
+        for _ in 0..=ENGINE_EPOCH_DEADLINE {
+            shared_engine().increment_epoch();
+        }
+
+        session
+            .call(b"")
+            .expect("reused session should refresh its epoch deadline before each call");
     }
 }
