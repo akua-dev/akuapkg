@@ -124,7 +124,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install akua
-        run: curl -fsSL https://akua.dev/install | sh
+        run: curl -fsSL https://cli.akua.dev/install | sh
       - name: Check + lint
         run: |
           akua check

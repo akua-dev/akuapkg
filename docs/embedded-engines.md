@@ -10,7 +10,7 @@ This doc covers the embedding strategy, per-engine status, and what it means for
 
 Three reasons, same as the helm-engine-wasm decision:
 
-1. **Single binary UX.** `curl -fsSL https://akua.dev/install | sh` gives you everything. No "now install helm 4.1.4" followed by "now install opa 0.60" followed by "now install KCL 0.12."
+1. **Single binary UX.** `curl -fsSL https://cli.akua.dev/install | sh` gives you everything. No "now install helm 4.1.4" followed by "now install opa 0.60" followed by "now install KCL 0.12."
 2. **Version determinism.** akua ships with a known-good engine version. No "works on my machine" where my `opa` is 0.55 and yours is 0.62 and we get different verdicts.
 3. **Air-gap friendly.** Environments where customers can't install arbitrary binaries (FedRAMP, certain enterprise networks) still work because akua is self-contained.
 
@@ -133,7 +133,7 @@ System integrations are a separate category from engines. `akua deploy` calls `k
 
 ## For agents
 
-Agents get the full engine toolkit from one install with zero PATH management. When writing skills that invoke `akua test`, `akua fmt`, `akua bench`, they never need to check `which opa`. Skills remain portable across fresh sandboxes, CI runners, and developer laptops without setup instructions beyond `curl -fsSL https://akua.dev/install | sh`.
+Agents get the full engine toolkit from one install with zero PATH management. When writing skills that invoke `akua test`, `akua fmt`, `akua bench`, they never need to check `which opa`. Skills remain portable across fresh sandboxes, CI runners, and developer laptops without setup instructions beyond `curl -fsSL https://cli.akua.dev/install | sh`.
 
 ---
 

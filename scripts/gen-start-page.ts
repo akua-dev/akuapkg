@@ -19,10 +19,10 @@ const md = `
 ## 1. Install
 
 \`\`\`
-$ curl -fsSL https://akua.dev/install | sh
+$ curl -fsSL https://cli.akua.dev/install | sh
 \`\`\`
 
-Or grab a pinned binary from [Releases](https://github.com/cnap-tech/akua/releases). Windows: \`irm https://akua.dev/install.ps1 | iex\`.
+Or grab a pinned binary from [Releases](https://github.com/cnap-tech/akua/releases). Windows: \`irm https://cli.akua.dev/install.ps1 | iex\`.
 
 Verify the install:
 

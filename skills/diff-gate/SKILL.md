@@ -53,7 +53,7 @@ jobs:
         with: { fetch-depth: 0 }
 
       - name: Install akua
-        run: curl -fsSL https://akua.dev/install | sh
+        run: curl -fsSL https://cli.akua.dev/install | sh
 
       - name: Diff against base branch
         run: |

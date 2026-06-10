@@ -108,7 +108,7 @@ pub struct RunDetails {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Builder {
     /// Canonical identifier for this akua version. Mirrors
-    /// `{"id": "https://akua.dev/cli/v<X.Y.Z>"}`.
+    /// `{"id": "https://cli.akua.dev/cli/v<X.Y.Z>"}`.
     pub id: String,
 }
 
@@ -155,7 +155,7 @@ pub fn build_publish_attestation(
             },
             run_details: RunDetails {
                 builder: Builder {
-                    id: format!("https://akua.dev/cli/v{}", env!("CARGO_PKG_VERSION")),
+                    id: format!("https://cli.akua.dev/cli/v{}", env!("CARGO_PKG_VERSION")),
                 },
             },
         },
@@ -223,7 +223,7 @@ mod tests {
             .run_details
             .builder
             .id
-            .starts_with("https://akua.dev/cli/v"));
+            .starts_with("https://cli.akua.dev/cli/v"));
     }
 
     #[test]

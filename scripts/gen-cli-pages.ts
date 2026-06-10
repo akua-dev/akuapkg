@@ -119,7 +119,7 @@ ${renderMarkdown(verb.body, linkOpts)}
 		body: inner,
 		currentSection: '/cli/',
 		sidebar,
-		canonicalUrl: `https://akua.dev/cli/${verb.name}`,
+		canonicalUrl: `https://cli.akua.dev/cli/${verb.name}`,
 	});
 }
 
@@ -157,7 +157,7 @@ ${groupHtml('Planned', grouped.Planned)}
 		body: inner,
 		currentSection: '/cli/',
 		sidebar,
-		canonicalUrl: 'https://akua.dev/cli/',
+		canonicalUrl: 'https://cli.akua.dev/cli/',
 	});
 }
 

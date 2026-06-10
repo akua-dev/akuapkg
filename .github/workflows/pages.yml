@@ -8,7 +8,7 @@ name: pages
 #   scripts/install.sh   → /install                         (no extension, Bun-style)
 #   scripts/install.ps1  → /install.ps1                     (Windows)
 #
-# The curl one-liner users paste is `curl -fsSL https://akua.dev/install | sh`.
+# The curl one-liner users paste is `curl -fsSL https://cli.akua.dev/install | sh`.
 # `curl | sh` doesn't care about Content-Type, so hosting the script at a
 # no-extension path is fine — and keeps the URL clean.
 #

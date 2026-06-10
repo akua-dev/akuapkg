@@ -1,7 +1,7 @@
 #!/bin/sh
 # shellcheck shell=dash
 #
-# akua install script — `curl -fsSL https://akua.dev/install | sh`
+# akua install script — `curl -fsSL https://cli.akua.dev/install | sh`
 #
 # Downloads a prebuilt `akua` binary from GitHub Releases into
 # $AKUA_INSTALL/bin (defaulting to $HOME/.akua/bin), and prints the

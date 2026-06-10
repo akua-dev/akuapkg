@@ -48,7 +48,7 @@
 
 ```sh
 # install (macOS / Linux)
-curl -fsSL https://akua.dev/install | sh
+curl -fsSL https://cli.akua.dev/install | sh
 
 # render anywhere
 akua render --inputs inputs.yaml --out ./deploy
@@ -121,13 +121,13 @@ For cross-Package composition (install one Akua package on top of another, with 
 
 ```sh
 # macOS / Linux
-curl -fsSL https://akua.dev/install | sh
+curl -fsSL https://cli.akua.dev/install | sh
 
 # Homebrew
 brew install cnap-tech/tap/akua
 
 # Windows
-irm https://akua.dev/install.ps1 | iex
+irm https://cli.akua.dev/install.ps1 | iex
 
 # From source
 cargo install --git https://github.com/cnap-tech/akua akua-cli
