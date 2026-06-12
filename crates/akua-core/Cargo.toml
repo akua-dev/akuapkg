@@ -107,7 +107,7 @@ helm-engine-wasm = { path = "../helm-engine-wasm", optional = true, default-feat
 kustomize-engine-wasm = { path = "../kustomize-engine-wasm", optional = true, default-features = false }
 
 # OCI chart fetch. `rustls-tls` avoids the openssl dep chain.
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"], optional = true }
+reqwest = { workspace = true, optional = true }
 flate2 = { version = "1", optional = true }
 tar = { version = "0.4", optional = true }
 # `blocking-http-transport-curl-rustls` makes gitoxide apply Git-compatible TLS

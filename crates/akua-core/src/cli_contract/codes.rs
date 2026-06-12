@@ -167,6 +167,19 @@ pub const E_PUBLISH_FAILED: &str = "E_PUBLISH_FAILED";
 /// `akua pull` couldn't retrieve / extract the requested artifact.
 pub const E_PULL_FAILED: &str = "E_PULL_FAILED";
 
+// ----- Hosted API ----------------------------------------------------------
+
+/// Hosted Akua API auth token is required but was not provided.
+pub const E_AUTH_REQUIRED: &str = "E_AUTH_REQUIRED";
+/// Hosted Akua API token was rejected as invalid or expired.
+pub const E_AUTH_INVALID: &str = "E_AUTH_INVALID";
+/// Hosted Akua API token is valid but lacks permission for the request.
+pub const E_FORBIDDEN: &str = "E_FORBIDDEN";
+/// Requested CLI option or hosted API bridge feature is not implemented.
+pub const E_UNSUPPORTED: &str = "E_UNSUPPORTED";
+/// Hosted Akua API request failed before a structured response was available.
+pub const E_API_REQUEST: &str = "E_API_REQUEST";
+
 // Test failures surface via the JSON `status: "fail"` verdict +
 // exit code 1 (UserError). No structured stderr error — matches
 // the `render` / `verify` pattern where a valid-but-negative

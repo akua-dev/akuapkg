@@ -65,6 +65,7 @@ dependencies = [
  "p256",
  "pkcs8",
  "rand 0.8.6",
+ "reqwest",
  "schemars",
  "serde",
  "serde_json",

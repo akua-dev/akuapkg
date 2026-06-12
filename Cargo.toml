@@ -30,6 +30,7 @@ thiserror = "2"
 
 # CLI
 clap = { version = "4", features = ["derive", "env"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 
 # Observability — tracing is the universal emitter (libraries depend on it
 # only); tracing-subscriber + the opentelemetry stack live in the host (cli).
