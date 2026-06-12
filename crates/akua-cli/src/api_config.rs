@@ -44,10 +44,10 @@ pub fn resolve_api_config_from_env(
     resolve_api_config(input, &StdEnvReader)
 }
 
-pub fn resolve_required_token<'a>(
-    token: Option<&'a str>,
+pub fn resolve_required_token(
+    token: Option<&str>,
     non_interactive: bool,
-) -> Result<&'a str, StructuredError> {
+) -> Result<&str, StructuredError> {
     token
         .and_then(|value| {
             let trimmed = value.trim();
