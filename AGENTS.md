@@ -56,6 +56,8 @@ Violations of these are architectural bugs:
 
 **CLI contract holds universally.** Every verb emits `--json`, supports `--plan`, uses typed exit codes (0/1/2/3/4/5/6), accepts `--timeout` and `--idempotency-key` on writes. Structured errors on stderr, never prose. Agent-context auto-detection runs silently; see [cli-contract §1.5](docs/cli-contract.md#15-agent-context-auto-detection).
 
+**Hosted API commands are optional extensions.** `akua api` and later resource-specific cloud commands must not become dependencies of the local toolchain. Package authoring plus `render`, `export`, `check`, `lint`, `test`, and `verify` must remain cloud-independent and must not import hosted API code.
+
 **Canonical form is typed code.** KCL for Packages; Rego for Policies. YAML is a derived view via `akua export`, never authoritative. Users author their own higher-level schemas (App, Environment, Cluster, Workspace — whatever fits their shape) in KCL inside their workspace; akua does not ship a KRM vocabulary.
 
 **Determinism is load-bearing.** No `now()`, no `random()`, no env reads, no filesystem reads, no cluster reads inside the render pipeline. Same inputs + same lockfile + same akua version → byte-identical output.

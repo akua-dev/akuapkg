@@ -6,8 +6,8 @@ For the universal contract every verb honors (JSON output, exit codes, idempoten
 
 > **Status marker.** Sections marked ✅ describe verbs available in the shipping binary. Sections marked 🚧 describe verbs from the target surface that aren't wired yet. If a verb isn't marked, assume 🚧.
 >
-> **Shipped today (27 verbs):**
-> `init` · `whoami` · `version` · `verify` · `render` · `add` · `vendor` · `dev` · `test` · `tree` · `pull` · `publish` · `sign` · `update` · `lock` · `push` · `repl` · `pack` · `remove` · `diff` · `check` · `inspect` · `lint` · `fmt` · `cache` · `auth` · `export`
+> **Shipped today (28 verbs):**
+> `init` · `whoami` · `version` · `verify` · `render` · `add` · `vendor` · `dev` · `test` · `tree` · `pull` · `publish` · `sign` · `update` · `lock` · `push` · `repl` · `pack` · `remove` · `diff` · `check` · `inspect` · `lint` · `fmt` · `cache` · `auth` · `export` · `api`
 >
 > Run `akua --help` at the command line for the authoritative live list.
 
@@ -66,7 +66,8 @@ DEVELOP             SESSION             META
 akua test           akua login          akua help
 akua fmt            akua logout         akua version
 akua lint           akua whoami         akua telemetry
-akua check                              akua lint-cli
+akua check                              akua api
+                                        akua lint-cli
 akua bench
 akua trace
 akua cov
@@ -74,7 +75,7 @@ akua repl
 akua eval
 ```
 
-Thirty-four verbs. Grouped by purpose. Each covered below.
+Thirty-five verbs. Grouped by purpose. Each covered below.
 
 > **Quick disambiguation — `render` vs `export` vs `inspect` vs `diff`:**
 >
@@ -602,6 +603,104 @@ akua export --package package.k --out=exported/inputs.schema.json
 ### Exit codes
 
 0 success; 1 if `package.k` lacks an `Input` schema or has KCL syntax errors; 5 on filesystem errors.
+
+---
+
+## `akua api` ✅
+
+Call the hosted Akua API from the OSS CLI. This is an optional hosted extension: local package workflows such as `render`, `export`, `check`, `lint`, `test`, and `verify` do not require hosted API credentials or network access.
+
+```
+akua api <path-or-url> [flags]
+akua api spec [--audience=<public|partner|admin|internal>] [flags]
+```
+
+`<path-or-url>` can be a version-relative path such as `/workspaces` or an absolute URL on the configured API origin. Relative paths are resolved under the base URL. The default base URL is `https://api.akua.dev/v1/`.
+
+### Examples
+
+```sh
+# List workspaces
+akua api /workspaces
+
+# Create a product from a JSON body
+akua api /products -X POST --input product.json
+
+# Send typed fields as JSON
+akua api /access_decisions -X POST -F permission=offers.create
+
+# Send a workspace context header
+akua api /products --workspace ws_123
+
+# Fetch the public OpenAPI document
+akua api spec
+
+# Use a non-default API origin
+akua api /workspaces --base-url https://staging.example.dev/v1/
+```
+
+### Request flags
+
+| flag | description |
+|---|---|
+| `-X, --method=<method>` | HTTP method. Defaults to `GET` when no body or fields are present, otherwise `POST` |
+| `-H, --header=<name:value>` | extra request header. `name=value` is also accepted |
+| `-f, --raw-field=<key=value>` | string field. Sent as query params for read methods and JSON body fields for writes without `--input`; when `--input` is present, fields stay in the query string |
+| `-F, --field=<key=value>` | typed field. Parses `true`, `false`, `null`, and integers before sending |
+| `--input=<file>` | JSON file to use as the request body |
+| `--jq=<expr>` | reserved for response filtering; currently returns `E_UNSUPPORTED` |
+| `--include` | reserved for response-header output; currently returns `E_UNSUPPORTED` |
+| `--silent` | suppress a successful response body |
+| `--paginate` | reserved for pagination; currently returns `E_UNSUPPORTED` |
+| `--slurp` | reserved for paginated response aggregation; currently returns `E_UNSUPPORTED` |
+
+### Connection flags
+
+| flag | description |
+|---|---|
+| `--base-url=<url>` | hosted API base URL. Defaults to `https://api.akua.dev/v1/` |
+| `--token=<token>` | bearer token for hosted API auth |
+| `--workspace=<id>` | workspace context sent as the `akua-context` request header |
+
+### Environment resolution
+
+Connection values resolve in this order:
+
+| setting | resolution |
+|---|---|
+| base URL | `--base-url`, then `AKUA_API_BASE_URL`, then `https://api.akua.dev/v1/` |
+| bearer token | `--token`, then `AKUA_API_TOKEN` |
+| workspace context | `--workspace`, then `AKUA_WORKSPACE_ID` |
+
+`akua api` uses hosted API bearer tokens only. `akua auth` remains registry auth for OCI operations and is not reused for hosted API requests. A missing hosted API token fails with `E_AUTH_REQUIRED`; pass `--token` or set `AKUA_API_TOKEN`.
+
+### `akua api spec`
+
+`akua api spec` fetches the public OpenAPI document from `/openapi.json` on the configured base URL. `akua api spec --audience public` is equivalent.
+
+Elevated audiences are visible in the CLI contract but not served in this release:
+
+```sh
+akua api spec --audience partner
+akua api spec --audience admin
+akua api spec --audience internal
+```
+
+Each elevated audience exits with `E_UNSUPPORTED` until the hosted API serves authorized audience-specific OpenAPI documents. The CLI does not locally filter the public OpenAPI document to simulate elevated audiences.
+
+### Structured errors
+
+Failed hosted API calls emit Akua structured errors on stderr. Under `--json` or agent context, stderr is JSON-lines:
+
+```json
+{"code":"E_AUTH_INVALID","message":"token is invalid or expired","docs":"https://akua.dev/errors/E_AUTH_INVALID"}
+```
+
+HTTP `401` maps to auth errors, `403` maps to forbidden user errors, `429` exits with the rate-limited exit code, and transport/timeouts use the standard CLI contract exit codes.
+
+### Exit codes
+
+0 success, 1 user error, 2 system error, 4 rate limited, 6 timeout.
 
 ---
 
@@ -1314,10 +1413,13 @@ A minimal set. No hidden state.
 | `AKUA_LOG_LEVEL` | override `--log-level` |
 | `AKUA_NO_TELEMETRY` | force telemetry off (for CI) |
 | `AKUA_TOKEN_FILE` | path to a token file for non-interactive auth |
+| `AKUA_API_TOKEN` | hosted API bearer token for `akua api` |
+| `AKUA_API_BASE_URL` | hosted API base URL for `akua api` (default: `https://api.akua.dev/v1/`) |
+| `AKUA_WORKSPACE_ID` | workspace context sent by `akua api` as `akua-context` |
 | `AKUA_AGENT` | signal an agent context explicitly (value is the agent name) |
 | `AKUA_NO_AGENT_DETECT` | disable agent-context auto-detection |
 
-All of these can be overridden by flags where a flag exists. Humans typically set nothing; agents typically set nothing (their environment already identifies them).
+All of these can be overridden by flags where a flag exists. Local package workflows typically need none of them. Hosted API calls need a bearer token from `--token` or `AKUA_API_TOKEN`.
 
 ### Agent-context env vars (detected, never written)
 
