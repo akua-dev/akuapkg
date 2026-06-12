@@ -307,9 +307,12 @@ tasks:
     # `build:helm-engine-wasm` was reachable via two dep paths and got
     # invoked concurrently in CI, racing on the helm-fork tree. The
     # remaining deps converge on a single helm-engine-wasm invocation.
-    deps: [sdk:install, native:build, build:render-worker]
+    # Keep sdk:install in cmds, not deps: Bun installs share workspace
+    # state, so running it in parallel with native:install can race.
+    deps: [native:build, build:render-worker]
     dir: packages/sdk
     cmds:
+      - task: sdk:install
       - bun test
 
   sdk:e2e:
