@@ -99,6 +99,118 @@ fn api_get_sends_bearer_token_and_preserves_success_body() {
 }
 
 #[test]
+fn api_spec_fetches_public_openapi_document() {
+    let dir = tempdir();
+    let server = MockServer::start();
+    let base_url = server.url("/v1/");
+    let body = json!({
+        "openapi": "3.1.0",
+        "info": { "title": "Akua API", "version": "test" },
+        "paths": {}
+    });
+    let mock = server.mock(|when, then| {
+        when.method(GET)
+            .path("/v1/openapi.json")
+            .header("authorization", "Bearer test-token");
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(body.clone());
+    });
+
+    let out = run(
+        dir.path(),
+        &[
+            "api",
+            "--json",
+            "spec",
+            "--base-url",
+            &base_url,
+            "--token",
+            "test-token",
+        ],
+    );
+
+    assert_exit(&out, 0);
+    mock.assert();
+    assert_eq!(stdout_json(&out), body);
+}
+
+#[test]
+fn api_spec_public_audience_fetches_openapi_document() {
+    let dir = tempdir();
+    let server = MockServer::start();
+    let base_url = server.url("/v1/");
+    let body = json!({
+        "openapi": "3.1.0",
+        "info": { "title": "Akua API", "version": "test" },
+        "paths": {}
+    });
+    let mock = server.mock(|when, then| {
+        when.method(GET)
+            .path("/v1/openapi.json")
+            .header("authorization", "Bearer test-token");
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(body.clone());
+    });
+
+    let out = run(
+        dir.path(),
+        &[
+            "api",
+            "--json",
+            "spec",
+            "--audience",
+            "public",
+            "--base-url",
+            &base_url,
+            "--token",
+            "test-token",
+        ],
+    );
+
+    assert_exit(&out, 0);
+    mock.assert();
+    assert_eq!(stdout_json(&out), body);
+}
+
+#[test]
+fn api_spec_elevated_audiences_are_unsupported_without_fetching() {
+    for audience in ["partner", "admin", "internal"] {
+        let dir = tempdir();
+        let server = MockServer::start();
+        let base_url = server.url("/v1/");
+        let mock = server.mock(|when, then| {
+            when.method(GET).path("/v1/openapi.json");
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({ "openapi": "3.1.0" }));
+        });
+
+        let out = run(
+            dir.path(),
+            &[
+                "api",
+                "--json",
+                "spec",
+                "--audience",
+                audience,
+                "--base-url",
+                &base_url,
+                "--token",
+                "test-token",
+            ],
+        );
+
+        assert_exit(&out, 1);
+        assert!(out.stdout.is_empty(), "stdout should be empty");
+        let err = stderr_json(&out);
+        assert_eq!(err["code"], "E_UNSUPPORTED");
+        mock.assert_hits(0);
+    }
+}
+
+#[test]
 fn api_post_sends_fields_workspace_and_idempotency_headers() {
     let dir = tempdir();
     let server = MockServer::start();

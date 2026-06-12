@@ -1292,15 +1292,47 @@ fn run_api(
 ) -> ExitCode {
     let ctx = resolve_ctx(args);
     match sub {
-        ApiSubcommand::Spec { .. } => emit_structured(
-            &ctx,
-            &StructuredError::new(
-                akua_core::cli_contract::codes::E_UNSUPPORTED,
-                "`akua api spec` execution is implemented in a later API bridge task",
-            )
-            .with_default_docs(),
-            ExitCode::UserError,
-        ),
+        ApiSubcommand::Spec {
+            audience,
+            connection,
+        } => {
+            if audience != "public" {
+                return emit_structured(
+                    &ctx,
+                    &StructuredError::new(
+                        akua_core::cli_contract::codes::E_UNSUPPORTED,
+                        format!(
+                            "`akua api spec --audience {audience}` is not supported until the hosted API serves authorized audience-specific OpenAPI documents"
+                        ),
+                    )
+                    .with_default_docs(),
+                    ExitCode::UserError,
+                );
+            }
+
+            let connection = request_args.connection.merge(connection);
+            let args = api_verb::ApiArgs {
+                path_or_url: "/openapi.json".to_string(),
+                method: None,
+                headers: Vec::new(),
+                raw_fields: Vec::new(),
+                fields: Vec::new(),
+                input: None,
+                jq: None,
+                include: false,
+                silent: false,
+                paginate: false,
+                slurp: false,
+                base_url: connection.base_url,
+                token: connection.token,
+                workspace: connection.workspace,
+            };
+            let mut stdout = io::stdout().lock();
+            match api_verb::run(&ctx, &args, &mut stdout) {
+                Ok(code) => code,
+                Err(err) => emit_structured(&ctx, &err.to_structured(), err.exit_code()),
+            }
+        }
         ApiSubcommand::Request(raw) => {
             let argv = std::iter::once(OsString::from("api")).chain(raw);
             let request = match ApiRequestCliArgs::try_parse_from(argv) {
