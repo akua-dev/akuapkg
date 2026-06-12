@@ -292,7 +292,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <div class="layout">
 <aside class="sidebar">
 <p class="sidebar-title"><a href="/examples/">Examples</a></p>
-<ul><li><a href="/examples/00-helm-hello">00-helm-hello</a></li><li><a href="/examples/01-hello-webapp">01-hello-webapp</a></li><li><a href="/examples/02-webapp-postgres">02-webapp-postgres</a></li><li><a href="/examples/03-multi-env-app">03-multi-env-app</a></li><li><a href="/examples/04-policy-tier">04-policy-tier</a></li><li><a href="/examples/05-tests-and-golden">05-tests-and-golden</a></li><li><a href="/examples/06-multi-engine">06-multi-engine</a></li><li><a href="/examples/07-package-reuse">07-package-reuse</a></li><li><a href="/examples/08-pkg-compose" class="active">08-pkg-compose</a></li><li><a href="/examples/09-kustomize-hello">09-kustomize-hello</a></li><li><a href="/examples/10-kcl-ecosystem">10-kcl-ecosystem</a></li><li><a href="/examples/11-install-as-package">11-install-as-package</a></li><li><a href="/examples/12-vendor-offline">12-vendor-offline</a></li></ul>
+<ul><li><a href="/examples/00-helm-hello">00-helm-hello</a></li><li><a href="/examples/01-hello-webapp">01-hello-webapp</a></li><li><a href="/examples/02-webapp-postgres">02-webapp-postgres</a></li><li><a href="/examples/03-multi-env-app">03-multi-env-app</a></li><li><a href="/examples/04-policy-tier">04-policy-tier</a></li><li><a href="/examples/05-tests-and-golden">05-tests-and-golden</a></li><li><a href="/examples/06-multi-engine">06-multi-engine</a></li><li><a href="/examples/07-package-reuse">07-package-reuse</a></li><li><a href="/examples/08-pkg-compose" class="active">08-pkg-compose</a></li><li><a href="/examples/09-kustomize-hello">09-kustomize-hello</a></li><li><a href="/examples/10-kcl-ecosystem">10-kcl-ecosystem</a></li><li><a href="/examples/11-install-as-package">11-install-as-package</a></li><li><a href="/examples/12-vendor-offline">12-vendor-offline</a></li><li><a href="/examples/13-subpackage-helm">13-subpackage-helm</a></li><li><a href="/examples/14-helm-repo-dep">14-helm-repo-dep</a></li></ul>
 </aside>
 <main>
 
@@ -303,7 +303,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 </header>
 <p>Package composition via <code>pkg.render</code> — an outer Package calls a reusable inner Package twice with different inputs and concatenates the results. Renders end-to-end today (pure KCL; no helm needed).</p>
 <h2 id="whats-here">What's here</h2>
-<table><thead><tr><th>file</th><th>purpose</th></tr></thead><tbody><tr><td><code>package.k</code></td><td>Outer Package; calls <code>pkg.render(&quot;./shared&quot;, ...)</code> twice with distinct inputs.</td></tr><tr><td><code>shared/package.k</code></td><td>Inner Package; emits one ConfigMap parameterized by <code>name</code> + <code>payload</code>.</td></tr><tr><td><code>akua.toml</code></td><td>Outer manifest — no external deps.</td></tr><tr><td><code>inputs.example.yaml</code></td><td>Per-component inputs, auto-discovered by <code>akua render</code>.</td></tr></tbody></table>
+<table><thead><tr><th>file</th><th>purpose</th></tr></thead><tbody><tr><td><code>package.k</code></td><td>Outer Package; calls <code>pkg.render(pkg.Render { package = &quot;shared&quot;, ... })</code> twice with distinct inputs.</td></tr><tr><td><code>shared/package.k</code></td><td>Inner Package; emits one ConfigMap parameterized by <code>name</code> + <code>payload</code>.</td></tr><tr><td><code>shared/akua.toml</code></td><td>Inner manifest — marks <code>shared/</code> as an Akua package.</td></tr><tr><td><code>akua.toml</code></td><td>Outer manifest — declares <code>shared</code> as a workspace-local path dep.</td></tr><tr><td><code>inputs.example.yaml</code></td><td>Per-component inputs, auto-discovered by <code>akua render</code>.</td></tr></tbody></table>
 <h2 id="render">Render</h2>
 <pre><code class="lang-sh">cargo run -q -p akua-cli -- render --package examples/08-pkg-compose/package.k --out ./rendered</code></pre>
 <p>Or, from the example directory:</p>
@@ -313,13 +313,13 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 ├── 000-configmap-frontend.yaml
 └── 001-configmap-backend.yaml</code></pre>
 <h2 id="how-pkgrender-works">How <code>pkg.render</code> works</h2>
-<p><code>pkg.render</code> is a synchronous KCL host plugin: the handler resolves the path against the calling Package's directory (with the same sandbox guard <code>helm.template</code> and <code>kustomize.build</code> use), calls <code>PackageK::load(...).render(inputs)</code> inline, and returns the inner resources list directly to the caller. Because the return is a real list, list-comprehension patches and filter expressions on the result work natively — no post-eval rewrite step.</p>
+<p><code>pkg.render</code> is a synchronous KCL host plugin: the handler resolves the <code>package</code> alias against the calling Package's <code>akua.toml</code> <code>[dependencies]</code> (no filesystem paths in user code), calls <code>PackageK::load(...).render(inputs)</code> inline, and returns the inner resources list directly to the caller. Because the return is a real list, list-comprehension patches and filter expressions on the result work natively — no post-eval rewrite step.</p>
 <p>Reentrancy works because akua's KCL fork copies the plugin handler fn pointer out of its mutex before invoking the callback (see <code>cnap-tech/kcl#akua-wasm32</code>); upstream KCL holds the mutex across the call and would deadlock here.</p>
 <p>Cycle detection uses akua-core's thread-local render-stack: a Package referring to itself, directly or transitively (<code>A → B → A</code>), is rejected before infinite recursion. Nested <code>pkg.render</code> calls (<code>A → B → C</code>) recurse through the same handler, with each inner Package's render pushing/popping the stack.</p>
 <h2>package.k</h2><pre><code class="lang-kcl"># Outer Package: composes two ConfigMaps from a reusable nested
 # Package via `pkg.render`. Exercises akua's Package-of-Packages
-# composition — the inner Package lives at ./shared/ and is loaded
-# + rendered fresh for each `pkg.render` call.
+# composition — the inner Package is declared as the `shared` dep in
+# akua.toml and loaded + rendered fresh for each `pkg.render` call.
 #
 # Render:
 #
@@ -344,19 +344,20 @@ schema Input:
 
 input: Input = ctx.input()
 
-# Each call loads + renders `./shared/package.k` synchronously
-# with the supplied inputs and returns the inner resources list.
+# Each call loads + renders the `shared` dep synchronously with the
+# supplied inputs and returns the inner resources list. `package` is
+# the dep alias from akua.toml — no filesystem path in the program.
 _frontend = pkg.render(pkg.Render {
-    path   = &quot;./shared&quot;
-    inputs = {
+    package = &quot;shared&quot;
+    inputs  = {
         name    = input.frontend.name
         payload = input.frontend.data
     }
 })
 
 _backend = pkg.render(pkg.Render {
-    path   = &quot;./shared&quot;
-    inputs = {
+    package = &quot;shared&quot;
+    inputs  = {
         name    = input.backend.name
         payload = input.backend.data
     }

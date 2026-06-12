@@ -65,7 +65,7 @@ const CONCEPTS: Concept[] = [
 		mdFile: 'sdk.md',
 		title: 'TypeScript SDK',
 		tagline:
-			'Same surface as the CLI, exposed as `@akua-dev/sdk` with the helm + kustomize wasm engines bundled.',
+			'Node/Bun Package SDK for render, export, check, lint, verify, and vendor drift guards through the native Akua addon.',
 	},
 	{
 		slug: 'agent-usage',

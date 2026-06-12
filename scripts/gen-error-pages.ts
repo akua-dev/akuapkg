@@ -117,6 +117,17 @@ ${bodyHtml}
 	});
 }
 
+function truncateSummary(text: string, maxLength: number): string {
+	if (text.length <= maxLength) {
+		return text;
+	}
+
+	const clipped = text.slice(0, maxLength).trimEnd();
+	const boundary = clipped.search(/\s+\S*$/);
+	const trimmed = boundary > 0 ? clipped.slice(0, boundary) : clipped;
+	return `${trimmed.trimEnd()}...`;
+}
+
 function renderIndexPage(entries: CodeEntry[], sidebar: SidebarSpec): string {
 	const grouped = new Map<string, CodeEntry[]>();
 	for (const e of entries) {
@@ -130,11 +141,10 @@ function renderIndexPage(entries: CodeEntry[], sidebar: SidebarSpec): string {
 			const li = items
 				.map((e) => {
 					const summary = e.summary
-						? stripTags(renderMarkdown(e.summary)).slice(0, 220)
+						? truncateSummary(stripTags(renderMarkdown(e.summary)), 220)
 						: '';
 					return `<li>
-  <a class="name" href="/errors/${escape(e.name)}">${escape(e.name)}</a>
-  ${summary ? `<div class="summary">${escape(summary)}</div>` : ''}
+  <a class="name" href="/errors/${escape(e.name)}">${escape(e.name)}</a>${summary ? `\n  <div class="summary">${escape(summary)}</div>` : ''}
 </li>`;
 				})
 				.join('\n');

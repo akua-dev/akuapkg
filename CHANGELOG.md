@@ -15,6 +15,12 @@ minor bump in the SDK.
 
 ## [Unreleased]
 
+### Fixed
+
+- **SDK launch docs and generated site now describe the shipped Node/Bun NAPI surface** ([docs/sdk.md](docs/sdk.md), [site/concepts/sdk.html](site/concepts/sdk.html)). The public SDK page no longer advertises stale browser support, shell-out dispatch, or future Akua Cloud namespaces as part of `@akua-dev/sdk`; it documents the current package as a native-addon-backed Package SDK with render/export/check/lint/verify and vendor drift guards.
+- **Large render/export regressions stay covered by launch-readiness tests** ([packages/sdk](packages/sdk), [crates/akua-cli](crates/akua-cli)). The SDK and CLI regression coverage now guards the large render-output path and export surface that previously drifted during launch hardening.
+- **Helm `values.schema.json` defaults that contradict generated KCL types are omitted** ([values_schema.rs](crates/akua-core/src/values_schema.rs), [helm_union_schema.rs](crates/akua-cli/tests/helm_union_schema.rs)). Chart schemas that declare unsafe defaults such as `null` for non-null fields, numeric defaults for strings, or mismatched array items no longer emit invalid KCL defaults that abort the render worker.
+
 ## [0.8.20] — 2026-06-09
 
 ### Fixed

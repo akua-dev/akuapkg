@@ -4,20 +4,14 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 
 import { Akua } from './mod.ts';
-import { scratchPackage } from './test-utils.ts';
+import { minimalAkuaToml, scratchPackage } from './test-utils.ts';
 
 const akua = new Akua();
-
-const MINIMAL_AKUA_TOML = `[package]
-name = "vendor-sdk-test"
-version = "0.0.1"
-edition = "akua.dev/v1alpha1"
-`;
 
 function writeVendorWorkspace(dir: string) {
 	writeFileSync(
 		join(dir, 'akua.toml'),
-		`${MINIMAL_AKUA_TOML}\n[dependencies]\nlocal = { path = "./charts/local" }\n`,
+		`${minimalAkuaToml('vendor-sdk-test')}\n[dependencies]\nlocal = { path = "./charts/local" }\n`,
 	);
 	const chart = join(dir, 'charts/local');
 	mkdirSync(join(chart, 'templates'), { recursive: true });
@@ -85,7 +79,7 @@ describe('Akua.vendorList / Akua.vendorCheck', () => {
 		using ws = scratchPackage('akua-sdk-vendor-missing-');
 		writeFileSync(
 			join(ws.dir, 'akua.toml'),
-			`${MINIMAL_AKUA_TOML}\n[dependencies]\n`,
+			`${minimalAkuaToml('vendor-sdk-test')}\n[dependencies]\n`,
 		);
 		writeFileSync(join(ws.dir, 'package.k'), 'resources = []\n');
 

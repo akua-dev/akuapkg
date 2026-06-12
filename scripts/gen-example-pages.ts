@@ -25,6 +25,17 @@ interface Example {
 	rendered: { name: string; body: string }[]; // each rendered/*.yaml
 }
 
+function truncateText(text: string, maxLength: number): string {
+	if (text.length <= maxLength) {
+		return text;
+	}
+
+	const clipped = text.slice(0, maxLength).trimEnd();
+	const boundary = clipped.search(/\s+\S*$/);
+	const trimmed = boundary > 0 ? clipped.slice(0, boundary) : clipped;
+	return `${trimmed.trimEnd()}...`;
+}
+
 function loadExamples(): Example[] {
 	const entries = readdirSync(examplesDir)
 		.filter((name) => /^\d{2}-/.test(name) && statSync(join(examplesDir, name)).isDirectory())
@@ -39,7 +50,7 @@ function loadExamples(): Example[] {
 			.split(/\n\s*\n/)
 			.map((p) => p.trim())
 			.find((p) => p && !p.startsWith('#') && !p.startsWith('>'));
-		const tagline = firstPara ? stripTags(firstPara).slice(0, 200) : '';
+		const tagline = firstPara ? truncateText(stripTags(firstPara), 200) : '';
 
 		const packageKPath = join(dir, 'package.k');
 		const packageK = existsSync(packageKPath) ? readFileSync(packageKPath, 'utf8') : null;
@@ -129,12 +140,12 @@ ${renderedBlock}
 
 function renderIndexPage(examples: Example[], sidebar: SidebarSpec): string {
 	const items = examples
-		.map(
-			(e) => `<li>
-  <a class="name" href="/examples/${escape(e.slug)}">${escape(e.slug)} — ${escape(e.title)}</a>
-  ${e.tagline ? `<div class="summary">${escape(e.tagline)}</div>` : ''}
-</li>`,
-		)
+		.map((e) => {
+			const summary = e.tagline ? `\n  <div class="summary">${escape(e.tagline)}</div>` : '';
+			return `<li>
+  <a class="name" href="/examples/${escape(e.slug)}">${escape(e.slug)} — ${escape(e.title)}</a>${summary}
+</li>`;
+		})
 		.join('\n');
 
 	const inner = `

@@ -8,21 +8,17 @@
 
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { Akua } from './mod.ts';
-import { MINIMAL_PACKAGE_K, scratchPackage } from './test-utils.ts';
+import { MINIMAL_PACKAGE_K, minimalAkuaToml, scratchPackage } from './test-utils.ts';
 
 const akua = new Akua();
-
-const MINIMAL_AKUA_TOML = `[package]
-name = "coverage-test"
-version = "0.0.1"
-edition = "akua.dev/v1alpha1"
-`;
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 
 function writeWorkspace(dir: string) {
-	writeFileSync(join(dir, 'akua.toml'), MINIMAL_AKUA_TOML);
+	writeFileSync(join(dir, 'akua.toml'), minimalAkuaToml('coverage-test'));
 	writeFileSync(join(dir, 'package.k'), MINIMAL_PACKAGE_K);
 }
 
@@ -68,7 +64,7 @@ describe('Akua.tree', () => {
 		writeFileSync(join(chart, 'templates/cm.yaml'), 'kind: ConfigMap\n');
 		writeFileSync(
 			join(ws.dir, 'akua.toml'),
-			MINIMAL_AKUA_TOML +
+			minimalAkuaToml('coverage-test') +
 				'[dependencies]\nnginx = { path = "./nginx-chart" }\n',
 		);
 		writeFileSync(join(ws.dir, 'package.k'), MINIMAL_PACKAGE_K);
@@ -128,7 +124,7 @@ describe('Akua.verify', () => {
 		// Use an example workspace that already has a committed lockfile.
 		// A scratch workspace would 404 on akua.lock since `akua lock`
 		// hasn't been run.
-		const ws = '../../examples/01-hello-webapp';
+		const ws = join(repoRoot, 'examples/01-hello-webapp');
 		const v = await akua.verify({ workspace: ws });
 		expect(['ok', 'fail']).toContain(v.status);
 		expect(v.summary).toBeDefined();
@@ -197,7 +193,7 @@ describe('Akua.fmt — stdout branch', () => {
 		// Write deliberately misformatted KCL so fmt reports `changed: true`.
 		const pkg = join(ws.dir, 'package.k');
 		writeFileSync(pkg, 'schema Input:\n  x:int=1\n');
-		writeFileSync(join(ws.dir, 'akua.toml'), MINIMAL_AKUA_TOML);
+		writeFileSync(join(ws.dir, 'akua.toml'), minimalAkuaToml('coverage-test'));
 
 		// Capture stdout while fmt runs. Bun gives us process.stdout.write
 		// as the hook; intercept for one tick.
@@ -223,7 +219,7 @@ describe('Akua.fmt — stdout branch', () => {
 		const pkg = join(ws.dir, 'package.k');
 		const original = 'schema Input:\n  x:int=1\n';
 		writeFileSync(pkg, original);
-		writeFileSync(join(ws.dir, 'akua.toml'), MINIMAL_AKUA_TOML);
+		writeFileSync(join(ws.dir, 'akua.toml'), minimalAkuaToml('coverage-test'));
 
 		const r = await akua.fmt({ package: pkg, check: true });
 		expect(r.files[0]?.changed).toBe(true);

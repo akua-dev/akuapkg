@@ -18,25 +18,22 @@
 use std::path::{Path, PathBuf};
 
 use akua_cli::verbs::render::render_in_worker;
-use akua_core::{chart_resolver, AkuaManifest, PackageK};
+use akua_core::{chart_resolver, AkuaManifest, PackageK, RenderedPackage};
 
-fn fixture_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/helm-union-schema")
+fn fixture_dir(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/{name}"))
 }
 
-#[test]
-fn renders_chart_with_union_typed_schema_default() {
-    let dir = fixture_dir();
+fn render_fixture(name: &str, regression_hint: &str) -> Option<RenderedPackage> {
+    let dir = fixture_dir(name);
 
     let manifest = AkuaManifest::load(&dir).expect("load akua.toml");
     let resolved = chart_resolver::resolve(&manifest, &dir).expect("resolve charts");
 
     let package = PackageK::load(&dir.join("package.k")).expect("load package.k");
-    // No public inputs; an empty inputs doc exercises the schema's own
-    // default — the path that used to abort.
     let inputs = serde_yaml::Value::Null;
 
-    let rendered = match render_in_worker(
+    match render_in_worker(
         &package,
         &inputs,
         &resolved,
@@ -44,17 +41,27 @@ fn renders_chart_with_union_typed_schema_default() {
         akua_core::kcl_plugin::BudgetSnapshot::default(),
         akua_core::kcl_plugin::ResolverContext::default(),
     ) {
-        Ok(r) => r,
+        Ok(r) => Some(r),
         Err(e) => {
             let msg = e.to_string();
             if msg.contains("helm-engine.wasm not built")
                 || msg.contains("worker module wasn't compiled")
             {
                 eprintln!("skipping: {msg}");
-                return;
+                return None;
             }
-            panic!("render failed (regression — union schema aborted evaluator?): {e}");
+            panic!("render failed (regression — {regression_hint}): {e}");
         }
+    }
+}
+
+#[test]
+fn renders_chart_with_union_typed_schema_default() {
+    // No public inputs; an empty inputs doc exercises the schema's own
+    // default — the path that used to abort.
+    let Some(rendered) = render_fixture("helm-union-schema", "union schema aborted evaluator")
+    else {
+        return;
     };
 
     assert_eq!(rendered.resources.len(), 1, "chart emits one ConfigMap");
@@ -69,6 +76,30 @@ fn renders_chart_with_union_typed_schema_default() {
         rendered.resources[0]["data"]["port"].as_str(),
         Some("8080"),
         "schema default did not flow through: {:?}",
+        rendered.resources[0]
+    );
+}
+
+#[test]
+fn renders_chart_with_contradictory_schema_defaults_omitted() {
+    let Some(rendered) = render_fixture(
+        "helm-contradictory-schema-defaults",
+        "contradictory values.schema.json defaults aborted evaluator",
+    ) else {
+        return;
+    };
+
+    assert_eq!(rendered.resources.len(), 1, "chart emits one ConfigMap");
+    assert_eq!(
+        rendered.resources[0]["kind"].as_str(),
+        Some("ConfigMap"),
+        "expected a ConfigMap, got {:?}",
+        rendered.resources[0]
+    );
+    assert_eq!(
+        rendered.resources[0]["data"]["safe"].as_str(),
+        Some("rendered"),
+        "matching schema default did not flow through: {:?}",
         rendered.resources[0]
     );
 }

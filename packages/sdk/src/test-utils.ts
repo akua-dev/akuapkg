@@ -59,11 +59,15 @@ resources = [{
 }]
 `;
 
-export const MINIMAL_AKUA_TOML = `[package]
-name = "smoke"
+export function minimalAkuaToml(name = 'smoke'): string {
+	return `[package]
+name = "${name}"
 version = "0.0.1"
 edition = "akua.dev/v1alpha1"
 `;
+}
+
+export const MINIMAL_AKUA_TOML = minimalAkuaToml();
 
 export function largeCrdPackageK(count = 750, descriptionBytes = 1024): string {
 	const resources = Array.from(
