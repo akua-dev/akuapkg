@@ -3,6 +3,7 @@
 //! Cloud-native packaging CLI. One binary, one contract — every verb
 //! honours the CLI contract in [`docs/cli-contract.md`](../../../docs/cli-contract.md).
 
+use std::ffi::OsString;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
@@ -12,7 +13,7 @@ use akua_cli::contract::{emit_error, Context, UniversalArgs};
 #[cfg(feature = "dev-watch")]
 use akua_cli::verbs::dev as dev_verb;
 use akua_cli::verbs::{
-    add as add_verb, auth as auth_verb, cache as cache_verb, check as check_verb,
+    add as add_verb, api as api_verb, auth as auth_verb, cache as cache_verb, check as check_verb,
     diff as diff_verb, export as export_verb, fmt as fmt_verb, init as init_verb,
     inspect as inspect_verb, lint as lint_verb, lock as lock_verb, pack as pack_verb,
     publish as publish_verb, pull as pull_verb, push as push_verb, remove as remove_verb,
@@ -62,6 +63,18 @@ enum Commands {
     Version {
         #[command(flatten)]
         args: UniversalArgs,
+    },
+
+    /// Build hosted Akua API requests.
+    Api {
+        #[command(flatten)]
+        args: UniversalArgs,
+
+        #[command(flatten)]
+        request_args: ApiRequestOptionsCliArgs,
+
+        #[command(subcommand)]
+        sub: ApiSubcommand,
     },
 
     /// Lockfile ↔ manifest consistency check.
@@ -702,6 +715,154 @@ enum CacheSub {
     },
 }
 
+#[derive(Subcommand, Clone, Debug)]
+enum ApiSubcommand {
+    /// Fetch the hosted Akua OpenAPI document.
+    Spec {
+        /// API audience. Only `public` is planned for the first hosted bridge.
+        #[arg(long, default_value = "public", value_parser = ["public", "partner", "admin", "internal"])]
+        audience: String,
+
+        #[command(flatten)]
+        connection: ApiConnectionCliArgs,
+    },
+
+    /// Forward an arbitrary path or URL to the hosted Akua API.
+    #[command(external_subcommand)]
+    Request(Vec<OsString>),
+}
+
+#[derive(Parser, Clone, Debug)]
+struct ApiRequestCliArgs {
+    /// Version-relative path (`/workspaces`) or absolute URL.
+    path_or_url: String,
+
+    #[command(flatten)]
+    options: ApiRequestOptionsCliArgs,
+}
+
+#[derive(Args, Clone, Debug, Default)]
+struct ApiRequestOptionsCliArgs {
+    /// HTTP method. Defaults to GET without fields/input, POST otherwise.
+    #[arg(short = 'X', long = "method")]
+    method: Option<String>,
+
+    /// Extra request header as `name:value` or `name=value`.
+    #[arg(short = 'H', long = "header", action = ArgAction::Append)]
+    headers: Vec<String>,
+
+    /// String field (`key=value`). Sent in JSON body or query params.
+    #[arg(short = 'f', long = "raw-field", action = ArgAction::Append)]
+    raw_fields: Vec<String>,
+
+    /// Typed field (`key=value`). Parses true/false/null/integers.
+    #[arg(short = 'F', long = "field", action = ArgAction::Append)]
+    fields: Vec<String>,
+
+    /// JSON file to use as the request body.
+    #[arg(long)]
+    input: Option<PathBuf>,
+
+    /// Filter response JSON. Parsed for compatibility; not implemented yet.
+    #[arg(long)]
+    jq: Option<String>,
+
+    /// Include response headers. Parsed for compatibility; no effect before execution.
+    #[arg(long)]
+    include: bool,
+
+    /// Suppress response body. Parsed for compatibility; no effect before execution.
+    #[arg(long)]
+    silent: bool,
+
+    /// Follow pagination. Parsed for compatibility; not implemented yet.
+    #[arg(long)]
+    paginate: bool,
+
+    /// Slurp paginated responses. Parsed for compatibility; not implemented yet.
+    #[arg(long)]
+    slurp: bool,
+
+    #[command(flatten)]
+    connection: ApiConnectionCliArgs,
+}
+
+#[derive(Args, Clone, Debug, Default)]
+struct ApiConnectionCliArgs {
+    /// Hosted API base URL.
+    #[arg(long)]
+    base_url: Option<String>,
+
+    /// Hosted API bearer token.
+    #[arg(long)]
+    token: Option<String>,
+
+    /// Workspace context sent as `akua-context`.
+    #[arg(long)]
+    workspace: Option<String>,
+}
+
+impl ApiRequestOptionsCliArgs {
+    fn merge(self, suffix: ApiRequestCliArgs) -> ApiRequestCliArgs {
+        let mut headers = self.headers;
+        headers.extend(suffix.options.headers);
+
+        let mut raw_fields = self.raw_fields;
+        raw_fields.extend(suffix.options.raw_fields);
+
+        let mut fields = self.fields;
+        fields.extend(suffix.options.fields);
+
+        ApiRequestCliArgs {
+            path_or_url: suffix.path_or_url,
+            options: ApiRequestOptionsCliArgs {
+                method: suffix.options.method.or(self.method),
+                headers,
+                raw_fields,
+                fields,
+                input: suffix.options.input.or(self.input),
+                jq: suffix.options.jq.or(self.jq),
+                include: self.include || suffix.options.include,
+                silent: self.silent || suffix.options.silent,
+                paginate: self.paginate || suffix.options.paginate,
+                slurp: self.slurp || suffix.options.slurp,
+                connection: self.connection.merge(suffix.options.connection),
+            },
+        }
+    }
+}
+
+impl ApiConnectionCliArgs {
+    fn merge(self, suffix: Self) -> Self {
+        Self {
+            base_url: suffix.base_url.or(self.base_url),
+            token: suffix.token.or(self.token),
+            workspace: suffix.workspace.or(self.workspace),
+        }
+    }
+}
+
+impl From<ApiRequestCliArgs> for api_verb::ApiArgs {
+    fn from(args: ApiRequestCliArgs) -> Self {
+        Self {
+            path_or_url: args.path_or_url,
+            method: args.options.method,
+            headers: args.options.headers,
+            raw_fields: args.options.raw_fields,
+            fields: args.options.fields,
+            input: args.options.input,
+            jq: args.options.jq,
+            include: args.options.include,
+            silent: args.options.silent,
+            paginate: args.options.paginate,
+            slurp: args.options.slurp,
+            base_url: args.options.connection.base_url,
+            token: args.options.connection.token,
+            workspace: args.options.connection.workspace,
+        }
+    }
+}
+
 #[derive(Args, Clone, Debug)]
 struct RenderCliArgs {
     /// Path to the `package.k` file.
@@ -777,6 +938,7 @@ fn universal_args(cmd: &Commands) -> &UniversalArgs {
         Commands::Init { args, .. }
         | Commands::Whoami { args }
         | Commands::Version { args }
+        | Commands::Api { args, .. }
         | Commands::Verify { args, .. }
         | Commands::Render { args, .. }
         | Commands::Add { args, .. }
@@ -825,6 +987,11 @@ fn dispatch(command: Commands) -> ExitCode {
         Commands::Init { args, name, force } => run_init(&args, name.as_deref(), force),
         Commands::Whoami { args } => run_whoami(&args),
         Commands::Version { args } => run_version(&args),
+        Commands::Api {
+            args,
+            request_args,
+            sub,
+        } => run_api(&args, request_args, sub),
         Commands::Verify {
             args,
             workspace,
@@ -1116,6 +1283,47 @@ fn resolve_auth(
         .transpose()?;
     let from_flags = akua_cli::auth_parse::parse_auth_pairs(auth_pairs.iter())?;
     Ok(akua_cli::auth_parse::merge_auth(from_file, from_flags))
+}
+
+fn run_api(
+    args: &UniversalArgs,
+    request_args: ApiRequestOptionsCliArgs,
+    sub: ApiSubcommand,
+) -> ExitCode {
+    let ctx = resolve_ctx(args);
+    match sub {
+        ApiSubcommand::Spec { .. } => emit_structured(
+            &ctx,
+            &StructuredError::new(
+                akua_core::cli_contract::codes::E_UNSUPPORTED,
+                "`akua api spec` execution is implemented in a later API bridge task",
+            )
+            .with_default_docs(),
+            ExitCode::UserError,
+        ),
+        ApiSubcommand::Request(raw) => {
+            let argv = std::iter::once(OsString::from("api")).chain(raw);
+            let request = match ApiRequestCliArgs::try_parse_from(argv) {
+                Ok(request) => request_args.merge(request),
+                Err(err) => {
+                    let _ = err.print();
+                    return ExitCode::UserError;
+                }
+            };
+            match api_verb::build_request_plan(&ctx, &request.into()) {
+                Ok(_) => emit_structured(
+                    &ctx,
+                    &StructuredError::new(
+                        akua_core::cli_contract::codes::E_UNSUPPORTED,
+                        "`akua api` request execution is not implemented yet",
+                    )
+                    .with_default_docs(),
+                    ExitCode::UserError,
+                ),
+                Err(err) => emit_structured(&ctx, &err, ExitCode::UserError),
+            }
+        }
+    }
 }
 
 fn run_lock(args: &UniversalArgs, workspace: &std::path::Path, check: bool) -> ExitCode {
@@ -1767,6 +1975,49 @@ mod tests {
                 assert!(!render_args.stdout);
             }
             _ => panic!("expected render"),
+        }
+    }
+
+    #[test]
+    fn parses_api_request_with_path_before_flags() {
+        let cli = Cli::parse_from(["akua", "api", "/workspaces", "--token", "test-token"]);
+        match cli.command {
+            Commands::Api {
+                request_args,
+                sub: ApiSubcommand::Request(raw),
+                ..
+            } => {
+                assert!(request_args.connection.token.is_none());
+                assert_eq!(raw[0], OsString::from("/workspaces"));
+                assert_eq!(raw[1], OsString::from("--token"));
+                assert_eq!(raw[2], OsString::from("test-token"));
+            }
+            _ => panic!("expected api request"),
+        }
+    }
+
+    #[test]
+    fn parses_api_request_with_flags_before_path() {
+        let cli = Cli::parse_from([
+            "akua",
+            "api",
+            "--token",
+            "test-token",
+            "-X",
+            "GET",
+            "/workspaces",
+        ]);
+        match cli.command {
+            Commands::Api {
+                request_args,
+                sub: ApiSubcommand::Request(raw),
+                ..
+            } => {
+                assert_eq!(request_args.connection.token.as_deref(), Some("test-token"));
+                assert_eq!(request_args.method.as_deref(), Some("GET"));
+                assert_eq!(raw[0], OsString::from("/workspaces"));
+            }
+            _ => panic!("expected api request"),
         }
     }
 
