@@ -2,22 +2,93 @@
 // run under plain `task sdk:test`, no binary required.
 
 import { describe, expect, test } from 'bun:test';
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 import { Akua } from './mod.ts';
-import { MINIMAL_PACKAGE_K, scratchPackageWith } from './test-utils.ts';
+import {
+	largeCrdPackageK,
+	MINIMAL_AKUA_TOML,
+	MINIMAL_PACKAGE_K,
+	scratchPackageWith,
+} from './test-utils.ts';
 
-const MINIMAL_TOML = `[package]
-name = "smoke"
-version = "0.0.1"
-edition = "akua.dev/v1alpha1"
-`;
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+const loaderOnlyNapiExports = new Set(['setEnginesDir']);
+
+function readRepo(path: string): string {
+	return readFileSync(resolve(repoRoot, path), 'utf8');
+}
+
+function rustExportName(name: string): string {
+	return name.replace(/_([a-z])/g, (_match, char: string) => char.toUpperCase());
+}
+
+function rustNapiFunctionNames(): string[] {
+	const source = readRepo('crates/akua-napi/src/lib.rs');
+	const names: string[] = [];
+	for (const match of source.matchAll(
+		/#\[napi(?:\([^\]]*\))?\](?:\s*#\[[^\]]+\])*\s*pub\s+(?:async\s+)?fn\s+([a-zA-Z0-9_]+)\(/g,
+	)) {
+		const name = match[1];
+		if (name !== undefined) {
+			names.push(rustExportName(name));
+		}
+	}
+	return names.sort();
+}
+
+function dtsFunctionNames(): string[] {
+	const source = readRepo('crates/akua-napi/index.d.ts');
+	const names: string[] = [];
+	for (const match of source.matchAll(/export declare function ([a-zA-Z0-9_]+)\(/g)) {
+		const name = match[1];
+		if (name !== undefined) {
+			names.push(name);
+		}
+	}
+	return names.sort();
+}
+
+function napiInterfaceFunctionNames(): string[] {
+	const source = readRepo('packages/sdk/src/napi.ts');
+	const sourceFile = ts.createSourceFile('napi.ts', source, ts.ScriptTarget.Latest, true);
+	const names: string[] = [];
+
+	function visit(node: ts.Node): void {
+		if (ts.isInterfaceDeclaration(node) && node.name.text === 'NapiAddon') {
+			for (const member of node.members) {
+				if (ts.isMethodSignature(member) && ts.isIdentifier(member.name)) {
+					names.push(member.name.text);
+				}
+			}
+			return;
+		}
+		ts.forEachChild(node, visit);
+	}
+
+	visit(sourceFile);
+	return names.sort();
+}
+
+function sdkNapiCallNames(): string[] {
+	const mod = readRepo('packages/sdk/src/mod.ts');
+	const names = new Set<string>();
+	for (const match of mod.matchAll(/\bnapi\.([a-zA-Z0-9_]+)\(/g)) {
+		const name = match[1];
+		if (name !== undefined) {
+			names.add(name);
+		}
+	}
+	return [...names].sort();
+}
 
 describe('Akua CI-gate verbs', () => {
 	test('check returns a CheckOutput with a "manifest" entry', async () => {
 		using pkg = scratchPackageWith(MINIMAL_PACKAGE_K, 'akua-sdk-check-');
-		writeFileSync(join(pkg.dir, 'akua.toml'), MINIMAL_TOML);
+		writeFileSync(join(pkg.dir, 'akua.toml'), MINIMAL_AKUA_TOML);
 		const akua = new Akua();
 		const out = await akua.check({
 			workspace: pkg.dir,
@@ -80,5 +151,41 @@ resources = []
 		const components = doc.components as Record<string, Record<string, unknown>>;
 		expect(typeof components.schemas).toBe('object');
 		expect(components.schemas.Input).toBeDefined();
+	});
+
+	test('export remains schema-only for large resource bodies', async () => {
+		using pkg = scratchPackageWith(largeCrdPackageK(64, 4096), 'akua-sdk-large-export-');
+		const akua = new Akua();
+		const doc = await akua.export({
+			package: join(pkg.dir, 'package.k'),
+			format: 'openapi',
+		});
+
+		expect(doc.openapi).toBe('3.1.0');
+		const serialized = JSON.stringify(doc);
+		expect(serialized.length).toBeLessThan(20_000);
+		expect(serialized).not.toContain('widgets-63.example.com');
+	});
+});
+
+describe('SDK/NAPI drift guards', () => {
+	test('drift: Rust napi exports match committed index.d.ts and SDK-callable NapiAddon', () => {
+		const rust = rustNapiFunctionNames();
+		const dts = dtsFunctionNames();
+		const addon = napiInterfaceFunctionNames();
+
+		expect(dts).toEqual(rust);
+		for (const name of loaderOnlyNapiExports) {
+			expect(rust).toContain(name);
+		}
+		// Loader-only exports are consumed by crates/akua-napi/loader.js
+		// before the SDK receives the addon. Public SDK call sites are
+		// guarded separately below.
+		const sdkCallableRust = rust.filter((name) => !loaderOnlyNapiExports.has(name));
+		expect(addon).toEqual(sdkCallableRust);
+	});
+
+	test('drift: public SDK methods that call napi have a matching addon binding', () => {
+		expect(sdkNapiCallNames()).toEqual(napiInterfaceFunctionNames());
 	});
 });

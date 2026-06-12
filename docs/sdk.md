@@ -1,6 +1,8 @@
-# @akua-dev/sdk — TypeScript SDK
+# @akua-dev/sdk -- Akua Package SDK
 
-Programmatic access to akua capabilities for Node.js and the browser. Mirrors the CLI surface where appropriate; differs where the context demands it.
+Programmatic access to Akua package/render/export/check/lint/verify behavior from Node-compatible runtimes.
+
+This is the Akua Package SDK, not the Akua Cloud REST SDK. It works without an Akua Cloud account and does not call hosted Akua APIs.
 
 ---
 
@@ -12,884 +14,155 @@ bun add @akua-dev/sdk
 npm install @akua-dev/sdk
 ```
 
-Published to [npm](https://www.npmjs.com/package/@akua-dev/sdk). ESM-only. Node 20+ or any modern browser.
+Published to [npm](https://www.npmjs.com/package/@akua-dev/sdk). ESM-only. The package supports Node 22+ and Bun 1.3+ today. Browser support is deferred because this package depends on the host-side `@akua-dev/native` NAPI addon.
 
 ---
 
-> **Status (pre-alpha).** This page describes the SDK's eventual shape.
-> What's actually shipped today is the lower-level surface in the
-> [Shipped API](#shipped-api) section below — fourteen verbs, all
-> dispatched through the bundled native addon. The higher-level
-> `Akua.package.*` / `Akua.deploy.*` / `Akua.secret.*` / `Akua.policy.*` /
-> `Akua.audit.*` namespaces further down are design sketches for
-> later versions and are NOT importable yet.
-
-## Single entry point
+## Quickstart
 
 ```ts
 import { Akua } from '@akua-dev/sdk';
+
+const akua = new Akua();
+
+const summary = await akua.render({
+  package: './package.k',
+  out: './deploy',
+});
+
+console.log(summary.manifests, summary.hash);
+
+const inputSchema = await akua.export({
+  package: './package.k',
+  format: 'openapi',
+});
+
+console.log(inputSchema.openapi);
 ```
 
-One import path. The package ships Node-only (`engines.node >= 22`)
-and depends on `@akua-dev/native`, the per-platform NAPI addon
-published as `@akua-dev/native-{darwin,linux,win32}-{x64,arm64}-*` —
-the right one is picked at install time via npm
-`optionalDependencies`. The addon embeds the helm + kustomize
-WebAssembly engines plus the akua render-worker, so calling `render`
-from Node never spawns an `akua` binary and never reaches the
-network for engine code.
+---
 
-### Transport (v0.x)
+## Runtime Contract
 
-Every verb dispatches through the native addon. No shell-out, no
-separate WASM path:
+`@akua-dev/sdk` dispatches every method through `@akua-dev/native`, the per-platform NAPI addon. The SDK does not spawn the `akua` binary, does not look for an `akua` executable on `$PATH`, and does not expose a binary-path option on `new Akua()`.
+
+The native addon embeds the same Rust core used by the CLI, plus the render worker and engine WebAssembly modules needed for supported package operations.
 
 ```
-Akua.<verb>()  →  callNapi(...)  →  @akua-dev/native (NAPI)
-                                         │
-                                         ├─ akua-render-worker.wasm  (KCL render)
-                                         ├─ helm-engine.wasm         (helm.template)
-                                         └─ kustomize-engine.wasm    (kustomize.build)
+Akua method -> @akua-dev/native (NAPI) -> akua core / render worker / engine modules
 ```
 
-A previous design split verbs across `akua-wasm` (browser-loadable)
-and shell-out paths; both were dropped. The wasm-pack wrapper baked
-`__dirname` as a build-time absolute path that broke at runtime, and
-shell-out demanded an `akua` binary on `$PATH` that the SDK couldn't
-guarantee. NAPI-only is the simplest deployment that works on every
-supported runtime; if browser support comes back later it'll ship as
-a separate `@akua-dev/sdk-wasm` package, not as a side channel here.
+`AkuaOptions` is currently reserved for future configuration. Construct the client with `new Akua()`.
 
-### Shipped API
+---
 
-Fourteen verbs available on `new Akua()`:
+## Shipped API
+
+The package currently exports the `Akua` class, SDK error classes, validation helpers, and generated TypeScript types. Higher-level namespace clients for deploy, policy, audit, hosted documents, or Akua Cloud REST APIs are not part of `@akua-dev/sdk`.
 
 | Method | Returns | Notes |
 |---|---|---|
-| `version()` | `VersionOutput` | SDK + native addon version triple. |
+| `version()` | `VersionOutput` | SDK and native version information. |
 | `whoami()` | `WhoamiOutput` | Mirrors `akua whoami`. |
-| `renderSource(opts)` | `string` | Render a Package from in-memory KCL source — no filesystem write. |
-| `render(opts)` | `RenderSummary` | Render an on-disk Package; writes to `out`. |
-| `check(opts)` | `CheckOutput` | Type / dep / lockfile check. |
-| `lint(opts)` | `LintOutput` | Regal + KCL lint. |
-| `fmt(opts)` | `FmtOutput` | Formatter pass over .k files. |
-| `inspect(opts)` | `InspectOutput` | Package metadata; tarball mode deferred. |
-| `tree(opts)` | `TreeOutput` | Resolved dep tree. |
-| `diff(before, after)` | `DirDiff` | Two on-disk directories, file-by-file. |
-| `export(opts)` | `Record<string, unknown>` | Export a Package's emitted resources as a typed view. |
-| `vendorAdd(name, opts)` | `VendorAddOutput` | Materialize a dep into `.akua/vendor/<name>/`. |
-| `vendorCheck(opts)` | `VendorCheckOutput` | Drift-check the vendor tree against `akua.toml`. |
-| `vendorList(opts)` | `VendorListOutput` | Inventory `.akua/vendor/`, including orphans. |
-| `verify(opts)` | `VerifyOutput` | Lockfile + cosign verification. |
+| `render(opts)` | `RenderSummary` | Executes an on-disk Package and writes rendered YAML files to `out`. |
+| `renderSource(opts)` | `string` | Executes Package source or a Package file and returns raw rendered YAML. |
+| `export(opts)` | `Record<string, unknown>` | Returns the Package `Input` schema as JSON Schema or OpenAPI. |
+| `check(opts)` | `CheckOutput` | Syntax, type, dependency, and lockfile checks. |
+| `lint(opts)` | `LintOutput` | KCL and package linting. |
+| `fmt(opts)` | `FmtOutput` | Formats KCL sources, or reports changes with `check: true`. |
+| `inspect(opts)` | `InspectOutput` | Package metadata and option information. |
+| `tree(opts)` | `TreeOutput` | Dependency tree from `akua.toml` and `akua.lock`. |
+| `diff(before, after)` | `DirDiff` | Structural diff between two rendered manifest directories. |
+| `add(name, opts)` | `AddOutput` | Adds a dependency to `akua.toml`. |
+| `vendorAdd(name, opts)` | `VendorAddOutput` | Materializes a declared dependency into `.akua/vendor/<name>`. |
+| `vendorCheck(opts)` | `VendorCheckOutput` | Checks vendor-tree drift. |
+| `vendorList(opts)` | `VendorListOutput` | Lists vendored dependencies and orphaned entries. |
+| `verify(opts)` | `VerifyOutput` | Verifies workspace lockfile integrity and configured signing metadata. |
 
-Verbs that need network or OCI registry access (`add`, `publish`,
-`pull`, `push`, `pack`, `sign`, `lock`, `update`, `cache`, `auth`,
-`dev`, `repl`, `init`, …) are CLI-only for now — the SDK doesn't
-spawn the binary. Run them via `akua` directly until they get NAPI
-bindings.
-
-See [security-model.md](security-model.md) for the sandbox-layers
-table.
+Verbs that do not have SDK methods yet remain CLI-only. Use the `akua` binary directly for those workflows until NAPI bindings and SDK methods ship.
 
 ---
 
-## Design principles
+## Render And Export
 
-1. **One class per primitive.** `Akua` is the root; everything hangs off it.
-2. **Async everywhere.** Every operation returns a Promise. No sync I/O.
-3. **Typed end-to-end.** Full TypeScript types for every input and output.
-4. **Thin wrapper, not a framework.** The SDK runs the same Rust core via WASM for pure-KCL verbs and shells out to the `akua` binary for verbs that need filesystem state the bundle doesn't hold. It doesn't reimplement either side.
-5. **Results mirror `--json` output.** If you know the CLI, you know the SDK's return shapes.
-6. **Idempotent writes.** Every write method accepts `idempotencyKey`; if omitted, one is generated.
-7. **Streaming where the CLI streams.** `dev()` and long-running operations return AsyncIterables.
+`render(opts)` runs the Package program. It invokes supported engines through the native addon, writes deploy-ready YAML files to `opts.out` unless `dryRun` is set, and returns a compact `RenderSummary`:
+
+```ts
+const summary = await akua.render({
+  package: './package.k',
+  inputs: './inputs.yaml',
+  out: './deploy',
+  dryRun: false,
+});
+
+console.log(summary.files);
+```
+
+`renderSource(opts)` also runs the Package program, but returns raw multi-document YAML as a string. Pass either `source` for in-memory KCL or `package` for a file path:
+
+```ts
+const yaml = await akua.renderSource({
+  source: `
+schema Input:
+    name: str = "demo"
+
+resources = []
+`,
+  inputs: { name: 'checkout' },
+});
+```
+
+`export(opts)` does not render resources. It reads the Package `Input` schema and returns either JSON Schema 2020-12 or an OpenAPI 3.1 document:
+
+```ts
+const jsonSchema = await akua.export({
+  package: './package.k',
+  format: 'json-schema',
+});
+
+const openapi = await akua.export({
+  package: './package.k',
+  format: 'openapi',
+});
+```
+
+Use `render` or `renderSource` when you need rendered Kubernetes resources. Use `export` when you need the input contract for forms, validation, or documentation.
 
 ---
 
-## Quickstart (Node)
+## Credentials
 
-```ts
-import { Akua } from '@akua-dev/sdk';
-
-const akua = new Akua({
-  binary: 'akua',               // path; default: 'akua' (PATH)
-  registry: 'oci://ghcr.io/me', // default registry
-  token: process.env.AKUA_TOKEN // optional; otherwise uses system credential store
-});
-
-// render a package
-const result = await akua.render({
-  path: './my-pkg',
-  inputs: { appName: 'checkout', hostname: 'checkout.example.com' }
-});
-console.log(result.manifests, result.hash);  // e.g. 3, 'sha256:...'
-
-// publish
-const pub = await akua.publish({
-  path: './my-pkg',
-  to: 'oci://pkg.akua.dev/checkout',
-  tag: '1.0.0'
-});
-console.log(pub.digest);
-
-// deploy + wait
-const handle = await akua.deploy({ app: 'checkout', to: 'argo' });
-const status = await handle.waitReady({ timeout: '5m' });
-```
-
----
-
-## Root — `Akua`
-
-```ts
-class Akua {
-  constructor(opts?: AkuaOptions);
-
-  readonly package: PackageAPI;
-  readonly app: AppAPI;
-  readonly deploy: DeployAPI;
-  readonly secret: SecretAPI;
-  readonly policy: PolicyAPI;
-  readonly audit: AuditAPI;
-  readonly query: QueryAPI;
-  readonly infra: InfraAPI;
-  readonly rollout: RolloutAPI;
-  readonly registry: RegistryAPI;
-
-  // Authoring + build
-  init(opts: InitOptions): Promise<InitResult>;
-  add(opts: AddOptions): Promise<AddResult>;
-  render(opts: RenderOptions): Promise<RenderResult>;
-  diff(a: string, b: string, opts?: DiffOptions): Promise<DiffResult>;
-  attest(opts: AttestOptions): Promise<AttestResult>;
-  publish(opts: PublishOptions): Promise<PublishResult>;
-  pull(ref: string, opts?: PullOptions): Promise<PullResult>;
-  inspect(ref: string, opts?: InspectOptions): Promise<InspectResult>;
-  export(opts: ExportOptions): Promise<ExportResult>;
-  vendorAdd(name: string, opts?: VendorAddOptions): Promise<VendorAddResult>;
-  vendorCheck(opts?: VendorWorkspaceOptions): Promise<VendorCheckResult>;
-  vendorList(opts?: VendorWorkspaceOptions): Promise<VendorListResult>;
-
-  // Develop (matches CLI verbs: test, fmt, check, lint, bench, cov, eval, repl)
-  test(opts?: TestOptions): Promise<TestResult>;
-  fmt(opts?: FmtOptions): Promise<FmtResult>;
-  check(opts?: CheckOptions): Promise<CheckResult>;
-  lint(opts?: LintOptions): Promise<LintResult>;
-  bench(opts?: BenchOptions): Promise<BenchResult>;
-  cov(opts?: CovOptions): Promise<CovResult>;
-  eval(query: string, opts?: EvalOptions): Promise<EvalResult>;
-
-  // Deploy loop
-  dev(opts?: DevOptions): Promise<DevSession>;
-  verify(opts?: VerifyOptions): Promise<VerifyResult>;  // checks akua.toml ↔ akua.lock
-
-  // Session
-  login(opts: LoginOptions): Promise<void>;
-  logout(registry?: string): Promise<void>;
-  whoami(): Promise<Identity>;
-  version(): Promise<VersionInfo>;
-
-  // Discovery
-  help(verb?: string): Promise<CommandTree>;
-}
-```
-
-```ts
-interface AkuaOptions {
-  binary?: string;             // path to akua binary (default: 'akua')
-  registry?: string;           // default OCI registry
-  token?: string;              // API token; if omitted, uses credential store
-  cacheDir?: string;           // override cache location
-  timeout?: string;            // default timeout for operations (e.g. '5m')
-  logLevel?: 'debug'|'info'|'warn'|'error';
-  engine?: 'auto' | 'embedded';  // engine selection default
-  signal?: AbortSignal;        // cancel long-running ops
-}
-```
-
-### Universal option — `engine`
-
-Methods that invoke an engine (render, test, lint, bench, policy.check, etc.) accept an `engine?: 'auto' | 'embedded'` override — today `auto` and `embedded` behave identically because akua only ships embedded engines. The field exists for forward-compatibility; future engines that admit a separate fast-path implementation (e.g. a native-code CEL interpreter alongside the WASM build) will read the option. No shell-out path is exposed by the SDK — see [CLAUDE.md](../CLAUDE.md)'s "No shell-out, ever" invariant and [embedded-engines.md](embedded-engines.md).
-
-### Universal option — `idempotencyKey`
-
-Write methods (`publish`, `deploy.apply`, `secret.rotate`, etc.) accept `idempotencyKey?: string`. If the same key is presented twice, the second call is a no-op that returns the original result. See [cli-contract.md §3](cli-contract.md#3-writes-are-idempotent).
-
-### Credentials — `auth`
-
-Methods that fetch from private remotes (today: `vendorAdd`) accept `auth?: Record<string, BasicAuth>` keyed by **URL prefix**:
+Akua keeps credentials explicit at the SDK boundary. Methods that fetch private remotes, currently `vendorAdd`, accept an `auth` map keyed by URL prefix:
 
 ```ts
 await akua.vendorAdd('upstream', {
   auth: {
-    // Single host:
-    'akua-git.cnap.tech': { username: orgId, password: token },
-
-    // Or per-org scoping — longest-prefix wins (same rule git's
-    // credential helper / .npmrc URL keys use):
-    'akua-git.cnap.tech/org-A': { username: 'org-A', password: tokenA },
-    'akua-git.cnap.tech/org-B': { username: 'org-B', password: tokenB },
-  }
+    'git.example.com/team-a': {
+      username: 'team-a',
+      password: process.env.GIT_TOKEN!,
+    },
+  },
 });
 ```
 
-**Resolution.** Akua walks the `auth` map sorted by prefix length descending and selects the first match against the URL's `host[:port]/path` form. Bare host keys match anything on that host; path-scoped keys only match URLs starting with that path prefix (path-segment-aware — `example.com/org` does not match `example.com/organizations`).
-
-**Explicit-only.** Akua never reads ambient credential files (`~/.netrc`, `~/.docker/config.json`) or environment variables. The `auth` parameter is the sole credential source. This is deliberate: SDK consumers may be multi-tenant servers without strong process-level isolation, and akua's wasmtime sandbox extends the same explicit-input invariant to credentials.
-
-**Lockfile guarantee.** Regardless of the credential used to fetch, `akua.lock`'s `source` field stores the canonicalized URL with userinfo, default ports (`:443` https, `:80` http), `.git` suffix, and trailing `/` stripped. Credentials cannot leak into the lockfile or git history.
-
-**akua.toml.** Embedding credentials in a `git = "..."` URL (`https://user:pass@host/...`) is a manifest error ([E_MANIFEST_GIT_USERINFO](errors/E_MANIFEST_GIT_USERINFO.md)) — the lockfile would persist them. Use the `auth` parameter instead.
+The SDK does not read ambient credential files such as `~/.netrc` or `~/.docker/config.json`.
 
 ---
 
-## Package API
+## Errors
+
+SDK methods throw `AkuaError` subclasses built from the structured error emitted by the native layer. User errors, rate limits, timeouts, and system failures keep their stable Akua error codes so callers can branch without parsing prose.
 
 ```ts
-interface PackageAPI {
-  // Authoring + build
-  init(opts: InitOptions): Promise<InitResult>;
-  inspect(ref: string, opts?: InspectOptions): Promise<PackageInfo>;
-  diff(a: string, b: string, opts?: DiffOptions): Promise<DiffResult>;
-  render(opts: RenderOptions): Promise<RenderResult>;
-  attest(opts: AttestOptions): Promise<AttestResult>;
-  publish(opts: PublishOptions): Promise<PublishResult>;
-  pull(ref: string, opts?: PullOptions): Promise<PullResult>;
-  export(opts: PackageExportOptions): Promise<PackageExportResult>;
+import { AkuaRateLimitedError, AkuaUserError } from '@akua-dev/sdk';
 
-  // Develop
-  test(opts?: PackageTestOptions): Promise<TestResult>;
-  check(opts?: CheckOptions): Promise<CheckResult>;       // syntax + type pass only
-  lint(opts?: LintOptions): Promise<LintResult>;          // kcl lint + cross-engine
-  fmt(opts?: FmtOptions): Promise<FmtResult>;
-}
-
-interface PackageExportOptions {
-  path?: string;
-  format: 'json-schema' | 'openapi' | 'yaml' | 'oci-bundle';
-  outFile?: string;
-  pretty?: boolean;
-  engine?: 'auto' | 'embedded';
-}
-
-interface PackageExportResult {
-  format: string;
-  bytes: number;
-  path?: string;
-  content?: string;   // when outFile is omitted
-}
-
-interface PackageTestOptions {
-  path?: string;
-  filter?: RegExp | string;
-  coverage?: boolean;
-  golden?: 'verify' | 'regenerate';
-  watch?: boolean;
-  engine?: 'auto' | 'embedded';
-}
-
-interface InitOptions {
-  name?: string;
-  template?: 'app' | 'app-with-db' | 'umbrella' | 'platform-std' | 'empty';
-  targetDir?: string;
-  noGit?: boolean;
-}
-
-interface InitResult {
-  name: string;
-  path: string;
-  template: string;
-  files: string[];
-}
-
-interface RenderOptions {
-  path?: string;               // package directory (default: cwd)
-  inputs?: Record<string, unknown>;
-  inputsFile?: string;
-  outDir?: string;
-  dryRun?: boolean;
-}
-
-interface RenderResult {
-  format: 'raw-manifests';
-  target: string;
-  manifests: number;
-  hash: string;                // sha256
-  files: string[];
-  policy?: PolicyVerdict;
-  attestationPath?: string;
-}
-
-interface PublishOptions {
-  path?: string;
-  to?: string;                 // OCI ref; default from package metadata
-  tag?: string;
-  sign?: boolean;              // default: true
-  attest?: boolean;            // default: true
-  public?: boolean;
-  idempotencyKey?: string;
-}
-
-interface PublishResult {
-  package: string;
-  version: string;
-  digest: string;
-  signed: boolean;
-  attestationDigest?: string;
-  sizeBytes: number;
-  uploadDurationMs: number;
-}
-
-interface DiffResult {
-  schema: {
-    added: string[];
-    removed: string[];
-    typeChanged: Array<{ path: string; from: string; to: string }>;
-    defaultChanged: Array<{ path: string; from: unknown; to: unknown }>;
-  };
-  sources: {
-    added: SourceRef[];
-    removed: SourceRef[];
-    versionChanged: Array<{ name: string; from: string; to: string }>;
-  };
-  manifests: { added: number; removed: number; modified: number };
-  policyCompat: 'allow' | 'deny' | 'needs-approval';
-}
-```
-
----
-
-## Document API
-
-akua does not specify an App / Environment / Cluster / Secret vocabulary. The SDK therefore exposes **generic document operations** that work against whatever KCL schemas the workspace declares. If your workspace authors an `App` schema, `akua.doc.list({ kind: 'App' })` finds them; the SDK doesn't know what fields are inside.
-
-```ts
-interface DocumentAPI {
-  // Discover user-authored KCL documents in the current workspace
-  list(opts?: ListOptions): Promise<DocumentRef[]>;
-
-  // Read a specific document by path, producing the typed KCL value
-  // the workspace's schema declares
-  get<T = unknown>(path: string): Promise<T>;
-
-  // Apply a document (kick off render + deploy according to its kind's
-  // handler, which the workspace configures)
-  apply(path: string, opts?: ApplyOptions): Promise<DeployHandle>;
-
-  // Export a KCL document as YAML/JSON (derived view)
-  export(path: string, opts: { format: 'yaml' | 'json' }): Promise<string>;
-}
-
-interface ListOptions {
-  kind?: string;                              // filter by declared KCL schema name
-  filter?: Record<string, unknown>;           // field predicates (e.g. { 'spec.env': 'production' })
-  under?: string;                             // directory scope
-}
-
-interface DocumentRef {
-  path: string;                               // workspace-relative path to the .k file
-  kind: string;                               // schema name declared in the KCL program
-  name: string;                               // the document's top-level name field (convention)
-}
-```
-
-Typed access requires the workspace to generate TypeScript types from its own schemas:
-
-```ts
-// Generated from the workspace's own schemas/app.k
-import type { App } from './generated/schemas';
-
-const apps = await akua.doc.list({ kind: 'App', filter: { 'spec.env': 'production' } });
-for (const ref of apps) {
-  const app = await akua.doc.get<App>(ref.path);
-  // app is fully typed against the workspace's App schema
-}
-```
-
-Type generation is a workspace-local concern: `akua export schemas/app.k --format=typescript > generated/app.ts`. akua does not ship an `App` TypeScript type because it does not specify an `App` schema.
-
----
-
-## Deploy API
-
-```ts
-interface DeployAPI {
-  apply(opts: DeployOptions): Promise<DeployHandle>;
-  status(handle: string): Promise<DeployStatus>;
-  history(opts?: { service?: string; last?: number }): Promise<DeployRecord[]>;
-  rollback(changeId: string, opts?: { dryRun?: boolean }): Promise<DeployHandle>;
-  cancel(handle: string): Promise<void>;
-}
-
-interface DeployOptions {
-  app?: string;
-  path?: string;
-  to: 'argo' | 'flux' | 'kro' | 'helm' | 'kubectl' | string;
-  inputs?: Record<string, unknown>;
-  idempotencyKey?: string;
-}
-
-interface DeployHandle {
-  id: string;
-  target: string;
-  status: () => Promise<DeployStatus>;
-  wait(opts?: { timeout?: string }): Promise<DeployStatus>;
-  waitReady(opts?: { timeout?: string }): Promise<DeployStatus>;
-  cancel(): Promise<void>;
-  stream(): AsyncIterable<DeployEvent>;
-}
-
-interface DeployStatus {
-  handle: string;
-  phase: 'pending' | 'applying' | 'reconciling' | 'healthy' | 'degraded' | 'failed';
-  health: 'healthy' | 'degraded' | 'unknown';
-  ready: number;
-  total: number;
-  startedAt: string;
-  lastEvent: string;
-  prUrl?: string;
-}
-```
-
----
-
-## Secret API
-
-```ts
-interface SecretAPI {
-  list(opts?: { store?: string }): Promise<SecretSummary[]>;
-  get(name: string): Promise<SecretRef>;               // returns ref, never raw value
-  add(opts: SecretAddOptions): Promise<SecretRef>;
-  rotate(name: string, opts?: { idempotencyKey?: string }): Promise<SecretRef>;
-  grant(name: string, opts: GrantOptions): Promise<void>;
-  revoke(name: string, opts: { from: string }): Promise<void>;
-  trace(name: string): Promise<SecretTrace>;
-  delete(name: string): Promise<void>;                  // needs-approval in most tiers
-}
-
-interface SecretRef {
-  name: string;
-  store: string;
-  ref: string;                  // e.g. "vault://secrets/x/api-key"
-  rotation?: { policy: string; lastRotated: string; nextDue: string };
-}
-
-interface SecretTrace extends SecretRef {
-  grants: Array<{ service: string; scope: 'read' | 'write'; grantedAt: string }>;
-  lastAccess?: string;
-}
-```
-
----
-
-## Policy API
-
-```ts
-interface PolicyAPI {
-  // Evaluation
-  check(opts: PolicyCheckOptions): Promise<PolicyVerdict>;
-
-  // Authoring
-  tiers(): Promise<PolicyTierInfo[]>;
-  show(tier: string): Promise<PolicyDefinition>;
-  diff(a: string, b: string): Promise<PolicyDiff>;
-  install(tier: string, opts?: { from?: string }): Promise<void>;
-  fork(tier: string, opts: { as: string }): Promise<PolicyDefinition>;
-  publish(tier: string, opts?: { idempotencyKey?: string }): Promise<PublishResult>;
-  export(tier: string, opts: { format: 'rego-bundle' | 'yaml' }): Promise<string>;
-
-  // Develop
-  test(opts?: PolicyTestOptions): Promise<TestResult>;
-  explain(query: string, opts?: PolicyExplainOptions): Promise<PolicyTrace>;
-  bench(opts?: PolicyBenchOptions): Promise<BenchResult>;
-  coverage(opts?: { min?: number; format?: 'json' | 'lcov' }): Promise<CovResult>;
-  fmt(opts?: FmtOptions): Promise<FmtResult>;
-  lint(opts?: LintOptions): Promise<LintResult>;  // Regal + cross-engine
-  eval(query: string, opts?: { input?: unknown }): Promise<EvalResult>;
-}
-
-interface PolicyTestOptions {
-  path?: string;
-  filter?: RegExp | string;
-  coverage?: boolean;
-  watch?: boolean;
-  engine?: 'auto' | 'embedded';
-}
-
-interface PolicyExplainOptions {
-  input?: unknown;            // the document to evaluate against
-  depth?: 'notes' | 'fails' | 'full' | 'debug';   // OPA --explain mode
-  data?: string;              // policy bundle directory
-}
-
-interface PolicyTrace {
-  query: string;
-  verdict: 'allow' | 'deny' | 'needs-approval';
-  steps: Array<{
-    rule: string;
-    evaluated: boolean;
-    result?: unknown;
-    location?: { file: string; line: number };
-  }>;
-}
-
-interface PolicyBenchOptions {
-  tier?: string;
-  input?: unknown;
-  iterations?: number;
-  p99MaxMs?: number;          // fail if p99 exceeds (CI gate)
-}
-
-interface PolicyCheckOptions {
-  tier?: string;
-  targetPath?: string;           // directory of rendered manifests
-  manifests?: unknown[];         // or pass them inline
-}
-
-interface PolicyVerdict {
-  tier: string;
-  verdict: 'allow' | 'deny' | 'needs-approval';
-  checks: Record<string, 'pass' | 'warn' | 'fail'>;
-  failing: Array<{
-    rule: string;
-    resource: string;
-    reason: string;
-    suggestedFix?: string;
-  }>;
-  approvers?: string[];
-}
-```
-
----
-
-## Audit API
-
-```ts
-interface AuditAPI {
-  explain(id: string): Promise<AuditExplanation>;
-  trace(opts: TraceOptions): Promise<AuditEvent[]>;
-  search(opts: SearchOptions): Promise<AuditEvent[]>;
-  export(opts: ExportOptions): Promise<ReadableStream<Uint8Array>>;
-  who(resource: string): Promise<PermissionList>;
-}
-
-interface AuditExplanation {
-  incidentId: string;
-  trigger: { type: string; service?: string; at: string };
-  rootCause: {
-    changeId: string;
-    actor: string;
-    reason: string;
-    committedAt: string;
-  };
-  resolution?: {
-    action: 'rollback' | 'forward-fix' | 'accept';
-    changeId?: string;
-    actor?: string;
-    completedAt?: string;
-  };
-  durationMinutes: number;
-  learned?: string;
-}
-```
-
----
-
-## Query API
-
-```ts
-interface QueryAPI {
-  run(expr: string, opts?: QueryOptions): Promise<QueryResult>;
-  stream(expr: string, opts?: QueryOptions): AsyncIterable<QueryResult>;
-}
-
-interface QueryOptions {
-  backend?: 'prometheus' | 'loki' | 'tempo' | 'auto';
-  since?: string;                // duration, e.g. '1h'
-  until?: string;
-  step?: string;                 // for stream
-}
-
-interface QueryResult {
-  query: string;
-  backend: string;
-  result: {
-    value?: number;
-    values?: Array<[timestamp: number, value: number]>;
-    baseline?: number;
-    changePct?: number;
-    samples?: number;
-  };
-}
-```
-
----
-
-## Rollout API
-
-```ts
-interface RolloutAPI {
-  plan(spec: RolloutSpec): Promise<RolloutPlan>;
-  apply(spec: RolloutSpec, opts?: ApplyOptions): Promise<RolloutHandle>;
-  status(handle: string): Promise<RolloutStatus>;
-  pause(handle: string): Promise<void>;
-  resume(handle: string): Promise<void>;
-  abort(handle: string): Promise<void>;     // triggers rollback
-}
-
-interface RolloutSpec {
-  name: string;
-  changes: Array<{ repo: string; path: string; patch: Record<string, unknown> }>;
-  strategy?: 'parallel' | 'staged' | 'canary';
-  batchSize?: number;
-  soak?: string;
-  policyTier?: string;
-}
-
-interface RolloutHandle {
-  id: string;
-  status(): Promise<RolloutStatus>;
-  wait(opts?: { timeout?: string }): Promise<RolloutStatus>;
-  stream(): AsyncIterable<RolloutEvent>;
-}
-
-interface RolloutStatus {
-  handle: string;
-  phase: 'planning' | 'running' | 'paused' | 'complete' | 'aborted' | 'failed';
-  stages: Array<{
-    name: string;
-    status: 'pending' | 'running' | 'soak' | 'complete' | 'failed';
-    completedAt?: string;
-  }>;
-  currentStage?: string;
-  progress: { done: number; total: number };
-}
-```
-
----
-
-## Dev session (streaming)
-
-```ts
-interface DevOptions {
-  path?: string;
-  target?: 'local' | 'dry-run' | `cluster:${string}`;
-  port?: number;
-  policy?: string;
-  fresh?: boolean;
-  inputs?: Record<string, unknown>;
-}
-
-interface DevSession {
-  url: string;                          // browser UI URL
-  target: string;
-  stop(): Promise<void>;
-  events(): AsyncIterable<DevEvent>;
-  on(event: 'render', handler: (e: RenderEvent) => void): () => void;
-  on(event: 'apply', handler: (e: ApplyEvent) => void): () => void;
-  on(event: 'policy', handler: (e: PolicyEvent) => void): () => void;
-  on(event: 'error', handler: (e: DevErrorEvent) => void): () => void;
-}
-
-interface DevEvent {
-  t: number;                            // unix ms
-  stage: 'parse' | 'validate' | 'render' | 'policy' | 'diff' | 'apply' | 'reconcile';
-  app?: string;
-  resource?: string;
-  durationMs?: number;
-  status: 'ok' | 'warn' | 'error';
-  outputHash?: string;
-  details?: Record<string, unknown>;
-}
-```
-
-### Usage example
-
-```ts
-const session = await akua.dev({ path: './my-workspace' });
-console.log('browser UI:', session.url);
-
-// Events stream
-for await (const event of session.events()) {
-  if (event.stage === 'reconcile' && event.status === 'ok') {
-    console.log(`${event.resource} reconciled in ${event.durationMs}ms`);
-  }
-  if (event.status === 'error') {
-    break;
-  }
-}
-
-await session.stop();
-```
-
----
-
-## Registry API
-
-```ts
-interface RegistryAPI {
-  login(registry: string, opts: LoginOptions): Promise<void>;
-  logout(registry?: string): Promise<void>;
-  list(): Promise<Array<{ url: string; user: string; expiresAt?: string }>>;
-  verify(ref: string): Promise<VerificationResult>;
-}
-
-interface VerificationResult {
-  ref: string;
-  digest: string;
-  signed: boolean;
-  signer?: string;
-  signatureValid: boolean;
-  attestations: Array<{
-    predicateType: string;
-    subject: { digest: string };
-    issuer?: string;
-  }>;
-}
-```
-
----
-
-## Shared result types
-
-Types used by the develop-verb methods (`test`, `fmt`, `lint`, `check`, `bench`, `cov`, `eval`, `export`) across Package and Policy APIs.
-
-```ts
-interface TestResult {
-  summary: { passed: number; failed: number; skipped: number; durationMs: number };
-  results: Array<{
-    file: string;
-    test: string;
-    status: 'pass' | 'fail' | 'skip';
-    durationMs: number;
-    message?: string;
-  }>;
-  coverage?: { overall: number; byRule: Record<string, number> };
-}
-
-interface FmtResult {
-  formatted: string[];        // files modified
-  unchanged: string[];        // files already correct
-}
-
-interface LintResult {
-  issues: Array<{
-    file: string;
-    line: number;
-    col?: number;
-    rule: string;
-    severity: 'warn' | 'error';
-    message: string;
-    fix?: string;
-  }>;
-  summary: { warn: number; error: number };
-}
-
-interface CheckResult {
-  valid: boolean;
-  summary: { files: number; errors: number; warnings: number; durationMs: number };
-  errors?: Array<{ file: string; line: number; code: string; message: string; suggestion?: string }>;
-}
-
-interface BenchResult {
-  benchmarks: Array<{
-    name: string;
-    iterations: number;
-    totalMs: number;
-    meanUs: number;
-    p99Us: number;
-    rulesEvaluated?: number;
-  }>;
-}
-
-interface CovResult {
-  overall: number;
-  byRule: Record<string, number>;
-  bySchema?: Record<string, number>;
-  uncovered: string[];
-}
-
-interface EvalResult {
-  lang: 'rego' | 'kcl';
-  query: string;
-  result: unknown;
-  durationMs: number;
-}
-
-interface ExportOptions {
-  // Top-level export — dispatches to PackageAPI.export / PolicyAPI.export /
-  // AppAPI.export / etc. based on the target.
-  target?: string;            // "app:checkout", "policy:tier/production", "package:."
-  format: 'json-schema' | 'openapi' | 'yaml' | 'json' | 'rego-bundle' | 'oci-bundle';
-  outFile?: string;
-  pretty?: boolean;
-}
-
-interface ExportResult {
-  format: string;
-  bytes: number;
-  path?: string;
-  content?: string;
-}
-
-interface VerifyResult {
-  valid: boolean;                    // akua.toml ↔ akua.lock consistency
-  issues: Array<{
-    dep: string;
-    issue: 'digest-mismatch' | 'signature-invalid' | 'unsigned' | 'missing';
-    details: string;
-  }>;
-}
-```
-
-## Identity — agent context
-
-`whoami()` returns the current identity including any detected agent context:
-
-```ts
-interface Identity {
-  identity: string;
-  registries: Array<{ url: string; user: string; expiresAt?: string }>;
-  scopes: string[];
-  agentContext?: {
-    detected: boolean;
-    agent?: string;             // 'claude-code' | 'cursor' | 'codex' | 'gemini-cli' | ...
-    sourceEnv?: string;         // the env var that triggered detection
-  };
-}
-```
-
-When an agent runs `akua whoami --json`, the `agentContext` field is populated from the env-var-based auto-detection (see [cli-contract.md §1.5](cli-contract.md#15-agent-context-auto-detection)). Useful for agents verifying they're operating inside the expected runtime.
-
-## Error handling
-
-Every SDK method throws a typed `AkuaError` on failure:
-
-```ts
-class AkuaError extends Error {
-  code: string;                         // e.g. 'E_SCHEMA_INVALID'
-  exitCode: number;                     // CLI exit code (1-6)
-  path?: string;
-  field?: string;
-  suggestion?: string;
-  docsUrl?: string;
-  cause?: unknown;
-}
-```
-
-Agents branch on `code` or `exitCode`:
-
-```ts
 try {
-  await akua.deploy({ to: 'argo', app: 'checkout' });
+  await akua.render({ package: './package.k', out: './deploy' });
 } catch (err) {
-  if (err instanceof AkuaError) {
-    if (err.exitCode === 3) {
-      // policy denied; check err.field for which rule
-    } else if (err.exitCode === 5) {
-      // needs approval; wait for human
-    } else {
-      throw err;
-    }
+  if (err instanceof AkuaRateLimitedError) {
+    // retry later
+  } else if (err instanceof AkuaUserError) {
+    console.error(err.structured?.code);
   } else {
     throw err;
   }
@@ -898,62 +171,9 @@ try {
 
 ---
 
-## Browser
+## Related References
 
-Same `Akua` class, same single `@akua-dev/sdk` import. When the browser build + engine bundling (see [docs/roadmap.md § Phase 4B](roadmap.md#phase-4b--akua-wasm-for-jsr-delivery-blocks-v010)) land, the `"browser"` conditional export resolves to a bundler-target WASM build that loads the Rust core once, lazily, and runs render / diff / verify / inspect entirely in-page. No CLI shell-out — `execFile` isn't available in the browser, and SDK methods that would need it throw `E_WRITE_UNSUPPORTED_IN_BROWSER`.
-
-Expected availability in-browser once shipped:
-
-- `akua.inspect`, `akua.diff`, `akua.renderSource`, `akua.render` (public OCI/HTTP sources only — CORS permitting), `akua.verify`, `akua.help`
-
-Expected to throw in-browser (no filesystem, no credential store, no cluster access):
-
-- `akua.publish`, `akua.attest`, `akua.deploy`, `akua.rollout`, `akua.secret.*`, `akua.audit.*`, `akua.query.*`, `akua.login`
-
-For v0.1.0 the Node-loadable bundle ships first; browser is deferred to v0.2.0 per [docs/spikes/engines-on-wasm32-unknown-unknown.md](spikes/engines-on-wasm32-unknown-unknown.md). Adding the `"browser"` condition to `package.json` is a minor-version bump (additive, non-breaking) once the helm/kustomize engines are reachable from the browser runtime.
-
----
-
-## Stability contract
-
-- Public types (`AkuaOptions`, all API interfaces, error shapes) are stable from v1.0.
-- Private types (prefixed with `_`) can change between minors.
-- New methods can be added without bumping major.
-- Method removal requires deprecation cycle.
-
----
-
-## Relationship to the CLI
-
-The SDK is a thin wrapper. Internally it either:
-- Spawns the `akua` binary with `--json` and parses the result, or
-- (v0.3+) calls the Rust core via WASM directly in-process.
-
-This means:
-- Every SDK feature has a CLI equivalent.
-- CLI behavior and SDK behavior are identical for the same input.
-- Contract changes to the CLI are reflected one-for-one in the SDK.
-
-You can always reach for the CLI if the SDK is missing something. You can always reach for the SDK if scripting from Node is nicer than shell.
-
----
-
-## What's not in the SDK
-
-- UI components. The browser playground at `akua.dev` has its own UI layer; the SDK doesn't ship React components.
-- Reconciler-specific libraries. The SDK invokes `akua deploy`; it doesn't re-implement Argo's client or Flux's client.
-- Custom target drivers. Adding a new `--to=<driver>` target is a CLI plugin, not an SDK extension.
-
-## Spec cross-references
-
-The SDK's types mirror the underlying format specs. For the authoritative data shapes:
-
-- **Package** (KCL program, the one akua-specified shape) — [package-format.md](package-format.md)
-- **Policy** (Rego host + pluggable engines) — [policy-format.md](policy-format.md)
-- **Lockfile** (`akua.toml` + `akua.lock`) — [lockfile-format.md](lockfile-format.md)
-- **CLI contract** (invariants every method honors) — [cli-contract.md](cli-contract.md)
-- **CLI reference** (the verbs the SDK methods mirror) — [cli.md](cli.md)
-- **Embedded engines** (`engine?: 'auto' | 'embedded'`) — [embedded-engines.md](embedded-engines.md)
-- **Agent usage + auto-detection** — [agent-usage.md](agent-usage.md)
-
-TypeScript types in `@akua-dev/sdk` are generated from the same akua-specified schemas the CLI consumes (Package, Policy, akua.toml — the shapes akua owns), so a field shape in the SDK always matches the file-format spec. When the spec evolves, the generated types follow on the next `@akua-dev/sdk` release.
+- [CLI reference](cli.md)
+- [CLI contract](cli-contract.md)
+- [Package format](package-format.md)
+- [Security model](security-model.md)

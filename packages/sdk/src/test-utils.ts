@@ -58,3 +58,30 @@ resources = [{
     data.count: str(input.replicas)
 }]
 `;
+
+export const MINIMAL_AKUA_TOML = `[package]
+name = "smoke"
+version = "0.0.1"
+edition = "akua.dev/v1alpha1"
+`;
+
+export function largeCrdPackageK(count = 750, descriptionBytes = 1024): string {
+	const resources = Array.from(
+		{ length: count },
+		(_, index) => `{
+    apiVersion: "apiextensions.k8s.io/v1"
+    kind: "CustomResourceDefinition"
+    metadata.name: "widgets-${index}.example.com"
+    spec.schema.description: "${'x'.repeat(descriptionBytes)}"
+  }`,
+	).join(',\n');
+
+	return `
+schema Input:
+    name: str = "demo"
+
+resources = [
+${resources}
+]
+`;
+}

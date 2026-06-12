@@ -167,6 +167,45 @@ mod tests {
         Value::Mapping(r)
     }
 
+    fn mk_crd_resource(index: usize) -> Value {
+        let mut metadata = serde_yaml::Mapping::new();
+        metadata.insert(
+            Value::String("name".into()),
+            Value::String(format!("widgets-{index}.example.com")),
+        );
+
+        let mut schema = serde_yaml::Mapping::new();
+        schema.insert(Value::String("type".into()), Value::String("object".into()));
+        schema.insert(
+            Value::String("description".into()),
+            Value::String("x".repeat(1024)),
+        );
+
+        let mut spec = serde_yaml::Mapping::new();
+        spec.insert(
+            Value::String("group".into()),
+            Value::String("example.com".into()),
+        );
+        spec.insert(
+            Value::String("scope".into()),
+            Value::String("Namespaced".into()),
+        );
+        spec.insert(Value::String("schema".into()), Value::Mapping(schema));
+
+        let mut resource = serde_yaml::Mapping::new();
+        resource.insert(
+            Value::String("apiVersion".into()),
+            Value::String("apiextensions.k8s.io/v1".into()),
+        );
+        resource.insert(
+            Value::String("kind".into()),
+            Value::String("CustomResourceDefinition".into()),
+        );
+        resource.insert(Value::String("metadata".into()), Value::Mapping(metadata));
+        resource.insert(Value::String("spec".into()), Value::Mapping(spec));
+        Value::Mapping(resource)
+    }
+
     fn pkg(resources: Vec<Value>) -> RenderedPackage {
         RenderedPackage { resources }
     }
@@ -228,6 +267,24 @@ mod tests {
         let a = render(&pkg(vec![mk_resource("ConfigMap", "x")]), tmp.path(), true).unwrap();
         let b = render(&pkg(vec![cm]), tmp.path(), true).unwrap();
         assert_ne!(a.hash, b.hash);
+    }
+
+    #[test]
+    fn large_resource_sets_keep_summary_small_and_hash_stable() {
+        let tmp = TempDir::new().unwrap();
+        let resources = (0..750).map(mk_crd_resource).collect::<Vec<_>>();
+        let summary = render(&pkg(resources), tmp.path(), true).unwrap();
+
+        assert_eq!(summary.manifests, 750);
+        assert_eq!(summary.files.len(), 750);
+        assert!(summary.hash.starts_with("sha256:"));
+
+        let json = serde_json::to_string(&summary).unwrap();
+        assert!(
+            json.len() < 80_000,
+            "RenderSummary should not serialize the rendered resource graph; got {} bytes",
+            json.len()
+        );
     }
 
     #[test]

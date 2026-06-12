@@ -248,6 +248,57 @@ resources = []
     }
 
     #[test]
+    fn export_ignores_large_resources_body_and_emits_only_input_schema() {
+        let resources = (0..750)
+            .map(|i| {
+                format!(
+                    r#"{{
+    apiVersion = "apiextensions.k8s.io/v1"
+    kind = "CustomResourceDefinition"
+    metadata.name = "widgets-{i}.example.com"
+    spec.schema.description = "{}"
+}}"#,
+                    "x".repeat(1024)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",\n");
+        let package = format!(
+            r#"
+schema Input:
+    name: str = "demo"
+
+resources = [
+{resources}
+]
+"#
+        );
+        let (_tmp, path) = write_package(&package);
+        let mut stdout = Vec::new();
+
+        run(
+            &Context::json(),
+            &ExportArgs {
+                package_path: &path,
+                format: ExportFormat::Openapi,
+                out: None,
+            },
+            &mut stdout,
+        )
+        .expect("export");
+
+        let body = String::from_utf8(stdout).unwrap();
+        let parsed: Value = serde_json::from_str(body.trim()).unwrap();
+        assert!(parsed["schema"]["components"]["schemas"]["Input"].is_object());
+        assert!(
+            body.len() < 20_000,
+            "export should not include rendered resources; got {} bytes",
+            body.len()
+        );
+        assert!(!body.contains("widgets-749.example.com"));
+    }
+
+    #[test]
     fn out_writes_file_and_human_prints_confirmation() {
         let (tmp, path) = write_package(PKG);
         let target = tmp.path().join("inputs.schema.json");

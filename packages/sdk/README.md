@@ -10,7 +10,7 @@ pnpm add @akua-dev/sdk
 npm  install @akua-dev/sdk
 ```
 
-Node 22+ / Bun 1.3+. Browser target deferred to v0.2.x (the napi addon is host-side; a `wasm32-unknown-unknown` bundle is the path forward — see [docs/spikes/engines-on-wasm32-unknown-unknown.md](../../docs/spikes/engines-on-wasm32-unknown-unknown.md)).
+Node 22+ / Bun 1.3+. Browser support is deferred because the napi addon is host-side; a `wasm32-unknown-unknown` bundle is the path forward. See [docs/spikes/engines-on-wasm32-unknown-unknown.md](../../docs/spikes/engines-on-wasm32-unknown-unknown.md).
 
 `bun add` resolves the right per-platform binary via `optionalDependencies` on `@akua-dev/native-{darwin,linux,win32}-*`. The meta package is `@akua-dev/native`; the SDK depends on it transitively.
 
@@ -21,13 +21,17 @@ import { Akua, AkuaUserError, AkuaRateLimitedError } from '@akua-dev/sdk';
 
 const akua = new Akua();
 
-const yaml = await akua.renderSource('package.k', PACKAGE_K_SOURCE, { replicas: 3 });
+const yaml = await akua.renderSource({
+  packageFilename: 'package.k',
+  source: PACKAGE_K_SOURCE,
+  inputs: { replicas: 3 },
+});
 const lint = await akua.lint({ package: './package.k' });
 const tree = await akua.tree({ workspace: '.' });
 const summary = await akua.render({ package: './package.k', out: './deploy' });
 ```
 
-Every method returns a typed result validated against a JSON Schema generated from the same Rust `serde` types the CLI emits. Contract drift throws at the parse boundary, not as `undefined.field` later:
+Object-returning methods use typed results, and most validate their result against JSON Schema generated from the same Rust `serde` types the CLI emits. Methods without schema validation still keep explicit contracts: `renderSource()` returns raw rendered YAML as a string, and `add()` returns the native add result.
 
 ```ts
 try {
@@ -78,5 +82,4 @@ See [`.github/workflows/release.yml`](../../.github/workflows/release.yml) for t
 
 ## Still coming
 
-- Browser target — bundler-build path requires `helm-engine-wasm` / `kustomize-engine-wasm` to compile to `wasm32-unknown-unknown` (currently `wasm32-wasip1` only). See [docs/spikes/engines-on-wasm32-unknown-unknown.md](../../docs/spikes/engines-on-wasm32-unknown-unknown.md).
-- Engine `.wasm` deduplicated across platform packages via a single `@akua-dev/native-engines` package — currently each per-platform addon embeds its own copy.
+- Browser support — bundler-build path requires `helm-engine-wasm` / `kustomize-engine-wasm` to compile to `wasm32-unknown-unknown` (currently `wasm32-wasip1` only). See [docs/spikes/engines-on-wasm32-unknown-unknown.md](../../docs/spikes/engines-on-wasm32-unknown-unknown.md).
