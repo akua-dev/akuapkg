@@ -1310,17 +1310,11 @@ fn run_api(
                     return ExitCode::UserError;
                 }
             };
-            match api_verb::build_request_plan(&ctx, &request.into()) {
-                Ok(_) => emit_structured(
-                    &ctx,
-                    &StructuredError::new(
-                        akua_core::cli_contract::codes::E_UNSUPPORTED,
-                        "`akua api` request execution is not implemented yet",
-                    )
-                    .with_default_docs(),
-                    ExitCode::UserError,
-                ),
-                Err(err) => emit_structured(&ctx, &err, ExitCode::UserError),
+            let args = request.into();
+            let mut stdout = io::stdout().lock();
+            match api_verb::run(&ctx, &args, &mut stdout) {
+                Ok(code) => code,
+                Err(err) => emit_structured(&ctx, &err.to_structured(), err.exit_code()),
             }
         }
     }

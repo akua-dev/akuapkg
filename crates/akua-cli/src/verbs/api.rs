@@ -1,6 +1,11 @@
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
-use akua_core::cli_contract::{codes, StructuredError};
+use akua_core::cli_contract::{codes, ExitCode, StructuredError};
+use akua_core::duration_parse::parse_go_duration;
+use reqwest::StatusCode;
+use serde::Deserialize;
 use serde_json::{Map, Value};
 
 use crate::api_config::{resolve_api_config_from_env, resolve_required_token, ApiConfigInput};
@@ -30,6 +35,59 @@ pub struct RequestPlan {
     pub url: reqwest::Url,
     pub headers: Vec<(String, String)>,
     pub body: Option<Value>,
+}
+
+#[derive(Debug)]
+pub struct ApiExecutionError {
+    structured: StructuredError,
+    exit_code: ExitCode,
+}
+
+impl ApiExecutionError {
+    fn new(structured: StructuredError, exit_code: ExitCode) -> Self {
+        Self {
+            structured,
+            exit_code,
+        }
+    }
+
+    pub fn to_structured(&self) -> StructuredError {
+        self.structured.clone()
+    }
+
+    pub fn exit_code(&self) -> ExitCode {
+        self.exit_code
+    }
+}
+
+pub fn run<W: Write>(
+    ctx: &Context,
+    args: &ApiArgs,
+    stdout: &mut W,
+) -> Result<ExitCode, ApiExecutionError> {
+    let plan = build_request_plan(ctx, args)
+        .map_err(|err| ApiExecutionError::new(err, ExitCode::UserError))?;
+    let client = build_client(ctx)?;
+    let response = send_request(&client, &plan)?;
+    let status = response.status();
+    let body = response.text().map_err(map_transport_error)?;
+
+    if status.is_success() {
+        if !args.silent {
+            stdout
+                .write_all(body.as_bytes())
+                .map_err(map_stdout_error)?;
+            if !body.is_empty() && !body.ends_with('\n') {
+                writeln!(stdout).map_err(map_stdout_error)?;
+            }
+        }
+        return Ok(ExitCode::Success);
+    }
+
+    Err(ApiExecutionError::new(
+        structured_http_error(status, &plan, &body),
+        exit_code_for_status(status),
+    ))
 }
 
 pub fn build_request_plan(ctx: &Context, args: &ApiArgs) -> Result<RequestPlan, StructuredError> {
@@ -93,6 +151,159 @@ pub fn build_request_plan(ctx: &Context, args: &ApiArgs) -> Result<RequestPlan, 
     })
 }
 
+fn build_client(ctx: &Context) -> Result<reqwest::blocking::Client, ApiExecutionError> {
+    let timeout = match ctx.timeout.as_deref() {
+        Some(raw) => Some(parse_go_duration(raw).map_err(|reason| {
+            ApiExecutionError::new(
+                StructuredError::new(
+                    codes::E_INVALID_FLAG,
+                    format!("--timeout `{raw}`: {reason}"),
+                )
+                .with_suggestion("--timeout takes a Go-duration string: 30s, 5m, 1h, 250ms.")
+                .with_default_docs(),
+                ExitCode::UserError,
+            )
+        })?),
+        None => Some(Duration::from_secs(30)),
+    };
+
+    reqwest::blocking::Client::builder()
+        .timeout(timeout)
+        .build()
+        .map_err(|source| {
+            ApiExecutionError::new(
+                StructuredError::new(
+                    codes::E_API_REQUEST,
+                    format!("failed to build API HTTP client: {source}"),
+                )
+                .with_default_docs(),
+                ExitCode::SystemError,
+            )
+        })
+}
+
+fn send_request(
+    client: &reqwest::blocking::Client,
+    plan: &RequestPlan,
+) -> Result<reqwest::blocking::Response, ApiExecutionError> {
+    let mut request = client.request(plan.method.clone(), plan.url.clone());
+    for (name, value) in &plan.headers {
+        request = request.header(name.as_str(), value.as_str());
+    }
+    if let Some(body) = &plan.body {
+        request = request.json(body);
+    }
+
+    request.send().map_err(map_transport_error)
+}
+
+fn map_transport_error(source: reqwest::Error) -> ApiExecutionError {
+    if source.is_timeout() {
+        return ApiExecutionError::new(
+            StructuredError::new(
+                codes::E_API_REQUEST,
+                format!("API request timed out: {source}"),
+            )
+            .with_suggestion("Pass a larger --timeout value, or retry the request later.")
+            .with_default_docs(),
+            ExitCode::Timeout,
+        );
+    }
+
+    let exit_code = if source.is_builder() {
+        ExitCode::UserError
+    } else {
+        ExitCode::SystemError
+    };
+    let code = if source.is_builder() {
+        codes::E_INVALID_FLAG
+    } else {
+        codes::E_API_REQUEST
+    };
+
+    ApiExecutionError::new(
+        StructuredError::new(code, format!("API request failed: {source}")).with_default_docs(),
+        exit_code,
+    )
+}
+
+fn map_stdout_error(source: std::io::Error) -> ApiExecutionError {
+    ApiExecutionError::new(
+        StructuredError::new(
+            codes::E_IO,
+            format!("failed to write API response to stdout: {source}"),
+        )
+        .with_default_docs(),
+        ExitCode::SystemError,
+    )
+}
+
+fn structured_http_error(status: StatusCode, plan: &RequestPlan, body: &str) -> StructuredError {
+    let code = error_code_for_status(status);
+    if let Some(platform) = parse_platform_error(body) {
+        let mut structured =
+            StructuredError::new(code, platform.message).with_path(plan.url.path().to_string());
+        if let Some(field) = platform.field {
+            structured = structured.with_field(field);
+        }
+        return structured.with_default_docs();
+    }
+
+    StructuredError::new(
+        code,
+        format!("API request failed with HTTP status {}", status.as_u16()),
+    )
+    .with_path(plan.url.path().to_string())
+    .with_default_docs()
+}
+
+fn parse_platform_error(body: &str) -> Option<ParsedPlatformError> {
+    let envelope: PlatformEnvelope = serde_json::from_str(body).ok()?;
+    if envelope.success {
+        return None;
+    }
+    let first = envelope.errors.into_iter().next()?;
+    Some(ParsedPlatformError {
+        message: first.message,
+        field: first.path.map(|path| path.join(".")),
+    })
+}
+
+fn error_code_for_status(status: StatusCode) -> &'static str {
+    match status {
+        StatusCode::UNAUTHORIZED => codes::E_AUTH_INVALID,
+        StatusCode::FORBIDDEN => codes::E_FORBIDDEN,
+        _ => codes::E_API_REQUEST,
+    }
+}
+
+fn exit_code_for_status(status: StatusCode) -> ExitCode {
+    match status {
+        StatusCode::TOO_MANY_REQUESTS => ExitCode::RateLimited,
+        status if status.is_server_error() => ExitCode::SystemError,
+        _ => ExitCode::UserError,
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct PlatformEnvelope {
+    success: bool,
+    #[serde(default)]
+    errors: Vec<PlatformError>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PlatformError {
+    message: String,
+    path: Option<Vec<String>>,
+}
+
+#[derive(Debug)]
+struct ParsedPlatformError {
+    message: String,
+    field: Option<String>,
+}
+
 pub fn parse_field_value(raw: &str) -> Value {
     match raw {
         "true" => Value::Bool(true),
@@ -117,6 +328,8 @@ pub fn insert_field(
 fn reject_deferred_response_processing(args: &ApiArgs) -> Result<(), StructuredError> {
     let unsupported = if args.jq.is_some() {
         Some("--jq")
+    } else if args.include {
+        Some("--include")
     } else if args.paginate {
         Some("--paginate")
     } else if args.slurp {
@@ -604,6 +817,11 @@ mod tests {
             {
                 let mut args = api_args("/workspaces");
                 args.slurp = true;
+                args
+            },
+            {
+                let mut args = api_args("/workspaces");
+                args.include = true;
                 args
             },
         ] {
