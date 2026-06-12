@@ -3,6 +3,7 @@
 //! the resolved tarball's tree sha256 is recorded in `akua.lock` and
 //! verified on every pull. No cosign; `.prov`/GPG is a future opt-in.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::io::Read;
 
@@ -149,11 +150,7 @@ pub fn select_version(
             chart: chart.to_string(),
         })?;
 
-    let req =
-        semver::VersionReq::parse(version_req).map_err(|e| HelmRepoFetchError::BadRequirement {
-            req: version_req.to_string(),
-            detail: e.to_string(),
-        })?;
+    let req = parse_version_req(version_req)?;
 
     let mut best: Option<(semver::Version, &IndexEntry)> = None;
     for entry in entries {
@@ -198,6 +195,20 @@ pub fn select_version(
         })?
         .clone();
     Ok((ver.to_string(), url))
+}
+
+fn parse_version_req(version_req: &str) -> Result<semver::VersionReq, HelmRepoFetchError> {
+    let trimmed = version_req.trim();
+    let normalized = trimmed.strip_prefix('v').unwrap_or(trimmed);
+    let req = if semver::Version::parse(normalized).is_ok() {
+        Cow::Owned(format!("={normalized}"))
+    } else {
+        Cow::Borrowed(trimmed)
+    };
+    semver::VersionReq::parse(&req).map_err(|e| HelmRepoFetchError::BadRequirement {
+        req: version_req.to_string(),
+        detail: e.to_string(),
+    })
 }
 
 /// Resolve a tarball URL from `index.yaml` against the repo base.
@@ -591,20 +602,23 @@ entries:
       urls: ["charts/vcluster-0.33.0.tgz"]
 "#;
         let idx = parse_index(IDX).unwrap();
-        // `=0.34.0` pins exactly (a bare `0.34.0` is a caret range that
-        // would pick the higher `0.34.1`). The point of the regression is
+        // A bare version pins exactly. The point of the regression is
         // that the `v`-prefixed pre-release siblings no longer abort the
         // whole resolution before the target is even considered.
-        let (v, url) = select_version(&idx, "vcluster", "=0.34.0").unwrap();
+        let (v, url) = select_version(&idx, "vcluster", "0.34.0").unwrap();
         assert_eq!(
             v, "0.34.0",
             "exact target resolves despite v-prefixed siblings"
         );
         assert_eq!(url, "charts/vcluster-0.34.0.tgz");
 
-        // And a caret request resolves to the highest plain release in the
-        // 0.34.x line (0.34.1), confirming pre-releases stay excluded.
-        let (caret, _) = select_version(&idx, "vcluster", "0.34.0").unwrap();
+        let (prefixed, _) = select_version(&idx, "vcluster", "v0.34.0").unwrap();
+        assert_eq!(prefixed, "0.34.0", "user-supplied `v` is tolerated");
+
+        // And an explicit caret request resolves to the highest plain
+        // release in the 0.34.x line (0.34.1), confirming pre-releases
+        // stay excluded.
+        let (caret, _) = select_version(&idx, "vcluster", "^0.34.0").unwrap();
         assert_eq!(
             caret, "0.34.1",
             "caret picks highest non-prerelease in range"
