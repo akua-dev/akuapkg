@@ -82,11 +82,11 @@ impl TypeSpec {
         }
     }
 
-    /// Every declared type member, in source order (including `"null"`).
-    fn members(&self) -> Vec<&str> {
+    /// Maps declared type members in source order (including `"null"`).
+    fn find_map_member<T>(&self, mut f: impl FnMut(&str) -> Option<T>) -> Option<T> {
         match self {
-            TypeSpec::Single(s) => vec![s.as_str()],
-            TypeSpec::Union(v) => v.iter().map(String::as_str).collect(),
+            TypeSpec::Single(s) => f(s),
+            TypeSpec::Union(v) => v.iter().find_map(|member| f(member)),
         }
     }
 
@@ -247,13 +247,10 @@ impl SchemaGen {
         // common `["string","null"]` optionality idiom) drops through
         // to the primary fast path below — optionality is handled by
         // the field's `?` marker, not the type.
-        if let Some(TypeSpec::Union(_)) = schema.ty.as_ref() {
-            let non_null: Vec<&str> = schema
-                .ty
-                .as_ref()
-                .map(TypeSpec::members)
-                .unwrap_or_default()
-                .into_iter()
+        if let Some(TypeSpec::Union(members)) = schema.ty.as_ref() {
+            let non_null: Vec<&str> = members
+                .iter()
+                .map(String::as_str)
                 .filter(|t| *t != "null")
                 .collect();
             if non_null.len() > 1 {
@@ -310,7 +307,46 @@ fn primitive_kcl_type(json_type: &str) -> &'static str {
 /// the caller falls back to an unpopulated optional field.
 fn default_literal(schema: &JsonSchema) -> Option<String> {
     let v = schema.default.as_ref()?;
-    json_value_to_kcl(v)
+    match schema.ty.as_ref() {
+        Some(ty) => ty.find_map_member(|member| json_value_to_kcl_for_type(v, member)),
+        None => json_value_to_kcl(v),
+    }
+}
+
+fn json_value_to_kcl_for_type(v: &serde_json::Value, json_type: &str) -> Option<String> {
+    match json_type {
+        "null" => None,
+        "boolean" if v.is_boolean() => json_value_to_kcl(v),
+        "string" if v.is_string() => json_value_to_kcl(v),
+        "integer" => integer_value_to_kcl(v),
+        "number" if v.is_number() => json_value_to_kcl(v),
+        // Nested defaults require recursive validation against
+        // `items` / `properties`; omit them until we model that.
+        "array" | "object" => None,
+        // Unknown JSON Schema types collapse to KCL `any`.
+        _ if !matches!(
+            json_type,
+            "null" | "boolean" | "string" | "integer" | "number" | "array" | "object"
+        ) =>
+        {
+            json_value_to_kcl(v)
+        }
+        _ => None,
+    }
+}
+
+fn integer_value_to_kcl(v: &serde_json::Value) -> Option<String> {
+    if let Some(i) = v.as_i64() {
+        return Some(i.to_string());
+    }
+    if let Some(u) = v.as_u64() {
+        return Some(u.to_string());
+    }
+    let f = v.as_f64()?;
+    if f.is_finite() && f.fract() == 0.0 {
+        return Some(format!("{f:.0}"));
+    }
+    None
 }
 
 fn json_value_to_kcl(v: &serde_json::Value) -> Option<String> {
@@ -640,6 +676,72 @@ mod tests {
         assert!(
             !out.source.contains("port?: str = 8080") && !out.source.contains("port: str = 8080"),
             "emitted contradictory bare annotation:\n{}",
+            out.source
+        );
+    }
+
+    #[test]
+    fn contradictory_defaults_are_not_emitted() {
+        // Chart schemas in the wild can declare defaults that do not
+        // match their own type. Emitting `field: str = None` hands KCL
+        // a schema/default contradiction and can abort the evaluator at
+        // type-pack time during render.
+        let input = br#"{
+            "type": "object",
+            "properties": {
+                "nullableByDefault": { "type": "string", "default": null },
+                "nullableUnion": { "type": ["string", "null"], "default": null },
+                "wrongPrimitive": { "type": "string", "default": 80 },
+                "wrongArrayItem": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "default": [80]
+                },
+                "floatInteger": { "type": "integer", "default": 1.0 }
+            }
+        }"#;
+        let out = generate_from_bytes(input).unwrap();
+        assert!(
+            out.source.contains("nullableByDefault?: str"),
+            "{}",
+            out.source
+        );
+        assert!(out.source.contains("nullableUnion?: str"), "{}", out.source);
+        assert!(
+            out.source.contains("wrongPrimitive?: str"),
+            "{}",
+            out.source
+        );
+        assert!(
+            out.source.contains("wrongArrayItem?: [str]"),
+            "{}",
+            out.source
+        );
+        assert!(
+            out.source.contains("floatInteger: int = 1"),
+            "{}",
+            out.source
+        );
+        assert!(
+            !out.source.contains("nullableByDefault: str = None")
+                && !out.source.contains("nullableByDefault?: str = None"),
+            "emitted contradictory null default:\n{}",
+            out.source
+        );
+        assert!(
+            !out.source.contains("nullableUnion?: str = None"),
+            "emitted nullable-union null default:\n{}",
+            out.source
+        );
+        assert!(
+            !out.source.contains("wrongPrimitive: str = 80")
+                && !out.source.contains("wrongPrimitive?: str = 80"),
+            "emitted contradictory primitive default:\n{}",
+            out.source
+        );
+        assert!(
+            !out.source.contains("wrongArrayItem?: [str] = [80]"),
+            "emitted shallow-validated array default:\n{}",
             out.source
         );
     }
