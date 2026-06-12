@@ -15,6 +15,12 @@ minor bump in the SDK.
 
 ## [Unreleased]
 
+## [0.8.21] — 2026-06-12
+
+### Added
+
+- **Hosted API bridge in the single `akua` CLI** ([api.rs](crates/akua-cli/src/verbs/api.rs), [docs/cli.md](docs/cli.md)). `akua api` now calls the hosted Akua API with token auth, configurable base URL, workspace context, request field/body helpers, and Akua structured errors for auth, permission, rate-limit, transport, and timeout failures. `akua api spec` fetches the public OpenAPI document; elevated audiences return `E_UNSUPPORTED` until the server exposes authorized audience-specific specs.
+
 ### Fixed
 
 - **SDK launch docs and generated site now describe the shipped Node/Bun NAPI surface** ([docs/sdk.md](docs/sdk.md), [site/concepts/sdk.html](site/concepts/sdk.html)). The public SDK page no longer advertises stale browser support, shell-out dispatch, or future Akua Cloud namespaces as part of `@akua-dev/sdk`; it documents the current package as a native-addon-backed Package SDK with render/export/check/lint/verify and vendor drift guards.
