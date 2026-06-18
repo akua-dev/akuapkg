@@ -377,6 +377,14 @@ fn parse_literal_type(s: &str) -> Option<(&str, &str)> {
     Some((&s[..open], &s[open + 1..s.len() - 1]))
 }
 
+fn kcl_default_to_json(default: &str) -> Value {
+    match default {
+        "True" => json!(true),
+        "False" => json!(false),
+        _ => serde_json::from_str::<Value>(default).unwrap_or_else(|_| json!(default)),
+    }
+}
+
 /// Recursively map a `KclType` to a JSON Schema 2020-12 property.
 /// `attr_name` is the parent property name (used to look up
 /// AST-derived decorators + docstrings); pass `INPUT_SCHEMA_NAME`
@@ -508,11 +516,9 @@ fn kcl_type_to_json_schema(t: &kcl_lang::KclType, attr_name: &str, ast: &SchemaA
 
     if !t.default.is_empty() {
         // KCL stores defaults as their literal-source representation.
-        // Try JSON first (numbers / bools / arrays / objects); fall
-        // back to the raw string.
-        let default =
-            serde_json::from_str::<Value>(&t.default).unwrap_or_else(|_| json!(t.default));
-        out.insert("default".to_string(), default);
+        // Try KCL booleans + JSON-compatible literals first, then
+        // fall back to the raw string.
+        out.insert("default".to_string(), kcl_default_to_json(&t.default));
     }
 
     Value::Object(out)
@@ -566,6 +572,21 @@ resources = []
             "label is optional, required={req:?}"
         );
         assert_eq!(schema["properties"]["replicas"]["default"], json!(3));
+    }
+
+    #[test]
+    fn surfaces_boolean_defaults_as_json_booleans() {
+        let schema = export(
+            r#"
+schema Input:
+    enabled: bool = True
+    disabled: bool = False
+
+resources = []
+"#,
+        );
+        assert_eq!(schema["properties"]["enabled"]["default"], json!(true));
+        assert_eq!(schema["properties"]["disabled"]["default"], json!(false));
     }
 
     #[test]
