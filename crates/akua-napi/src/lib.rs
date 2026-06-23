@@ -18,6 +18,8 @@ use std::path::Path;
 use akua_cli::contract::{emit_output, Context};
 use akua_cli::verbs;
 use akua_core::cli_contract::{ExitCode, StructuredError};
+use akua_core::oci_puller::OciPullError;
+use akua_core::oci_transport::TransportError;
 use akua_core::vendor as core_vendor;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
@@ -425,12 +427,27 @@ pub fn inspect(args: NapiInspectArgs) -> Result<serde_json::Value> {
 pub fn inspect_oci_package(args: NapiInspectOciPackageArgs) -> Result<serde_json::Value> {
     let creds = oci_registry_auth_store(args.auth)?;
     let output = verbs::inspect::inspect_oci_package_with_creds(&args.oci_ref, &args.tag, &creds)
-        .map_err(|e| into_napi(e.to_structured(), e.exit_code()))?;
+        .map_err(inspect_oci_package_into_napi)?;
     let ctx = Context::json();
     invoke_verb_with(&ctx, move |ctx, stdout| {
         emit_output(stdout, ctx, &output, |_| Ok(())).map_err(into_napi_io)?;
         Ok(ExitCode::Success)
     })
+}
+
+fn inspect_oci_package_into_napi(err: verbs::inspect::InspectError) -> Error {
+    if let verbs::inspect::InspectError::OciPull(OciPullError::Transport(
+        TransportError::AuthRequired { registry },
+    )) = &err
+    {
+        let mut structured = err.to_structured();
+        structured.message = format!(
+            "registry `{registry}` rejected auth. Pass explicit credentials in inspectOciPackage({{ auth }}) for this registry."
+        );
+        return into_napi(structured, err.exit_code());
+    }
+
+    into_napi(err.to_structured(), err.exit_code())
 }
 
 fn oci_registry_auth_store(

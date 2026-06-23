@@ -290,7 +290,7 @@
       "type": "object"
     },
     "InspectOutput": {
-      "description": "Discriminated JSON shape. `kind: \"package\"|\"tarball\"` carries the\nvariant; consumers parse one body and branch.",
+      "description": "Discriminated JSON shape. `kind: \"package\"|\"tarball\"|\"oci_package\"`\ncarries the variant; consumers parse one body and branch.",
       "oneOf": [
         {
           "$ref": "#/$defs/PackageInspectBody",

@@ -71,8 +71,17 @@ const server = Bun.serve({
   port: 0,
   fetch(req) {
     const url = new URL(req.url);
+    if (url.pathname === '/token') {
+      return Response.json({});
+    }
     if (req.headers.get('authorization') !== 'Bearer package-token') {
-      return new Response('missing auth', { status: 404 });
+      return new Response('auth required', {
+        status: 401,
+        headers: {
+          'www-authenticate':
+            'Bearer realm="' + url.origin + '/token",service="' + url.host + '"',
+        },
+      });
     }
     if (url.pathname === '/v2/team/sdk-demo/manifests/1.2.3') {
       return new Response(manifest, {
@@ -187,6 +196,15 @@ describe('Akua.inspectOciPackage', () => {
 		const server = await startRegistryServer({ manifest, tarball, layerDigest });
 
 		try {
+			await expect(
+				akua.inspectOciPackage({
+					ociRef: `oci://${server.registry}/team/sdk-demo`,
+					tag: '1.2.3',
+				}),
+			).rejects.toThrow(
+				`registry \`${server.registry}\` rejected auth. Pass explicit credentials in inspectOciPackage({ auth }) for this registry.`,
+			);
+
 			const inspected = await akua.inspectOciPackage({
 				ociRef: `oci://${server.registry}/team/sdk-demo`,
 				tag: '1.2.3',

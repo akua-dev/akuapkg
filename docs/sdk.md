@@ -156,7 +156,8 @@ For private registries, pass credentials explicitly in `auth`, keyed by registry
 
 ## Credentials
 
-Akua keeps credentials explicit at the SDK boundary. Methods that fetch private remotes, currently `vendorAdd`, accept an `auth` map keyed by URL prefix:
+Akua keeps credentials explicit at the SDK boundary. Methods that fetch private remotes accept an `auth` map at the call site.
+For `vendorAdd`, key credentials by URL prefix:
 
 ```ts
 await akua.vendorAdd('upstream', {
@@ -169,7 +170,19 @@ await akua.vendorAdd('upstream', {
 });
 ```
 
-The SDK does not read ambient credential files such as `~/.netrc` or `~/.docker/config.json`.
+For `inspectOciPackage`, key credentials by registry host:
+
+```ts
+await akua.inspectOciPackage({
+  ociRef: 'oci://ghcr.io/acme/packages/codezero',
+  tag: '1.2.3',
+  auth: {
+    'ghcr.io': { token: process.env.GHCR_TOKEN! },
+  },
+});
+```
+
+The SDK does not read ambient credential files such as `~/.netrc`, `$XDG_CONFIG_HOME/akua/auth.toml`, or `~/.docker/config.json`.
 
 ---
 

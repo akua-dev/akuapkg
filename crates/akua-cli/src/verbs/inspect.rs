@@ -37,8 +37,8 @@ pub struct InspectArgs<'a> {
 }
 
 akua_core::contract_type! {
-/// Discriminated JSON shape. `kind: "package"|"tarball"` carries the
-/// variant; consumers parse one body and branch.
+/// Discriminated JSON shape. `kind: "package"|"tarball"|"oci_package"`
+/// carries the variant; consumers parse one body and branch.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum InspectOutput {

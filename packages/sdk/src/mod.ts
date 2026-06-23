@@ -107,7 +107,9 @@ export interface TreeOptions {
 
 /**
  * HTTP basic-auth credential pair. Sent as `Authorization: Basic
- * <base64(user:pass)>` to the matching git remote during vendor.
+ * <base64(user:pass)>` to the matching private git remote during
+ * vendor. For OCI registry inspection, Akua sends the credential to
+ * the registry's bearer-token realm during token exchange.
  */
 export interface BasicAuth {
 	username: string;
