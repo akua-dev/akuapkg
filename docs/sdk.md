@@ -71,6 +71,7 @@ The package currently exports the `Akua` class, SDK error classes, validation he
 | `lint(opts)` | `LintOutput` | KCL and package linting. |
 | `fmt(opts)` | `FmtOutput` | Formats KCL sources, or reports changes with `check: true`. |
 | `inspect(opts)` | `InspectOutput` | Package metadata and option information. |
+| `inspectOciPackage(opts)` | `OciPackageInspectOutput` | Pulls a published Akua Package through the native addon and returns verified digests, package metadata, and input schema without extracting to disk. |
 | `tree(opts)` | `TreeOutput` | Dependency tree from `akua.toml` and `akua.lock`. |
 | `diff(before, after)` | `DirDiff` | Structural diff between two rendered manifest directories. |
 | `add(name, opts)` | `AddOutput` | Adds a dependency to `akua.toml`. |
@@ -127,6 +128,29 @@ const openapi = await akua.export({
 ```
 
 Use `render` or `renderSource` when you need rendered Kubernetes resources. Use `export` when you need the input contract for forms, validation, or documentation.
+
+---
+
+## Inspect published packages
+
+`inspectOciPackage(opts)` fetches a published Akua Package artifact from an OCI registry, verifies the layer digest declared by the manifest, and inspects the package tarball in memory. Use it from backend services that need package metadata before creating an import, install, or validation record.
+
+```ts
+const published = await akua.inspectOciPackage({
+  ociRef: 'oci://ghcr.io/acme/packages/codezero',
+  tag: '1.2.3',
+  auth: {
+    'ghcr.io': { token: process.env.GHCR_TOKEN! },
+  },
+});
+
+console.log(published.layer_digest);
+console.log(published.input_schema);
+```
+
+The method returns `OciPackageInspectOutput`, including `manifest_digest`, `layer_digest`, package name and version metadata from `akua.toml`, and the JSON Schema for the package `Input`. It does not extract the package to disk and does not spawn the `akua` CLI.
+
+For private registries, pass credentials explicitly in `auth`, keyed by registry host. Omit `auth` for anonymous public-registry inspection. The SDK method does not read `$XDG_CONFIG_HOME/akua/auth.toml`, `~/.docker/config.json`, or other ambient credential files.
 
 ---
 

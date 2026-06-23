@@ -29,9 +29,16 @@ const yaml = await akua.renderSource({
 const lint = await akua.lint({ package: './package.k' });
 const tree = await akua.tree({ workspace: '.' });
 const summary = await akua.render({ package: './package.k', out: './deploy' });
+const published = await akua.inspectOciPackage({
+  ociRef: 'oci://ghcr.io/acme/packages/demo',
+  tag: '1.2.3',
+  auth: { 'ghcr.io': { token: process.env.GHCR_TOKEN! } },
+});
 ```
 
 Object-returning methods use typed results, and most validate their result against JSON Schema generated from the same Rust `serde` types the CLI emits. Methods without schema validation still keep explicit contracts: `renderSource()` returns raw rendered YAML as a string, and `add()` returns the native add result.
+
+`inspectOciPackage()` is the SDK-first path for inspecting a published Akua Package artifact. It returns verified OCI digests, package metadata, and the Package `Input` schema without extracting the artifact to disk, spawning the CLI, or reading ambient Docker/Akua credential files.
 
 ```ts
 try {

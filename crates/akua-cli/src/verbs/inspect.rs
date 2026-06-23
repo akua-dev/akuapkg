@@ -16,8 +16,12 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use akua_core::cli_contract::{codes, ExitCode, StructuredError};
+use akua_core::export::{export_input_schema, ExportError};
+use akua_core::oci_auth::CredsStore;
+use akua_core::oci_puller::{self, OciPullError};
 use akua_core::{list_options_kcl, package_tar, OptionInfo, PackageKError};
 use serde::Serialize;
+use serde_json::{Map, Value};
 
 use crate::contract::{emit_output, Context};
 
@@ -35,11 +39,12 @@ pub struct InspectArgs<'a> {
 akua_core::contract_type! {
 /// Discriminated JSON shape. `kind: "package"|"tarball"` carries the
 /// variant; consumers parse one body and branch.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum InspectOutput {
     Package(PackageInspectBody),
     Tarball(TarballInspectBody),
+    OciPackage(OciPackageInspectBody),
 }
 }
 
@@ -69,6 +74,44 @@ pub struct TarballInspectBody {
 }
 }
 
+akua_core::contract_type! {
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct OciPackageInspectBody {
+    pub oci_ref: String,
+    pub tag: String,
+    pub manifest_digest: String,
+    pub layer_digest: String,
+    pub compressed_size_bytes: u64,
+    pub uncompressed_size_bytes: u64,
+    pub file_count: usize,
+    #[serde(default)]
+    pub package_name: Option<String>,
+    #[serde(default)]
+    pub package_version: Option<String>,
+    #[serde(default)]
+    pub package_edition: Option<String>,
+    pub vendored_deps: Vec<String>,
+    #[cfg_attr(feature = "ts-export", ts(type = "{ type: \"object\" } & Record<string, unknown>"))]
+    #[cfg_attr(feature = "schema-export", schemars(schema_with = "json_schema_object"))]
+    pub input_schema: Map<String, Value>,
+}
+}
+
+#[cfg(feature = "schema-export")]
+fn json_schema_object(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "type": "object",
+        "properties": {
+            "type": {
+                "const": "object",
+                "type": "string"
+            }
+        },
+        "required": ["type"],
+        "additionalProperties": true,
+    })
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum InspectError {
     #[error("failed to read {path}: {source}")]
@@ -83,6 +126,15 @@ pub enum InspectError {
 
     #[error(transparent)]
     Tarball(#[from] package_tar::PackageTarError),
+
+    #[error(transparent)]
+    OciPull(#[from] OciPullError),
+
+    #[error(transparent)]
+    Export(#[from] ExportError),
+
+    #[error("exported package input schema is not a JSON object")]
+    InputSchemaNotObject,
 
     #[error("write to stdout failed: {0}")]
     StdoutWrite(#[source] std::io::Error),
@@ -105,10 +157,20 @@ impl InspectError {
                 StructuredError::new(codes::E_INSPECT_FAIL, e.to_string()).with_default_docs()
             }
             InspectError::Tarball(e) => {
-                // PackageTarError is gzip/tar I/O in practice —
-                // E_IO matches the actual failure mode better than
-                // E_INSPECT_FAIL (which is KCL-parse-style).
-                StructuredError::new(codes::E_IO, e.to_string()).with_default_docs()
+                let code = match e {
+                    package_tar::PackageTarError::MissingPackageSource => codes::E_INSPECT_FAIL,
+                    _ => codes::E_IO,
+                };
+                StructuredError::new(code, e.to_string()).with_default_docs()
+            }
+            InspectError::OciPull(e) => {
+                StructuredError::new(codes::E_PULL_FAILED, e.to_string()).with_default_docs()
+            }
+            InspectError::Export(e) => {
+                StructuredError::new(codes::E_INSPECT_FAIL, e.to_string()).with_default_docs()
+            }
+            InspectError::InputSchemaNotObject => {
+                StructuredError::new(codes::E_INSPECT_FAIL, self.to_string()).with_default_docs()
             }
             InspectError::StdoutWrite(e) => {
                 StructuredError::new(codes::E_IO, e.to_string()).with_default_docs()
@@ -178,10 +240,44 @@ fn inspect_tarball(path: &Path) -> Result<InspectOutput, InspectError> {
     }))
 }
 
+pub fn inspect_oci_package(oci_ref: &str, tag: &str) -> Result<InspectOutput, InspectError> {
+    let creds = CredsStore::empty();
+    inspect_oci_package_with_creds(oci_ref, tag, &creds)
+}
+
+pub fn inspect_oci_package_with_creds(
+    oci_ref: &str,
+    tag: &str,
+    creds: &CredsStore,
+) -> Result<InspectOutput, InspectError> {
+    let pulled = oci_puller::pull(oci_ref, tag, creds)?;
+    let inspected = package_tar::inspect_with_package_source(&pulled.tarball, pulled.layer_digest)?;
+    let input_schema = export_input_schema("package.k", &inspected.package_source)?
+        .as_object()
+        .cloned()
+        .ok_or(InspectError::InputSchemaNotObject)?;
+
+    Ok(InspectOutput::OciPackage(OciPackageInspectBody {
+        oci_ref: oci_ref.to_string(),
+        tag: tag.to_string(),
+        manifest_digest: pulled.manifest_digest,
+        layer_digest: inspected.tarball.layer_digest,
+        compressed_size_bytes: inspected.tarball.compressed_size_bytes,
+        uncompressed_size_bytes: inspected.tarball.uncompressed_size_bytes,
+        file_count: inspected.tarball.file_count,
+        package_name: inspected.tarball.package_name,
+        package_version: inspected.tarball.package_version,
+        package_edition: inspected.tarball.package_edition,
+        vendored_deps: inspected.tarball.vendored_deps,
+        input_schema,
+    }))
+}
+
 fn write_text<W: Write>(w: &mut W, output: &InspectOutput) -> std::io::Result<()> {
     match output {
         InspectOutput::Package(body) => write_package_text(w, body),
         InspectOutput::Tarball(body) => write_tarball_text(w, body),
+        InspectOutput::OciPackage(body) => write_oci_package_text(w, body),
     }
 }
 
@@ -222,6 +318,33 @@ fn write_tarball_text<W: Write>(w: &mut W, body: &TarballInspectBody) -> std::io
     if let Some(edition) = &body.package_edition {
         writeln!(w, "  edition   {edition}")?;
     }
+    writeln!(w, "  layer     {}", body.layer_digest)?;
+    writeln!(
+        w,
+        "  size      {} compressed / {} uncompressed",
+        body.compressed_size_bytes, body.uncompressed_size_bytes
+    )?;
+    writeln!(w, "  files     {}", body.file_count)?;
+    if !body.vendored_deps.is_empty() {
+        writeln!(w, "  vendored: {}", body.vendored_deps.join(", "))?;
+    }
+    Ok(())
+}
+
+fn write_oci_package_text<W: Write>(
+    w: &mut W,
+    body: &OciPackageInspectBody,
+) -> std::io::Result<()> {
+    writeln!(w, "{}:{}", body.oci_ref, body.tag)?;
+    if let (Some(name), Some(ver)) = (&body.package_name, &body.package_version) {
+        writeln!(w, "  package   {name} {ver}")?;
+    } else {
+        writeln!(w, "  package   (no akua.toml in tarball)")?;
+    }
+    if let Some(edition) = &body.package_edition {
+        writeln!(w, "  edition   {edition}")?;
+    }
+    writeln!(w, "  manifest  {}", body.manifest_digest)?;
     writeln!(w, "  layer     {}", body.layer_digest)?;
     writeln!(
         w,
@@ -375,6 +498,116 @@ resources = []
             parsed["compressed_size_bytes"].as_u64().unwrap(),
             bytes.len() as u64
         );
+    }
+
+    #[test]
+    fn inspect_oci_package_returns_metadata_and_input_schema() {
+        use akua_core::oci_media_types::{AKUA_PACKAGE_LAYER_MEDIA_TYPE, OCI_MANIFEST_MEDIA_TYPE};
+        use akua_core::oci_pusher::compute_publish_digests;
+        use akua_core::package_tar;
+        use httpmock::prelude::*;
+
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("akua.toml"),
+            b"[package]\nname = \"demo\"\nversion = \"1.2.3\"\nedition = \"akua.dev/v1alpha1\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path().join("package.k"),
+            b"schema Input:\n    license_key: str\n\ninput: Input = option(\"input\") or Input {}\nresources = []\n",
+        )
+        .unwrap();
+        let tarball = package_tar::pack_workspace(tmp.path()).unwrap();
+        let expected = compute_publish_digests(&tarball);
+        let repo = "team/demo";
+        let tag = "1.2.3";
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path(format!("/v2/{repo}/manifests/{tag}"));
+            then.status(200)
+                .header("content-type", OCI_MANIFEST_MEDIA_TYPE)
+                .body(expected.manifest_bytes.clone());
+        });
+        server.mock(|when, then| {
+            when.method(GET)
+                .path(format!("/v2/{repo}/blobs/{}", expected.layer_digest));
+            then.status(200)
+                .header("content-type", AKUA_PACKAGE_LAYER_MEDIA_TYPE)
+                .body(tarball);
+        });
+        let oci_ref = format!("oci://127.0.0.1:{}/{}", server.port(), repo);
+
+        let output = inspect_oci_package(&oci_ref, tag).expect("inspect oci package");
+        let parsed = serde_json::to_value(output).unwrap();
+
+        assert_eq!(parsed["kind"], "oci_package");
+        assert_eq!(parsed["oci_ref"], oci_ref);
+        assert_eq!(parsed["tag"], tag);
+        assert_eq!(parsed["package_name"], "demo");
+        assert_eq!(parsed["package_version"], "1.2.3");
+        assert_eq!(parsed["layer_digest"], expected.layer_digest);
+        assert_eq!(parsed["manifest_digest"], expected.manifest_digest);
+        assert_eq!(parsed["input_schema"]["type"], "object");
+        assert!(parsed["input_schema"]["properties"]["license_key"].is_object());
+    }
+
+    #[test]
+    fn inspect_oci_package_uses_explicit_credentials() {
+        use akua_core::oci_auth::{Credentials, CredsStore};
+        use akua_core::oci_media_types::{AKUA_PACKAGE_LAYER_MEDIA_TYPE, OCI_MANIFEST_MEDIA_TYPE};
+        use akua_core::oci_pusher::compute_publish_digests;
+        use akua_core::package_tar;
+        use httpmock::prelude::*;
+
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("akua.toml"),
+            b"[package]\nname = \"private-demo\"\nversion = \"1.2.3\"\nedition = \"akua.dev/v1alpha1\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path().join("package.k"),
+            b"schema Input:\n    license_key: str\n\ninput: Input = option(\"input\") or Input {}\nresources = []\n",
+        )
+        .unwrap();
+        let tarball = package_tar::pack_workspace(tmp.path()).unwrap();
+        let expected = compute_publish_digests(&tarball);
+        let repo = "team/private-demo";
+        let tag = "1.2.3";
+        let server = MockServer::start();
+        let auth = "Bearer package-token";
+        server.mock(|when, then| {
+            when.method(GET)
+                .path(format!("/v2/{repo}/manifests/{tag}"))
+                .header("authorization", auth);
+            then.status(200)
+                .header("content-type", OCI_MANIFEST_MEDIA_TYPE)
+                .body(expected.manifest_bytes.clone());
+        });
+        server.mock(|when, then| {
+            when.method(GET)
+                .path(format!("/v2/{repo}/blobs/{}", expected.layer_digest))
+                .header("authorization", auth);
+            then.status(200)
+                .header("content-type", AKUA_PACKAGE_LAYER_MEDIA_TYPE)
+                .body(tarball);
+        });
+        let oci_ref = format!("oci://127.0.0.1:{}/{}", server.port(), repo);
+        let mut creds = CredsStore::empty();
+        creds.entries.insert(
+            format!("127.0.0.1:{}", server.port()),
+            Credentials::Bearer {
+                token: "package-token".to_string(),
+            },
+        );
+
+        let output = inspect_oci_package_with_creds(&oci_ref, tag, &creds)
+            .expect("inspect private oci package");
+        let parsed = serde_json::to_value(output).unwrap();
+
+        assert_eq!(parsed["kind"], "oci_package");
+        assert_eq!(parsed["package_name"], "private-demo");
     }
 
     #[test]

@@ -24,6 +24,9 @@ pub enum PackageTarError {
     #[error("akua.toml missing under `{}`", path.display())]
     MissingManifest { path: PathBuf },
 
+    #[error("package.k missing from tarball")]
+    MissingPackageSource,
+
     #[error("i/o at `{}`: {source}", path.display())]
     Io {
         path: PathBuf,
@@ -241,17 +244,87 @@ pub struct TarballInspection {
     pub vendored_deps: Vec<String>,
 }
 
-/// Inspect a packed tarball without unpacking to disk. Reads the
-/// archive twice: once to sum sizes + list entries, once to extract
-/// `akua.toml`. Both passes stream over the same bytes; no
-/// filesystem i/o beyond decompression buffers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageSourceInspection {
+    pub tarball: TarballInspection,
+    pub package_source: String,
+}
+
+struct TarballScan {
+    uncompressed_size_bytes: u64,
+    file_count: usize,
+    manifest_text: Option<String>,
+    package_source: Option<String>,
+    vendored_deps: Vec<String>,
+}
+
+/// Inspect a packed tarball without unpacking to disk.
 pub fn inspect(tar_gz: &[u8]) -> Result<TarballInspection, PackageTarError> {
+    inspect_with_layer_digest(tar_gz, layer_digest(tar_gz), false)
+        .map(|inspected| inspected.tarball)
+}
+
+pub fn inspect_with_package_source(
+    tar_gz: &[u8],
+    layer_digest: String,
+) -> Result<PackageSourceInspection, PackageTarError> {
+    let inspected = inspect_with_layer_digest(tar_gz, layer_digest, true)?;
+    let package_source = inspected
+        .package_source
+        .ok_or(PackageTarError::MissingPackageSource)?;
+    Ok(PackageSourceInspection {
+        tarball: inspected.tarball,
+        package_source,
+    })
+}
+
+fn inspect_with_layer_digest(
+    tar_gz: &[u8],
+    layer_digest: String,
+    read_package_source: bool,
+) -> Result<InspectedTarball, PackageTarError> {
+    let scan = scan_tarball(tar_gz, read_package_source)?;
+    let (package_name, package_version, package_edition) = match scan
+        .manifest_text
+        .as_deref()
+        .and_then(|txt| crate::mod_file::AkuaManifest::parse(txt).ok())
+    {
+        Some(m) => (
+            Some(m.package.name),
+            Some(m.package.version),
+            Some(m.package.edition),
+        ),
+        None => (None, None, None),
+    };
+
+    Ok(InspectedTarball {
+        tarball: TarballInspection {
+            layer_digest,
+            compressed_size_bytes: tar_gz.len() as u64,
+            uncompressed_size_bytes: scan.uncompressed_size_bytes,
+            file_count: scan.file_count,
+            package_name,
+            package_version,
+            package_edition,
+            vendored_deps: scan.vendored_deps,
+        },
+        package_source: scan.package_source,
+    })
+}
+
+struct InspectedTarball {
+    tarball: TarballInspection,
+    package_source: Option<String>,
+}
+
+fn scan_tarball(tar_gz: &[u8], read_package_source: bool) -> Result<TarballScan, PackageTarError> {
     use std::io::Read;
 
     let mut file_count: usize = 0;
     let mut uncompressed: u64 = 0;
     let mut vendored: Vec<String> = Vec::new();
     let mut manifest_text: Option<String> = None;
+    let mut package_source: Option<String> = None;
 
     let gz = flate2::read::GzDecoder::new(tar_gz);
     let mut ar = tar::Archive::new(gz);
@@ -291,33 +364,36 @@ pub fn inspect(tar_gz: &[u8]) -> Result<TarballInspection, PackageTarError> {
                 })?;
             manifest_text = Some(buf);
         }
+
+        if read_package_source && path.to_str() == Some("package.k") {
+            let mut buf = String::new();
+            e.read_to_string(&mut buf)
+                .map_err(|source| PackageTarError::Io {
+                    path: path.clone(),
+                    source,
+                })?;
+            package_source = Some(buf);
+        }
     }
 
     vendored.sort();
     vendored.dedup();
 
-    let (package_name, package_version, package_edition) = match manifest_text
-        .as_deref()
-        .and_then(|txt| crate::mod_file::AkuaManifest::parse(txt).ok())
-    {
-        Some(m) => (
-            Some(m.package.name),
-            Some(m.package.version),
-            Some(m.package.edition),
-        ),
-        None => (None, None, None),
-    };
-
-    Ok(TarballInspection {
-        layer_digest: layer_digest(tar_gz),
-        compressed_size_bytes: tar_gz.len() as u64,
+    Ok(TarballScan {
         uncompressed_size_bytes: uncompressed,
         file_count,
-        package_name,
-        package_version,
-        package_edition,
+        manifest_text,
+        package_source,
         vendored_deps: vendored,
     })
+}
+
+/// Read the root `package.k` source from a packed Package without
+/// extracting the artifact to disk.
+pub fn read_package_source(tar_gz: &[u8]) -> Result<String, PackageTarError> {
+    scan_tarball(tar_gz, true)?
+        .package_source
+        .ok_or(PackageTarError::MissingPackageSource)
 }
 
 /// Per-file exclusions unique to publish. Directory-level skips
@@ -571,6 +647,26 @@ mod tests {
         assert_eq!(got.compressed_size_bytes, tar_gz.len() as u64);
         assert!(got.layer_digest.starts_with("sha256:"));
         assert!(got.vendored_deps.is_empty());
+    }
+
+    #[test]
+    fn read_package_source_returns_package_k_without_unpacking() {
+        let tmp = tempfile::tempdir().unwrap();
+        write(
+            tmp.path(),
+            "akua.toml",
+            b"[package]\nname = \"demo\"\nversion = \"1.2.3\"\nedition = \"akua.dev/v1alpha1\"\n",
+        );
+        write(
+            tmp.path(),
+            "package.k",
+            b"schema Input:\n    license_key: str\n\nresources = []\n",
+        );
+        let tar_gz = pack_workspace(tmp.path()).unwrap();
+
+        let source = read_package_source(&tar_gz).unwrap();
+        assert!(source.contains("schema Input:"));
+        assert!(source.contains("license_key"));
     }
 
     #[test]

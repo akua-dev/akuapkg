@@ -384,6 +384,20 @@ pub struct NapiInspectArgs {
     pub tarball: Option<String>,
 }
 
+#[napi(object)]
+pub struct NapiInspectOciPackageArgs {
+    pub oci_ref: String,
+    pub tag: String,
+    pub auth: Option<HashMap<String, NapiOciRegistryAuth>>,
+}
+
+#[napi(object)]
+pub struct NapiOciRegistryAuth {
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub token: Option<String>,
+}
+
 #[napi]
 pub fn inspect(args: NapiInspectArgs) -> Result<serde_json::Value> {
     let target = match (args.package.as_deref(), args.tarball.as_deref()) {
@@ -405,6 +419,49 @@ pub fn inspect(args: NapiInspectArgs) -> Result<serde_json::Value> {
         verbs::inspect::run(ctx, &verb_args, stdout)
             .map_err(|e| into_napi(e.to_structured(), e.exit_code()))
     })
+}
+
+#[napi]
+pub fn inspect_oci_package(args: NapiInspectOciPackageArgs) -> Result<serde_json::Value> {
+    let creds = oci_registry_auth_store(args.auth)?;
+    let output = verbs::inspect::inspect_oci_package_with_creds(&args.oci_ref, &args.tag, &creds)
+        .map_err(|e| into_napi(e.to_structured(), e.exit_code()))?;
+    let ctx = Context::json();
+    invoke_verb_with(&ctx, move |ctx, stdout| {
+        emit_output(stdout, ctx, &output, |_| Ok(())).map_err(into_napi_io)?;
+        Ok(ExitCode::Success)
+    })
+}
+
+fn oci_registry_auth_store(
+    auth: Option<HashMap<String, NapiOciRegistryAuth>>,
+) -> Result<akua_core::oci_auth::CredsStore> {
+    let mut creds = akua_core::oci_auth::CredsStore::empty();
+    for (registry, entry) in auth.unwrap_or_default() {
+        if let Some(token) = entry.token {
+            creds
+                .entries
+                .insert(registry, akua_core::oci_auth::Credentials::Bearer { token });
+            continue;
+        }
+        match (entry.username, entry.password) {
+            (Some(username), Some(password)) => {
+                creds.entries.insert(
+                    registry,
+                    akua_core::oci_auth::Credentials::Basic { username, password },
+                );
+            }
+            _ => {
+                return Err(Error::new(
+                    Status::InvalidArg,
+                    format!(
+                        "inspectOciPackage auth for `{registry}` must include token or username/password"
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(creds)
 }
 
 // ---------------------------------------------------------------------------

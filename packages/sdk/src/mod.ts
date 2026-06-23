@@ -13,6 +13,7 @@ import type { FmtOutput } from './types/FmtOutput.ts';
 import type { InspectOutput } from './types/InspectOutput.ts';
 import type { LintIssue } from './types/LintIssue.ts';
 import type { LintOutput } from './types/LintOutput.ts';
+import type { OciPackageInspectBody } from './types/OciPackageInspectBody.ts';
 import type { OptionInfo } from './types/OptionInfo.ts';
 import type { RenderSummary } from './types/RenderSummary.ts';
 import type { TreeOutput } from './types/TreeOutput.ts';
@@ -49,6 +50,7 @@ export type {
 	InspectOutput,
 	LintIssue,
 	LintOutput,
+	OciPackageInspectBody,
 	OptionInfo,
 	RenderSummary,
 	TreeOutput,
@@ -81,6 +83,23 @@ export interface InspectOptions {
 	tarball?: string;
 }
 
+export interface InspectOciPackageOptions {
+	/** OCI repository ref without tag, for example `oci://ghcr.io/acme/packages/demo`. */
+	ociRef: string;
+	/** Published package tag/version to inspect. */
+	tag: string;
+	/**
+	 * Explicit OCI registry credentials, keyed by registry host
+	 * (`ghcr.io`, `registry.example.com:5000`). Omit for anonymous pulls.
+	 * The SDK does not read ambient Docker or Akua credential files.
+	 */
+	auth?: Record<string, OciRegistryAuth>;
+}
+
+export type OciPackageInspectOutput = { kind: 'oci_package' } & OciPackageInspectBody;
+
+export type OciRegistryAuth = BasicAuth | BearerAuth;
+
 export interface TreeOptions {
 	/** Workspace root (dir containing `akua.toml`). Default: `.`. */
 	workspace?: string;
@@ -93,6 +112,10 @@ export interface TreeOptions {
 export interface BasicAuth {
 	username: string;
 	password: string;
+}
+
+export interface BearerAuth {
+	token: string;
 }
 
 export interface VendorAddOptions {
@@ -265,6 +288,36 @@ export interface RenderSourceOptions {
 	 * [`RenderOptions.maxDepth`].
 	 */
 	maxDepth?: number;
+}
+
+function normalizeOciRegistryAuth(
+	auth: InspectOciPackageOptions['auth'],
+): Record<string, { username?: string; password?: string; token?: string }> | undefined {
+	if (auth === undefined) {
+		return undefined;
+	}
+	const normalized: Record<string, { username?: string; password?: string; token?: string }> = {};
+	for (const [registry, credential] of Object.entries(auth)) {
+		const key = registry.trim();
+		if (!key) {
+			throw new Error('inspectOciPackage: auth registry key is required');
+		}
+		if ('token' in credential) {
+			const token = credential.token.trim();
+			if (!token) {
+				throw new Error(`inspectOciPackage: auth token is required for ${key}`);
+			}
+			normalized[key] = { token };
+			continue;
+		}
+		const username = credential.username.trim();
+		const password = credential.password.trim();
+		if (!username || !password) {
+			throw new Error(`inspectOciPackage: username and password are required for ${key}`);
+		}
+		normalized[key] = { username, password };
+	}
+	return normalized;
 }
 
 /**
@@ -463,6 +516,31 @@ export class Akua {
 			),
 		);
 		return validateAs<InspectOutput>('InspectOutput', result);
+	}
+
+	/**
+	 * Inspect a published Akua Package in an OCI registry without
+	 * extracting it to disk. Returns verified artifact digests,
+	 * package metadata, and the JSON Schema for the Package `Input`.
+	 */
+	async inspectOciPackage(opts: InspectOciPackageOptions): Promise<OciPackageInspectOutput> {
+		const ociRef = opts.ociRef.trim();
+		if (!ociRef) {
+			throw new Error('inspectOciPackage: ociRef is required');
+		}
+		const tag = opts.tag.trim();
+		if (!tag) {
+			throw new Error('inspectOciPackage: tag is required');
+		}
+
+		const auth = normalizeOciRegistryAuth(opts.auth);
+		const napi = loadNapi();
+		const result = callNapi<unknown>(() => napi.inspectOciPackage({ ociRef, tag, auth }));
+		const output = validateAs<InspectOutput>('InspectOutput', result);
+		if (output.kind !== 'oci_package') {
+			throw new Error(`inspectOciPackage: unexpected output kind ${output.kind}`);
+		}
+		return output;
 	}
 
 	/**

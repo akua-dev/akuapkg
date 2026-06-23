@@ -83,7 +83,7 @@ Thirty-five verbs. Grouped by purpose. Each covered below.
 > |---|---|---|---|
 > | `render` | Package + inputs | deploy-ready manifests | yes |
 > | `export` | any canonical artifact | format view (JSON Schema, YAML, OpenAPI, Rego bundle) | no |
-> | `inspect` | a published package ref | audit report (schema, sources, signatures, attestation) | no |
+> | `inspect` | local `package.k` or package tarball | package metadata and input surface | no |
 > | `diff` | two package refs | structural diff between them | no |
 >
 > When in doubt: `render` = "run the program"; `export` = "convert the format"; `inspect` = "audit what's there"; `diff` = "compare two versions."
@@ -525,10 +525,11 @@ currently empty for the canonical `input: Input = ctx.input()` form —
 kcl_lang's `list_options` only reads a type arg passed directly to
 `option()`; full binding-context recovery arrives with AST walking.
 
-> **Planned expansion (🚧).** The target surface also audits a
-> *published* OCI package — signatures, SLSA attestation chain, chart
-> sources, rendered-manifest counts — via `akua inspect <oci://…>`.
-> That depends on the OCI fetch pipeline (Phase B/C).
+> **SDK-first OCI inspection.** Published Akua Package inspection is
+> available first through `@akua-dev/sdk` as `inspectOciPackage()`.
+> The CLI target `akua inspect <oci://...>` remains future work for
+> full audit reports such as signatures, SLSA attestations, source
+> provenance, and rendered-manifest counts.
 
 ---
 

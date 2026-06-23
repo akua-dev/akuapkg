@@ -12,6 +12,8 @@ export declare function fmt(args: NapiFmtArgs): any
 
 export declare function inspect(args: NapiInspectArgs): any
 
+export declare function inspectOciPackage(args: NapiInspectOciPackageArgs): any
+
 export declare function lint(args: NapiPackageArgs): any
 
 export interface NapiAddArgs {
@@ -89,6 +91,18 @@ export interface NapiInspectArgs {
    * exclusive with `package`.
    */
   tarball?: string
+}
+
+export interface NapiInspectOciPackageArgs {
+  ociRef: string
+  tag: string
+  auth?: Record<string, NapiOciRegistryAuth>
+}
+
+export interface NapiOciRegistryAuth {
+  username?: string
+  password?: string
+  token?: string
 }
 
 export interface NapiPackageArgs {

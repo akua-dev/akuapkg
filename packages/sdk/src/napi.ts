@@ -72,6 +72,11 @@ export interface NapiAddon {
 	verify(args: { workspace: string }): unknown;
 	whoami(): unknown;
 	inspect(args: { package?: string; tarball?: string }): unknown;
+	inspectOciPackage(args: {
+		ociRef: string;
+		tag: string;
+		auth?: Record<string, { username?: string; password?: string; token?: string }>;
+	}): unknown;
 	vendorAdd(args: {
 		workspace: string;
 		name: string;
