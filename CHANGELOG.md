@@ -15,6 +15,8 @@ minor bump in the SDK.
 
 ## [Unreleased]
 
+## [0.8.23] — 2026-06-23
+
 ### Added
 
 - Added SDK OCI Package inspection so server-side callers can inspect published Akua Package digests, package metadata, and input schema without shelling out to `akua`.
