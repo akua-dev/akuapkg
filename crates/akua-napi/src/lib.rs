@@ -18,6 +18,8 @@ use std::path::Path;
 use akua_cli::contract::{emit_output, Context};
 use akua_cli::verbs;
 use akua_core::cli_contract::{ExitCode, StructuredError};
+use akua_core::oci_puller::OciPullError;
+use akua_core::oci_transport::TransportError;
 use akua_core::vendor as core_vendor;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
@@ -384,6 +386,20 @@ pub struct NapiInspectArgs {
     pub tarball: Option<String>,
 }
 
+#[napi(object)]
+pub struct NapiInspectOciPackageArgs {
+    pub oci_ref: String,
+    pub tag: String,
+    pub auth: Option<HashMap<String, NapiOciRegistryAuth>>,
+}
+
+#[napi(object)]
+pub struct NapiOciRegistryAuth {
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub token: Option<String>,
+}
+
 #[napi]
 pub fn inspect(args: NapiInspectArgs) -> Result<serde_json::Value> {
     let target = match (args.package.as_deref(), args.tarball.as_deref()) {
@@ -405,6 +421,64 @@ pub fn inspect(args: NapiInspectArgs) -> Result<serde_json::Value> {
         verbs::inspect::run(ctx, &verb_args, stdout)
             .map_err(|e| into_napi(e.to_structured(), e.exit_code()))
     })
+}
+
+#[napi]
+pub fn inspect_oci_package(args: NapiInspectOciPackageArgs) -> Result<serde_json::Value> {
+    let creds = oci_registry_auth_store(args.auth)?;
+    let output = verbs::inspect::inspect_oci_package_with_creds(&args.oci_ref, &args.tag, &creds)
+        .map_err(inspect_oci_package_into_napi)?;
+    let ctx = Context::json();
+    invoke_verb_with(&ctx, move |ctx, stdout| {
+        emit_output(stdout, ctx, &output, |_| Ok(())).map_err(into_napi_io)?;
+        Ok(ExitCode::Success)
+    })
+}
+
+fn inspect_oci_package_into_napi(err: verbs::inspect::InspectError) -> Error {
+    if let verbs::inspect::InspectError::OciPull(OciPullError::Transport(
+        TransportError::AuthRequired { registry },
+    )) = &err
+    {
+        let mut structured = err.to_structured();
+        structured.message = format!(
+            "registry `{registry}` rejected auth. Pass explicit credentials in inspectOciPackage({{ auth }}) for this registry."
+        );
+        return into_napi(structured, err.exit_code());
+    }
+
+    into_napi(err.to_structured(), err.exit_code())
+}
+
+fn oci_registry_auth_store(
+    auth: Option<HashMap<String, NapiOciRegistryAuth>>,
+) -> Result<akua_core::oci_auth::CredsStore> {
+    let mut creds = akua_core::oci_auth::CredsStore::empty();
+    for (registry, entry) in auth.unwrap_or_default() {
+        if let Some(token) = entry.token {
+            creds
+                .entries
+                .insert(registry, akua_core::oci_auth::Credentials::Bearer { token });
+            continue;
+        }
+        match (entry.username, entry.password) {
+            (Some(username), Some(password)) => {
+                creds.entries.insert(
+                    registry,
+                    akua_core::oci_auth::Credentials::Basic { username, password },
+                );
+            }
+            _ => {
+                return Err(Error::new(
+                    Status::InvalidArg,
+                    format!(
+                        "inspectOciPackage auth for `{registry}` must include token or username/password"
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(creds)
 }
 
 // ---------------------------------------------------------------------------

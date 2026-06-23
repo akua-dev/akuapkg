@@ -582,6 +582,7 @@ module.exports.diff = nativeBinding.diff
 module.exports.export = nativeBinding.export
 module.exports.fmt = nativeBinding.fmt
 module.exports.inspect = nativeBinding.inspect
+module.exports.inspectOciPackage = nativeBinding.inspectOciPackage
 module.exports.lint = nativeBinding.lint
 module.exports.render = nativeBinding.render
 module.exports.renderToYaml = nativeBinding.renderToYaml

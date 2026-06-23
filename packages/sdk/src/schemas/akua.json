@@ -290,7 +290,7 @@
       "type": "object"
     },
     "InspectOutput": {
-      "description": "Discriminated JSON shape. `kind: \"package\"|\"tarball\"` carries the\nvariant; consumers parse one body and branch.",
+      "description": "Discriminated JSON shape. `kind: \"package\"|\"tarball\"|\"oci_package\"`\ncarries the variant; consumers parse one body and branch.",
       "oneOf": [
         {
           "$ref": "#/$defs/PackageInspectBody",
@@ -310,6 +310,19 @@
           "properties": {
             "kind": {
               "const": "tarball",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/OciPackageInspectBody",
+          "properties": {
+            "kind": {
+              "const": "oci_package",
               "type": "string"
             }
           },
@@ -410,6 +423,89 @@
       },
       "required": [
         "digest"
+      ],
+      "type": "object"
+    },
+    "OciPackageInspectBody": {
+      "properties": {
+        "compressed_size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "file_count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "input_schema": {
+          "additionalProperties": true,
+          "properties": {
+            "type": {
+              "const": "object",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        "layer_digest": {
+          "type": "string"
+        },
+        "manifest_digest": {
+          "type": "string"
+        },
+        "oci_ref": {
+          "type": "string"
+        },
+        "package_edition": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "package_name": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "package_version": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tag": {
+          "type": "string"
+        },
+        "uncompressed_size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vendored_deps": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "oci_ref",
+        "tag",
+        "manifest_digest",
+        "layer_digest",
+        "compressed_size_bytes",
+        "uncompressed_size_bytes",
+        "file_count",
+        "vendored_deps",
+        "input_schema"
       ],
       "type": "object"
     },
