@@ -23,18 +23,20 @@
 
 /// Textually extract schema declarations from a `package.k` source.
 ///
-/// Keeps every top-level `import` line (schemas may reference imported
-/// types) and every `schema NAME:` block (body recognised by
-/// indentation; the block ends at the next non-blank non-indented
-/// non-comment line). Drops top-level assignments and free expressions
-/// — those are the bodies that would otherwise execute at import time.
+/// Keeps imports referenced by surviving schema type surfaces and
+/// every `schema NAME:` block (body recognised by indentation; the
+/// block ends at the next non-blank non-indented non-comment line).
+/// Drops top-level assignments and free expressions — those are the
+/// bodies that would otherwise execute at import time.
 ///
 /// Best-effort; does not parse KCL. Relies on the indentation
 /// convention every Package.k follows. The resulting stub still goes
 /// through KCL's parser when the consumer imports it; malformed input
 /// surfaces as a normal compile error.
 pub fn extract_schemas(source: &str) -> String {
-    let mut out = String::new();
+    let source = crate::package_k::strip_akua_decorators(source);
+    let mut imports = Vec::new();
+    let mut schemas = String::new();
     let mut in_schema = false;
 
     for line in source.lines() {
@@ -45,8 +47,8 @@ pub fn extract_schemas(source: &str) -> String {
 
         if in_schema {
             if is_blank || is_indented || is_comment {
-                out.push_str(line);
-                out.push('\n');
+                schemas.push_str(line);
+                schemas.push('\n');
                 continue;
             }
             in_schema = false;
@@ -54,8 +56,8 @@ pub fn extract_schemas(source: &str) -> String {
 
         if is_blank {
             // Compress runs of blank lines into one separator.
-            if !out.ends_with("\n\n") {
-                out.push('\n');
+            if !schemas.ends_with("\n\n") {
+                schemas.push('\n');
             }
             continue;
         }
@@ -72,14 +74,15 @@ pub fn extract_schemas(source: &str) -> String {
                 if trimmed_start.starts_with("import charts.") {
                     continue;
                 }
-                out.push_str(line);
-                out.push('\n');
+                if let Some(alias) = imported_name(trimmed_start) {
+                    imports.push((line, alias));
+                }
                 continue;
             }
             if trimmed_start.starts_with("schema ") || trimmed_start.starts_with("protocol ") {
                 in_schema = true;
-                out.push_str(line);
-                out.push('\n');
+                schemas.push_str(line);
+                schemas.push('\n');
                 continue;
             }
         }
@@ -87,10 +90,89 @@ pub fn extract_schemas(source: &str) -> String {
         // drop. Schemas + imports are the only things that survive.
     }
 
+    let mut out = String::new();
+    for (line, alias) in imports {
+        if contains_module_reference(&schemas, alias) {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if !out.is_empty() && !schemas.trim().is_empty() {
+        out.push('\n');
+    }
+    out.push_str(&schemas);
     if !out.ends_with('\n') {
         out.push('\n');
     }
     out
+}
+
+fn imported_name(import_line: &str) -> Option<&str> {
+    let without_comment = import_line.split('#').next()?.trim();
+    let import_target = without_comment.strip_prefix("import ")?.trim();
+    if let Some((_, alias)) = import_target.rsplit_once(" as ") {
+        return alias.split_whitespace().next();
+    }
+    import_target
+        .split_whitespace()
+        .next()
+        .and_then(|module| module.rsplit('.').next())
+}
+
+fn contains_module_reference(source: &str, identifier: &str) -> bool {
+    let mut index = 0;
+    while index < source.len() {
+        let rest = &source[index..];
+        if rest.starts_with('#') {
+            index += rest.find('\n').unwrap_or(rest.len());
+            continue;
+        }
+        if let Some(quote) = rest.chars().next().filter(|ch| *ch == '"' || *ch == '\'') {
+            index = skip_string_literal(source, index, quote);
+            continue;
+        }
+        if rest.starts_with(identifier) {
+            let before = source[..index].chars().next_back();
+            let after = source[index + identifier.len()..].chars().next();
+            if !is_identifier_char(before) && after == Some('.') {
+                return true;
+            }
+        }
+        index += rest.chars().next().map(char::len_utf8).unwrap_or(1);
+    }
+    false
+}
+
+fn is_identifier_char(ch: Option<char>) -> bool {
+    ch.is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+fn skip_string_literal(source: &str, start: usize, quote: char) -> usize {
+    let quote_len = quote.len_utf8();
+    let quote_text = &source[start..start + quote_len];
+    let rest = &source[start..];
+    if rest.starts_with(&quote_text.repeat(3)) {
+        return rest[3 * quote_len..]
+            .find(&quote_text.repeat(3))
+            .map(|offset| start + 3 * quote_len + offset + 3 * quote_len)
+            .unwrap_or(source.len());
+    }
+
+    let mut escaped = false;
+    for (offset, ch) in rest[quote_len..].char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == quote {
+            return start + quote_len + offset + quote_len;
+        }
+    }
+    source.len()
 }
 
 /// Compose the full stub module body: extracted schemas + a `render`
@@ -143,13 +225,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn keeps_imports_and_schema_blocks() {
+    fn keeps_schema_blocks_and_schema_referenced_imports() {
         let src = r#"
 import akua.ctx
+import types.common as common
 
 schema Input:
     """The thing."""
     name: str
+    placement: common.Placement
     replicas: int = 2
 
 input: Input = ctx.input()
@@ -157,9 +241,11 @@ input: Input = ctx.input()
 resources = [{"foo": "bar"}]
 "#;
         let stub = extract_schemas(src);
-        assert!(stub.contains("import akua.ctx"));
+        assert!(stub.contains("import types.common as common"));
+        assert!(!stub.contains("import akua.ctx"));
         assert!(stub.contains("schema Input:"));
         assert!(stub.contains("name: str"));
+        assert!(stub.contains("placement: common.Placement"));
         assert!(stub.contains("replicas: int = 2"));
         assert!(!stub.contains("ctx.input"));
         assert!(!stub.contains("resources"));
@@ -243,9 +329,11 @@ input: Input = ctx.input()
         let src = r#"
 import akua.ctx
 import charts.nginx as c
+import types.common as common
 
 schema Input:
     namespace: str = "demo"
+    placement: common.Placement
 
 input: Input = ctx.input()
 
@@ -258,9 +346,99 @@ resources = c.template(c.TemplateOpts { namespace = input.namespace })
             !stub.contains("import charts."),
             "charts.* import must not appear in stub: {stub}"
         );
-        // Non-chart imports and schema blocks survive.
-        assert!(stub.contains("import akua.ctx"), "akua.ctx import survives");
+        // Schema-referenced imports and schema blocks survive.
+        assert!(
+            stub.contains("import types.common as common"),
+            "schema import survives"
+        );
+        assert!(
+            !stub.contains("import akua.ctx"),
+            "body-only import is dropped"
+        );
         assert!(stub.contains("schema Input:"), "Input schema survives");
         assert!(stub.contains("namespace: str"), "schema field survives");
+    }
+
+    #[test]
+    fn strips_ui_decorators_from_stub_schemas() {
+        let src = r#"
+import akua.ui as ui
+
+schema Input:
+    @ui(order=10, group="Basics")
+    name: str
+
+resources = []
+"#;
+        let stub = extract_schemas(src);
+        assert!(stub.contains("schema Input:"));
+        assert!(stub.contains("name: str"));
+        assert!(
+            !stub.contains("@ui("),
+            "render stubs must not carry akua UI decorators"
+        );
+        assert!(
+            !stub.contains("import akua.ui"),
+            "unused decorator-only imports must not survive in render stubs"
+        );
+    }
+
+    #[test]
+    fn drops_body_only_imports_from_stub_schemas() {
+        let src = r#"
+import k8s.api.apps.v1 as apps
+import k8s.api.core.v1 as corev1
+
+schema Input:
+    name: str
+
+deployment = apps.Deployment {}
+resources = [deployment]
+"#;
+        let stub = extract_schemas(src);
+        assert!(stub.contains("schema Input:"));
+        assert!(stub.contains("name: str"));
+        assert!(
+            !stub.contains("import k8s.api.apps.v1"),
+            "body-only imports must not force consumers to resolve upstream render deps"
+        );
+        assert!(
+            !stub.contains("import k8s.api.core.v1"),
+            "unused imports must not force consumers to resolve upstream render deps"
+        );
+    }
+
+    #[test]
+    fn preserves_imports_used_by_stub_schemas() {
+        let src = r#"
+import types.common as common
+import k8s.api.apps.v1 as apps
+
+schema Input:
+    placement: common.Placement
+
+resources = [apps.Deployment {}]
+"#;
+        let stub = extract_schemas(src);
+        assert!(stub.contains("import types.common as common"));
+        assert!(!stub.contains("import k8s.api.apps.v1"));
+        assert!(stub.contains("placement: common.Placement"));
+    }
+
+    #[test]
+    fn ignores_import_alias_mentions_that_are_not_module_type_references() {
+        let src = r#"
+import k8s.api.apps.v1 as apps
+
+schema Input:
+    """Mention apps.Deployment in docs without needing the import."""
+    # apps.StatefulSet is only a comment example.
+    apps: str
+
+resources = [apps.Deployment {}]
+"#;
+        let stub = extract_schemas(src);
+        assert!(stub.contains("apps: str"));
+        assert!(!stub.contains("import k8s.api.apps.v1"));
     }
 }
