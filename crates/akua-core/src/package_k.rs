@@ -550,7 +550,7 @@ pub fn eval_source_full_with_pkgs(
 /// continues consuming until the parenthesis balance returns to
 /// zero, so multi-line decorator forms are also removed. The blank
 /// line is left in place to preserve KCL line numbers in diagnostics.
-fn strip_akua_decorators(source: &str) -> String {
+pub(crate) fn strip_akua_decorators(source: &str) -> String {
     const PREFIXES: &[&str] = &["@ui("];
     // Fast-path: most Packages don't carry `@ui(...)`. Skip the
     // line-by-line scan unless the substring actually appears.
