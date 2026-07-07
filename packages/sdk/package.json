@@ -31,7 +31,7 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@akua-dev/native": "0.8.8",
+    "@akua-dev/native": "0.8.23",
     "@standard-schema/spec": "^1.1.0",
     "ajv": "^8.18.0",
     "yaml": "^2.8.3"

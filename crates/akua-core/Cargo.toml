@@ -88,7 +88,7 @@ base64 = { version = "0.22" }
 # engine-kcl compiled to wasip1 — that's how Phase 4 delivers the
 # sandbox.
 kcl-lang = { git = "https://github.com/kcl-lang/lib", optional = true }
-sha2 = { version = "0.10", optional = true }
+sha2 = { version = "0.11", optional = true }
 tempfile = { version = "3", optional = true }
 
 # SDK type-emission deps. Optional; pulled in only when the
@@ -120,26 +120,26 @@ tar = { version = "0.4", optional = true }
 # environment, `git_fetcher::force_tls_verification` pins `ssl_verify = true` on
 # every connection before the handshake so a poisoned env cannot disable cert
 # validation on the first (pre-pin) clone.
-gix = { version = "0.66", default-features = false, features = ["blocking-http-transport-curl-rustls", "max-performance-safe", "worktree-mutation"], optional = true }
+gix = { version = "0.85", default-features = false, features = ["blocking-http-transport-curl-rustls", "max-performance-safe", "worktree-mutation"], optional = true }
 curl = { version = "0.4", optional = true, features = ["static-ssl"] }
-p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std", "pem", "pkcs8"], optional = true }
-pkcs8 = { version = "0.10", default-features = false, features = ["pem", "pkcs5", "encryption", "alloc"], optional = true }
+p256 = { version = "0.14", default-features = false, features = ["ecdsa", "std", "pem", "pkcs8"], optional = true }
+pkcs8 = { version = "0.11", default-features = false, features = ["pem", "pkcs5", "encryption", "alloc"], optional = true }
 pem = { version = "3", optional = true }
 signature = { version = "2", optional = true }
 notify = { version = "6", optional = true }
-notify-debouncer-mini = { version = "0.4", optional = true, default-features = false }
+notify-debouncer-mini = { version = "0.7", optional = true, default-features = false }
 
 [dev-dependencies]
 tempfile = "3"
 # cosign test fixtures generate a keypair per test run; keeps tests
 # hermetic instead of committing a PEM to the repo.
-rand = "0.8"
+rand = "0.10"
 # Local HTTP mock for OCI registry tests — hosts a tiny distribution-API
 # endpoint on `http://127.0.0.1:<port>` so push/pull paths exercise the
 # full transport without a real registry.
-httpmock = "0.7"
+httpmock = "0.8"
 # Pure-Rust OCI client. Dev-only — used to *parse* the manifest bytes
 # our pusher PUTs and assert spec compliance via a real OCI parser
 # (independent verification that we're not just round-tripping our own
 # serializer). No runtime use; we don't make any HTTP calls with it.
-oci-client = { version = "0.11", default-features = false, features = ["rustls-tls"] }
+oci-client = { version = "0.17", default-features = false, features = ["rustls-tls"] }

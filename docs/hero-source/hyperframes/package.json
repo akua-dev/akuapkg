@@ -8,6 +8,6 @@
     "render": "hyperframes render"
   },
   "devDependencies": {
-    "hyperframes": "0.6.4"
+    "hyperframes": "0.7.40"
   }
 }

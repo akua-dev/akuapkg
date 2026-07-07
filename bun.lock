@@ -7,9 +7,9 @@
     },
     "crates/akua-napi": {
       "name": "@akua-dev/native",
-      "version": "0.8.5",
+      "version": "0.8.8",
       "dependencies": {
-        "@akua-dev/native-engines": "0.8.5",
+        "@akua-dev/native-engines": "0.8.23",
       },
       "devDependencies": {
         "@napi-rs/cli": "^3.2.0",
@@ -17,13 +17,13 @@
     },
     "crates/akua-native-engines-npm": {
       "name": "@akua-dev/native-engines",
-      "version": "0.8.5",
+      "version": "0.8.8",
     },
     "packages/sdk": {
       "name": "@akua-dev/sdk",
-      "version": "0.8.5",
+      "version": "0.8.8",
       "dependencies": {
-        "@akua-dev/native": "0.8.5",
+        "@akua-dev/native": "0.8.23",
         "@standard-schema/spec": "^1.1.0",
         "ajv": "^8.18.0",
         "yaml": "^2.8.3",
@@ -38,7 +38,21 @@
   "packages": {
     "@akua-dev/native": ["@akua-dev/native@workspace:crates/akua-napi"],
 
+    "@akua-dev/native-darwin-arm64": ["@akua-dev/native-darwin-arm64@0.8.23", "", { "os": "darwin", "cpu": "arm64" }, "sha512-xxd+GQG47BY0Z4lN5wQQEZ4v98w628ML9LUfetxZgu+BnIvoVvt8/Nmc/xleZVbl+4kO+lbL6b4jj60sxdfmgg=="],
+
+    "@akua-dev/native-darwin-x64": ["@akua-dev/native-darwin-x64@0.8.23", "", { "os": "darwin", "cpu": "x64" }, "sha512-2wKaLL7fqLaTVgxJU1a14unUYH3BMXOVTIbGFiy8qfVINrKBuCpbM/6sQiBsSBdEiEUXYkNc2UnUeBVxLWYndQ=="],
+
     "@akua-dev/native-engines": ["@akua-dev/native-engines@workspace:crates/akua-native-engines-npm"],
+
+    "@akua-dev/native-linux-arm64-gnu": ["@akua-dev/native-linux-arm64-gnu@0.8.23", "", { "os": "linux", "cpu": "arm64" }, "sha512-uQPj7nB0sK2RUATcNeRLh1gEW4r78YNgvj+yJ2W3/NNMj0RW9U5pwcT+Bs4YCssjoCr8CoFeTEH3tA6W+5+Eog=="],
+
+    "@akua-dev/native-linux-arm64-musl": ["@akua-dev/native-linux-arm64-musl@0.8.23", "", { "os": "linux", "cpu": "arm64" }, "sha512-5B5diL5Z5zb+RxgO4TWad40VMyE6laKRTev2UbbKtaRJGo9wT10myDpVrK8KincSVH3DSEUZhd1p5/k5bEoImA=="],
+
+    "@akua-dev/native-linux-x64-gnu": ["@akua-dev/native-linux-x64-gnu@0.8.23", "", { "os": "linux", "cpu": "x64" }, "sha512-YkF3ethSz3TqnZrAdjyaYqhBhSWHqFF5orHVBvImErfsqQhLMboNPfFnUEA99cKOBNtOEyHfZIbHloGXVgwZRw=="],
+
+    "@akua-dev/native-linux-x64-musl": ["@akua-dev/native-linux-x64-musl@0.8.23", "", { "os": "linux", "cpu": "x64" }, "sha512-b/1jUl775rOX4mY0k61UyKopVe+aqZLMUMqtiTZPaiLY7QPsA3ZrQfiicIK0e2daKKQzXoi4GExxsGmnL7iRgA=="],
+
+    "@akua-dev/native-win32-x64-msvc": ["@akua-dev/native-win32-x64-msvc@0.8.23", "", { "os": "win32", "cpu": "x64" }, "sha512-O+r31ZCsB/9n7gsrVdKrPRjBAXtwTUzy8qjGSffJyEeauq2GgfTDf/3X1tsCI7SR9htMpuWARQXZRIxsS4YxdA=="],
 
     "@akua-dev/sdk": ["@akua-dev/sdk@workspace:packages/sdk"],
 
@@ -291,5 +305,11 @@
     "yallist": ["yallist@5.0.0", "", {}, "sha512-YgvUTfwqyc7UXVMrB+SImsVYSmTS8X/tSrtdNZMImM+n7+QTriRXyXim0mBrTXNeqzVF0KWGgHPeiyViFFrNDw=="],
 
     "yaml": ["yaml@2.8.4", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-ml/JPOj9fOQK8RNnWojA67GbZ0ApXAUlN2UQclwv2eVgTgn7O9gg9o7paZWKMp4g0H3nTLtS9LVzhkpOFIKzog=="],
+
+    "@akua-dev/native/@akua-dev/native-engines": ["@akua-dev/native-engines@0.8.23", "", {}, "sha512-lDTC5sWzH4JB9OvMwIngzKbNxLCQ/sHwPAbjBGZVseyJIhZEp/uNz6MeEASZQOLJ4/GUPyh1Qmuzj/YkJKQVFA=="],
+
+    "@akua-dev/sdk/@akua-dev/native": ["@akua-dev/native@0.8.23", "", { "dependencies": { "@akua-dev/native-engines": "0.8.23" }, "optionalDependencies": { "@akua-dev/native-darwin-arm64": "0.8.23", "@akua-dev/native-darwin-x64": "0.8.23", "@akua-dev/native-linux-arm64-gnu": "0.8.23", "@akua-dev/native-linux-arm64-musl": "0.8.23", "@akua-dev/native-linux-x64-gnu": "0.8.23", "@akua-dev/native-linux-x64-musl": "0.8.23", "@akua-dev/native-win32-x64-msvc": "0.8.23" } }, "sha512-5rJN2p09ZO6ELG0IS0rrWnLU/X73Zk3LN0t88hf+OthDD89Daaj1LiJMS4vXQti9Mg1JDlibbM+ACehWErBLOw=="],
+
+    "@akua-dev/sdk/@akua-dev/native/@akua-dev/native-engines": ["@akua-dev/native-engines@0.8.23", "", {}, "sha512-lDTC5sWzH4JB9OvMwIngzKbNxLCQ/sHwPAbjBGZVseyJIhZEp/uNz6MeEASZQOLJ4/GUPyh1Qmuzj/YkJKQVFA=="],
   }
 }
