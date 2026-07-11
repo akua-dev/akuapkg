@@ -12,7 +12,10 @@ use std::thread;
 
 use akua_core::host_auth::{BasicAuth, HostAuthMap};
 use base64::Engine;
-use rcgen::generate_simple_self_signed;
+use rcgen::{
+    BasicConstraints, Certificate, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa,
+    KeyPair, KeyUsagePurpose,
+};
 use rustls::pki_types::PrivateKeyDer;
 use rustls::{ServerConfig, ServerConnection, StreamOwned};
 
@@ -28,14 +31,29 @@ struct HttpsGitServer {
 impl HttpsGitServer {
     fn start(repo: PathBuf, fixture_root: &Path, username: &str, password: &str) -> Self {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        let certified = generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+        let (ca_cert, ca_key) = make_ca("Akua HTTPS fixture CA");
         let ca_path = fixture_root.join("ca.pem");
-        fs::write(&ca_path, certified.cert.pem()).unwrap();
+        fs::write(&ca_path, ca_cert.pem()).unwrap();
 
-        let key = PrivateKeyDer::Pkcs8(certified.key_pair.serialize_der().into());
+        let server_key = KeyPair::generate().unwrap();
+        let mut server_params = CertificateParams::new(vec!["localhost".to_string()]).unwrap();
+        server_params
+            .distinguished_name
+            .push(DnType::CommonName, "localhost");
+        server_params
+            .key_usages
+            .push(KeyUsagePurpose::DigitalSignature);
+        server_params
+            .extended_key_usages
+            .push(ExtendedKeyUsagePurpose::ServerAuth);
+        let server_cert = server_params
+            .signed_by(&server_key, &ca_cert, &ca_key)
+            .unwrap();
+
+        let key = PrivateKeyDer::Pkcs8(server_key.serialize_der().into());
         let config = ServerConfig::builder()
             .with_no_client_auth()
-            .with_single_cert(vec![certified.cert.der().clone()], key)
+            .with_single_cert(vec![server_cert.der().clone()], key)
             .unwrap();
         let config = Arc::new(config);
 
@@ -90,6 +108,19 @@ impl HttpsGitServer {
     fn url(&self) -> String {
         format!("https://localhost:{}/repo.git", self.address.port())
     }
+}
+
+fn make_ca(common_name: &str) -> (Certificate, KeyPair) {
+    let key = KeyPair::generate().unwrap();
+    let mut params = CertificateParams::new(Vec::new()).unwrap();
+    params
+        .distinguished_name
+        .push(DnType::CommonName, common_name);
+    params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    params.key_usages.push(KeyUsagePurpose::DigitalSignature);
+    params.key_usages.push(KeyUsagePurpose::KeyCertSign);
+    params.key_usages.push(KeyUsagePurpose::CrlSign);
+    (params.self_signed(&key).unwrap(), key)
 }
 
 impl Drop for HttpsGitServer {
@@ -314,9 +345,9 @@ upstream = {{ git = "{}", tag = "v1.0.0" }}
         },
     )]);
 
-    let unrelated_ca = generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+    let (unrelated_ca, _) = make_ca("Unrelated HTTPS fixture CA");
     let unrelated_ca_path = fixture.path().join("unrelated-ca.pem");
-    fs::write(&unrelated_ca_path, unrelated_ca.cert.pem()).unwrap();
+    fs::write(&unrelated_ca_path, unrelated_ca.pem()).unwrap();
     std::env::set_var("GIT_SSL_NO_VERIFY", "true");
     std::env::set_var("GIT_SSL_CAINFO", &unrelated_ca_path);
     std::env::set_var("GIT_CONFIG_COUNT", "1");
