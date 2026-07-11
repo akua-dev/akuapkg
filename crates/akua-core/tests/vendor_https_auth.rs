@@ -206,7 +206,9 @@ fn handle_request(
             )
         }
         _ => write_response(&mut stream, "404 Not Found", "text/plain", b"", None),
-    }
+    }?;
+    stream.conn.send_close_notify();
+    stream.flush()
 }
 
 fn read_request(stream: &mut impl Read) -> std::io::Result<Vec<u8>> {
