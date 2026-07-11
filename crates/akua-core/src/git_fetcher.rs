@@ -328,9 +328,11 @@ fn refresh_bare(
 /// pinned. We pre-seed the connection's transport options with a
 /// `ssl_verify: true` `http::Options` *before* the handshake. Because
 /// `Connection::prepare_fetch` only derives options from config when
-/// `transport_options` is still `None`, so derive them here first and
-/// override only `ssl_verify`. This keeps trusted CA configuration such
-/// as `GIT_SSL_CAINFO` / `http.sslCAInfo` intact.
+/// `transport_options` is still `None`, we derive them here first and
+/// copy only `ssl_ca_info` into fresh default options with verification
+/// enabled. This keeps trusted CA configuration such as
+/// `GIT_SSL_CAINFO` / `http.sslCAInfo` intact without carrying ambient
+/// HTTP headers, proxy credentials, or other transport configuration.
 #[allow(clippy::result_large_err)]
 fn force_tls_verification<T>(
     conn: &mut gix::remote::Connection<'_, '_, T>,
@@ -350,15 +352,20 @@ where
             .repo()
             .transport_options(url.as_bstr(), remote.name().map(gix::remote::Name::as_bstr))?
     };
-    if let Some(options) = configured.as_mut() {
-        let http = options
-            .downcast_mut::<gix::protocol::transport::client::http::Options>()
-            .expect("HTTP transport configuration has the expected options type");
-        http.ssl_verify = true;
-    }
-    if let Some(options) = configured {
-        conn.set_transport_options(options);
-    }
+    let Some(options) = configured.as_mut() else {
+        return Ok(());
+    };
+    let ssl_ca_info = options
+        .downcast_mut::<gix::protocol::transport::client::http::Options>()
+        .expect("HTTP transport configuration has the expected options type")
+        .ssl_ca_info
+        .take();
+    let options = gix::protocol::transport::client::http::Options {
+        ssl_ca_info,
+        ssl_verify: true,
+        ..Default::default()
+    };
+    conn.set_transport_options(Box::new(options));
     Ok(())
 }
 

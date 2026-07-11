@@ -20,6 +20,7 @@ struct HttpsGitServer {
     address: std::net::SocketAddr,
     ca_path: PathBuf,
     auth_seen: Arc<AtomicBool>,
+    ambient_header_seen: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
     thread: Option<thread::JoinHandle<()>>,
 }
@@ -43,6 +44,7 @@ impl HttpsGitServer {
         let address = listener.local_addr().unwrap();
         let stop = Arc::new(AtomicBool::new(false));
         let auth_seen = Arc::new(AtomicBool::new(false));
+        let ambient_header_seen = Arc::new(AtomicBool::new(false));
         let expected_auth = format!(
             "Basic {}",
             base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"))
@@ -50,6 +52,7 @@ impl HttpsGitServer {
 
         let thread_stop = Arc::clone(&stop);
         let thread_auth_seen = Arc::clone(&auth_seen);
+        let thread_ambient_header_seen = Arc::clone(&ambient_header_seen);
         let thread = thread::spawn(move || {
             while !thread_stop.load(Ordering::Relaxed) {
                 match listener.accept() {
@@ -61,6 +64,7 @@ impl HttpsGitServer {
                             &repo,
                             &expected_auth,
                             &thread_auth_seen,
+                            &thread_ambient_header_seen,
                         ) {
                             eprintln!("HTTPS git fixture request failed: {error}");
                         }
@@ -77,6 +81,7 @@ impl HttpsGitServer {
             address,
             ca_path,
             auth_seen,
+            ambient_header_seen,
             stop,
             thread: Some(thread),
         }
@@ -103,6 +108,7 @@ fn handle_request(
     repo: &Path,
     expected_auth: &str,
     auth_seen: &AtomicBool,
+    ambient_header_seen: &AtomicBool,
 ) -> std::io::Result<()> {
     let connection = ServerConnection::new(config).unwrap();
     let mut stream = StreamOwned::new(connection, stream);
@@ -113,6 +119,12 @@ fn handle_request(
         .map(|index| index + 4)
         .ok_or_else(|| std::io::Error::other("missing HTTP header terminator"))?;
     let headers = String::from_utf8_lossy(&request[..header_end]);
+    if headers
+        .lines()
+        .any(|line| line == "X-Akua-Ambient-Secret: must-not-leak")
+    {
+        ambient_header_seen.store(true, Ordering::Relaxed);
+    }
     let mut request_line = headers
         .lines()
         .next()
@@ -307,6 +319,9 @@ upstream = {{ git = "{}", tag = "v1.0.0" }}
     fs::write(&unrelated_ca_path, unrelated_ca.cert.pem()).unwrap();
     std::env::set_var("GIT_SSL_NO_VERIFY", "true");
     std::env::set_var("GIT_SSL_CAINFO", &unrelated_ca_path);
+    std::env::set_var("GIT_CONFIG_COUNT", "1");
+    std::env::set_var("GIT_CONFIG_KEY_0", "http.extraHeader");
+    std::env::set_var("GIT_CONFIG_VALUE_0", "X-Akua-Ambient-Secret: must-not-leak");
     let untrusted = akua_core::vendor::add(&workspace, "upstream", Some(&auth));
     assert!(
         untrusted.is_err(),
@@ -318,10 +333,14 @@ upstream = {{ git = "{}", tag = "v1.0.0" }}
 
     std::env::remove_var("GIT_SSL_NO_VERIFY");
     std::env::remove_var("GIT_SSL_CAINFO");
+    std::env::remove_var("GIT_CONFIG_COUNT");
+    std::env::remove_var("GIT_CONFIG_KEY_0");
+    std::env::remove_var("GIT_CONFIG_VALUE_0");
     std::env::remove_var("XDG_CACHE_HOME");
 
     let output = result.expect("vendorAdd must trust GIT_SSL_CAINFO while verifying HTTPS");
     assert!(server.auth_seen.load(Ordering::Relaxed));
+    assert!(!server.ambient_header_seen.load(Ordering::Relaxed));
     assert!(output.path.join("Chart.yaml").is_file());
     assert!(output.path.join("templates/configmap.yaml").is_file());
 }
