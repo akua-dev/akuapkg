@@ -22,9 +22,8 @@
 //! environment overrides. Left to the default, a poisoned environment
 //! could disable certificate validation on the first clone — a TOFU
 //! MITM window before any commit is pinned. [`force_tls_verification`]
-//! pins `ssl_verify = true` on every connection *before* the handshake,
-//! so neither half of a hostile env (`*_NO_VERIFY` nor a swapped CA
-//! bundle) is ever consulted.
+//! pins `ssl_verify = true` on every connection *before* the handshake
+//! while preserving the configured CA bundle.
 //!
 //! ## Scope
 //!
@@ -245,7 +244,7 @@ fn clone_bare(
     // when the caller supplied an auth map.
     let map = auth.map(|m| std::sync::Arc::new(m.clone()));
     prep = prep.configure_connection(move |conn| {
-        force_tls_verification(conn);
+        force_tls_verification(conn)?;
         if let Some(map) = &map {
             // `Arc` over `clone()` because `configure_connection` and
             // `set_credentials` are both `FnMut` — refcount bumps beat
@@ -293,7 +292,10 @@ fn refresh_bare(
                 url: url.to_string(),
                 detail: e.to_string(),
             })?;
-    force_tls_verification(&mut conn);
+    force_tls_verification(&mut conn).map_err(|e| GitFetchError::Refresh {
+        url: url.to_string(),
+        detail: e.to_string(),
+    })?;
     if let Some(map) = auth {
         set_connection_credentials(&mut conn, std::sync::Arc::new(map.clone()));
     }
@@ -326,21 +328,38 @@ fn refresh_bare(
 /// pinned. We pre-seed the connection's transport options with a
 /// `ssl_verify: true` `http::Options` *before* the handshake. Because
 /// `Connection::prepare_fetch` only derives options from config when
-/// `transport_options` is still `None`, our explicit value wins and the
-/// env-derived `ssl_verify = false` is never consulted.
-///
-/// `ssl_ca_info` is intentionally left `None` (curl's default trust
-/// store) — we drop any env-supplied CA bundle along with the
-/// env-supplied no-verify, so neither half of a poisoned env applies.
-fn force_tls_verification<T>(conn: &mut gix::remote::Connection<'_, '_, T>)
+/// `transport_options` is still `None`, so derive them here first and
+/// override only `ssl_verify`. This keeps trusted CA configuration such
+/// as `GIT_SSL_CAINFO` / `http.sslCAInfo` intact.
+#[allow(clippy::result_large_err)]
+fn force_tls_verification<T>(
+    conn: &mut gix::remote::Connection<'_, '_, T>,
+) -> Result<(), gix::config::transport::Error>
 where
     T: gix::protocol::transport::client::Transport,
 {
-    let opts = gix::protocol::transport::client::http::Options {
-        ssl_verify: true,
-        ..Default::default()
+    use gix::bstr::ByteSlice;
+
+    let mut configured = {
+        let remote = conn.remote();
+        let url = remote
+            .url(gix::remote::Direction::Fetch)
+            .expect("connected remote has a fetch URL")
+            .to_bstring();
+        remote
+            .repo()
+            .transport_options(url.as_bstr(), remote.name().map(gix::remote::Name::as_bstr))?
     };
-    conn.set_transport_options(Box::new(opts));
+    if let Some(options) = configured.as_mut() {
+        let http = options
+            .downcast_mut::<gix::protocol::transport::client::http::Options>()
+            .expect("HTTP transport configuration has the expected options type");
+        http.ssl_verify = true;
+    }
+    if let Some(options) = configured {
+        conn.set_transport_options(options);
+    }
+    Ok(())
 }
 
 #[allow(clippy::result_large_err)]
