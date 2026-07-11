@@ -383,6 +383,7 @@ const openapi = await akua.export({
   },
 });</code></pre>
 <p>The SDK does not read ambient credential files such as <code>~/.netrc</code> or <code>~/.docker/config.json</code>.</p>
+<p>That explicit credential rule is separate from HTTPS trust configuration. Native Git fetches preserve the process's configured CA bundle from <code>GIT_SSL_CAINFO</code> or Git's <code>http.sslCAInfo</code> for both initial clones and cached-repository refreshes. Certificate verification is always forced on despite <code>GIT_SSL_NO_VERIFY</code> or <code>http.sslVerify=false</code>, and other ambient Git HTTP options such as extra headers and proxy credentials are not copied into the fetch connection.</p>
 <hr />
 <h2 id="errors">Errors</h2>
 <p>SDK methods throw <code>AkuaError</code> subclasses built from the structured error emitted by the native layer. User errors, rate limits, timeouts, and system failures keep their stable Akua error codes so callers can branch without parsing prose.</p>

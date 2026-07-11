@@ -314,6 +314,8 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <pre><code class="lang-toml">[auth]
 &quot;akua-git.cnap.tech&quot; = { username = &quot;svc&quot;, password = &quot;tok&quot; }
 &quot;akua-git.cnap.tech/org-A&quot; = { username = &quot;org-A&quot;, password = &quot;tokA&quot; }</code></pre>
+<h3 id="git-https-trust">Git HTTPS trust</h3>
+<p>All native Git fetch paths preserve the configured CA bundle from <code>GIT_SSL_CAINFO</code> or Git's <code>http.sslCAInfo</code>, including initial clones and cached-repository refreshes used by dependency resolution, <code>vendor add</code>, <code>pack</code>, and publish-time vendoring. Akua always forces certificate verification on: <code>GIT_SSL_NO_VERIFY</code> and <code>http.sslVerify=false</code> are ignored, so a CA bundle must actually validate the remote certificate. Only the CA bundle is copied from Git's HTTP transport configuration; ambient extra headers, proxy credentials, and other Git HTTP options are not forwarded by this trust setup.</p>
 <p>Lockfile guarantee: regardless of the credential used to fetch, <code>akua.lock</code>'s <code>source</code> field stores the canonicalized URL with userinfo, default ports, and <code>.git</code> suffix stripped. Credentials never leak into <code>akua.lock</code>.</p>
 <p>See <code>examples/12-vendor-offline/</code> for the end-to-end offline-render contract demonstrated against a path dep with the canonical source deleted.</p>
 

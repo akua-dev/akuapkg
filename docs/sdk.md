@@ -184,6 +184,8 @@ await akua.inspectOciPackage({
 
 The SDK does not read ambient credential files such as `~/.netrc`, `$XDG_CONFIG_HOME/akua/auth.toml`, or `~/.docker/config.json`.
 
+That explicit credential rule is separate from HTTPS trust configuration. Native Git fetches preserve the process's configured CA bundle from `GIT_SSL_CAINFO` or Git's `http.sslCAInfo` for both initial clones and cached-repository refreshes. Certificate verification is always forced on despite `GIT_SSL_NO_VERIFY` or `http.sslVerify=false`, and other ambient Git HTTP options such as extra headers and proxy credentials are not copied into the fetch connection.
+
 ---
 
 ## Errors

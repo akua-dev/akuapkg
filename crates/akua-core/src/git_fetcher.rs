@@ -316,7 +316,7 @@ fn refresh_bare(
 }
 
 /// Pin TLS certificate verification ON for this connection, defeating
-/// any ambient `GIT_SSL_NO_VERIFY` / `http.sslNoVerify` in the
+/// any ambient `GIT_SSL_NO_VERIFY` / `http.sslVerify = false` in the
 /// environment.
 ///
 /// gix's curl-rustls transport derives its `http::Options` from the
