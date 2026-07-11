@@ -16,8 +16,11 @@ use rcgen::{
     BasicConstraints, Certificate, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa,
     KeyPair, KeyUsagePurpose,
 };
-use rustls::pki_types::PrivateKeyDer;
-use rustls::{ServerConfig, ServerConnection, StreamOwned};
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
+use rustls::{
+    ClientConfig, ClientConnection, RootCertStore, ServerConfig, ServerConnection, StreamOwned,
+};
 
 struct HttpsGitServer {
     address: std::net::SocketAddr,
@@ -169,13 +172,15 @@ fn handle_request(
             .is_some_and(|value| value.trim() == expected_auth)
     });
     if !authenticated {
-        return write_response(
+        write_response(
             &mut stream,
             "401 Unauthorized",
             "text/plain",
             b"",
             Some("WWW-Authenticate: Basic realm=\"akua-test\"\r\n"),
-        );
+        )?;
+        stream.conn.send_close_notify();
+        return stream.flush();
     }
     auth_seen.store(true, Ordering::Relaxed);
 
@@ -311,6 +316,36 @@ fn make_tagged_repo(root: &Path) -> PathBuf {
         &work,
     );
     bare
+}
+
+#[test]
+fn unauthenticated_response_closes_tls_cleanly() {
+    let fixture = tempfile::tempdir().unwrap();
+    let bare = make_tagged_repo(fixture.path());
+    let server = HttpsGitServer::start(bare, fixture.path(), "alice", "secret-token");
+
+    let mut roots = RootCertStore::empty();
+    roots
+        .add(CertificateDer::from_pem_file(&server.ca_path).unwrap())
+        .unwrap();
+    let config = ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    let connection =
+        ClientConnection::new(Arc::new(config), ServerName::try_from("localhost").unwrap())
+            .unwrap();
+    let mut stream = StreamOwned::new(connection, TcpStream::connect(server.address).unwrap());
+    stream
+        .write_all(
+            b"GET /repo.git/info/refs?service=git-upload-pack HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+        )
+        .unwrap();
+
+    let mut response = Vec::new();
+    stream
+        .read_to_end(&mut response)
+        .expect("401 response must end with a TLS close_notify");
+    assert!(response.starts_with(b"HTTP/1.1 401 Unauthorized\r\n"));
 }
 
 #[test]
