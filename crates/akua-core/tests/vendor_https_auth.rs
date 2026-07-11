@@ -304,7 +304,7 @@ upstream = {{ git = "{}", tag = "v1.0.0" }}
     )
     .unwrap();
 
-    std::env::set_var("XDG_CACHE_HOME", fixture.path().join("cache"));
+    std::env::set_var("XDG_CACHE_HOME", fixture.path().join("untrusted-cache"));
 
     let auth: HostAuthMap = HashMap::from([(
         format!("localhost:{}", server.address.port()),
@@ -329,6 +329,9 @@ upstream = {{ git = "{}", tag = "v1.0.0" }}
     );
 
     std::env::set_var("GIT_SSL_CAINFO", &server.ca_path);
+    // A failed clone can leave transport-specific partial cache state. The
+    // trusted clone is a separate assertion and must start from a clean cache.
+    std::env::set_var("XDG_CACHE_HOME", fixture.path().join("trusted-cache"));
     let result = akua_core::vendor::add(&workspace, "upstream", Some(&auth));
 
     std::env::remove_var("GIT_SSL_NO_VERIFY");
