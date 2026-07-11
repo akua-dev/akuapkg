@@ -784,7 +784,10 @@ entries:
                     }
                 };
 
-                let header = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
+                let header = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
                 // A client abort mid-write is fine — ignore the error.
                 let _ = stream.write_all(header.as_bytes());
                 let _ = stream.write_all(&body);
