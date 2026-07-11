@@ -133,9 +133,12 @@ serde shape).
 The `blocking-http-transport-curl-rustls` gix feature applies Git-compatible TLS env
 settings, including `GIT_SSL_NO_VERIFY`. On a poisoned environment, an attacker can
 disable TLS validation and MITM the *first* `akua add` of a git dep (TOFU window);
-subsequent fetches are protected by the lockfile commit pin. **Fix:** pin TLS config
-in the gix client and ignore `GIT_SSL_NO_VERIFY`, or document that git deps require
-a trusted environment on first resolve.
+subsequent fetches are protected by the lockfile commit pin. **Fix:** every initial
+clone and cached-repository refresh now forces `ssl_verify = true` before the TLS
+handshake, ignoring `GIT_SSL_NO_VERIFY` and `http.sslVerify=false`. The connection
+retains only `ssl_ca_info`, so custom trust configured through `GIT_SSL_CAINFO` or
+`http.sslCAInfo` still works without forwarding ambient HTTP headers, proxy
+credentials, or other Git transport options.
 
 ### 9. [MEDIUM] Cosign verification is opt-in, not "verify by default"
 `crates/akua-cli/src/verbs/render.rs:482-498`, `verify.rs:280-285`, `oci_fetcher.rs:439-449`

@@ -118,8 +118,7 @@ tar = { version = "0.4", optional = true }
 # release builds use vendored OpenSSL instead of target system OpenSSL packages.
 # Because this transport honours `GIT_SSL_NO_VERIFY` from the ambient
 # environment, `git_fetcher::force_tls_verification` pins `ssl_verify = true` on
-# every connection before the handshake so a poisoned env cannot disable cert
-# validation on the first (pre-pin) clone.
+# every connection before the handshake while retaining configured CA bundles.
 gix = { version = "0.66", default-features = false, features = ["blocking-http-transport-curl-rustls", "max-performance-safe", "worktree-mutation"], optional = true }
 curl = { version = "0.4", optional = true, features = ["static-ssl"] }
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std", "pem", "pkcs8"], optional = true }
@@ -138,6 +137,9 @@ rand = "0.8"
 # endpoint on `http://127.0.0.1:<port>` so push/pull paths exercise the
 # full transport without a real registry.
 httpmock = "0.7"
+# Authenticated HTTPS git fixture for the vendor regression test.
+rcgen = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 # Pure-Rust OCI client. Dev-only — used to *parse* the manifest bytes
 # our pusher PUTs and assert spec compliance via a real OCI parser
 # (independent verification that we're not just round-tripping our own
