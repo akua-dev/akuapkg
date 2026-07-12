@@ -47,7 +47,7 @@ These skills install wherever the Agent Skills Specification is supported. Use w
 **With `npx skills` (Vercel Labs skill manager):**
 
 ```sh
-npx skills install github:cnap-tech/akua/skills
+npx skills install github:akua-dev/akua/skills
 ```
 
 **With Claude Code:**

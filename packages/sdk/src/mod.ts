@@ -459,7 +459,7 @@ export class Akua {
 	 *
 	 * Field-level docstrings become `description`; `@ui(...)` decorators
 	 * become OpenAPI-3.1-compliant `x-ui` extensions. See
-	 * [`docs/cli.md`](https://github.com/cnap-tech/akua/blob/main/docs/cli.md#akua-export)
+	 * [`docs/cli.md`](https://github.com/akua-dev/akua/blob/main/docs/cli.md#akua-export)
 	 * for the full schema contract.
 	 */
 	async export(opts: ExportOptions = {}): Promise<Record<string, unknown>> {

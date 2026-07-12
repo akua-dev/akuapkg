@@ -16,7 +16,7 @@
   
   <!-- Badges -->
   <p>
-    <a href="https://github.com/cnap-tech/akua/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/cnap-tech/akua?label=release&style=flat-square"></a>
+    <a href="https://github.com/akua-dev/akua/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/akua-dev/akua?label=release&style=flat-square"></a>
     <a href="https://www.npmjs.com/package/@akua-dev/sdk"><img alt="npm" src="https://img.shields.io/npm/v/%40akua-dev%2Fsdk?style=flat-square&label=%40akua-dev%2Fsdk"></a>
     <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square"></a>
   </p>
@@ -124,13 +124,13 @@ For cross-Package composition (install one Akua package on top of another, with 
 curl -fsSL https://cli.akua.dev/install | sh
 
 # Homebrew
-brew install cnap-tech/tap/akua
+brew install akua-dev/tap/akua
 
 # Windows
 irm https://cli.akua.dev/install.ps1 | iex
 
 # From source
-cargo install --git https://github.com/cnap-tech/akua akua-cli
+cargo install --git https://github.com/akua-dev/akua akua-cli
 ```
 
 ```sh
@@ -138,10 +138,10 @@ cargo install --git https://github.com/cnap-tech/akua akua-cli
 bun add @akua-dev/sdk
 
 # Agent skills (universal — works across 25+ agents)
-npx skills install github:cnap-tech/akua/skills
+npx skills install github:akua-dev/akua/skills
 ```
 
-Prebuilt binaries: [Releases](https://github.com/cnap-tech/akua/releases). Container image: `ghcr.io/cnap-tech/akua`. Agent-specific setup: [`docs/agent-usage.md`](docs/agent-usage.md).
+Prebuilt binaries: [Releases](https://github.com/akua-dev/akua/releases). Container image: `ghcr.io/akua-dev/akua`. Agent-specific setup: [`docs/agent-usage.md`](docs/agent-usage.md).
 
 ## Documentation
 
