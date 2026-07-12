@@ -55,11 +55,23 @@ lane. The publisher verifies that the tag still resolves to the expected source 
 that `github.sha` is the reviewed workflow commit; if either ref advances, recovery
 fails before npm publication.
 
-A captain may run recovery only after the source PR CI is green and an npm
-administrator has confirmed the trusted-publisher identity above for all ten packages:
+A captain may run recovery only after PR #69 CI is green, the corrected commit is
+merged into `main`, that exact reviewed merge commit is verified as the current
+`main` commit, and an npm administrator has confirmed the trusted-publisher identity
+above for all ten packages:
 
 ```sh
-gh workflow run release.yml --repo akua-dev/akua --ref main -f tag=v0.8.25 -f dry-run=false
+reviewed_workflow_commit=$(gh pr view 69 --repo akua-dev/akua --json mergeCommit --jq '.mergeCommit.oid')
+main_commit=$(gh api repos/akua-dev/akua/commits/main --jq '.sha')
+test "$main_commit" = "$reviewed_workflow_commit"
+
+gh workflow run release.yml \
+  --repo akua-dev/akua \
+  --ref main \
+  -f tag=v0.8.25 \
+  -f expected-source-commit=6452eb662445d2ad7c108128f93b9c55138729bb \
+  -f expected-workflow-commit="$reviewed_workflow_commit" \
+  -f dry-run=false
 ```
 
 That single deliberate dispatch rebuilds from the immutable tag, repairs the GitHub

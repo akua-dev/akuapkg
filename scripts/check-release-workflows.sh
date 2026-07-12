@@ -73,6 +73,31 @@ assert_file_excludes() {
 	fi
 }
 
+assert_file_excludes_pattern() {
+	local file="$1"
+	local pattern="$2"
+
+	if grep -Eiq -- "$pattern" "$file"; then
+		echo "ERROR: $file matches forbidden pattern '$pattern'" >&2
+		exit 1
+	fi
+}
+
+assert_dispatch_input_required() {
+	local file="$1"
+	local input="$2"
+
+	if ! awk -v input="$input" '
+		$0 == "      " input ":" { in_input = 1; next }
+		in_input && $0 ~ /^      [^ ]/ { exit }
+		in_input && $0 == "        required: true" { found = 1 }
+		END { exit !found }
+	' "$file"; then
+		echo "ERROR: $file workflow_dispatch input '$input' must be required" >&2
+		exit 1
+	fi
+}
+
 # Release builds must install from the committed lockfile before mutating
 # package manifests to the tag version. Mutating first invalidates
 # --frozen-lockfile and can also force unpublished tag versions to resolve.
@@ -124,19 +149,41 @@ if grep -Eiq 'homebrew|TAP_BUMP|github\.com-tap|Formula/akua\.rb' .github/workfl
 	echo "ERROR: release.yml contains an Akua-core Homebrew/tap side effect or ownership claim" >&2
 	exit 1
 fi
-assert_file_excludes "README.md" "brew install akua-dev/tap/akua"
-assert_file_excludes "packages/sdk/README.md" "Homebrew"
-assert_file_excludes "docs/sdk-runtime-compat.md" "Homebrew"
+for file in README.md packages/sdk/README.md docs/sdk-runtime-compat.md; do
+	assert_file_excludes_pattern "$file" 'brew[[:space:]]+install[^[:cntrl:]]*akua|homebrew[^[:cntrl:]]*(formula|tap|install|update|publish|release)|(^|[^[:alnum:]_])(formula|tap)([^[:alnum:]_]|$)[^[:cntrl:]]*akua'
+done
 
 # A manual recovery runs workflow code from a green branch, but every source
 # checkout must resolve to the requested immutable tag. The workflow verifies
 # and propagates that commit; it must never create or move a tag.
+for input in expected-source-commit expected-workflow-commit; do
+	assert_dispatch_input_required ".github/workflows/release.yml" "$input"
+done
+assert_job_contains ".github/workflows/release.yml" \
+	"detect-version" \
+	'EXPECTED_SOURCE_COMMIT: ${{ inputs.expected-source-commit }}'
+assert_job_contains ".github/workflows/release.yml" \
+	"detect-version" \
+	'EXPECTED_WORKFLOW_COMMIT: ${{ inputs.expected-workflow-commit }}'
+assert_job_contains ".github/workflows/release.yml" \
+	"detect-version" \
+	'ACTUAL_WORKFLOW_COMMIT: ${{ github.workflow_sha }}'
+assert_job_contains ".github/workflows/release.yml" \
+	"detect-version" \
+	'if [[ "$source_commit" != "$EXPECTED_SOURCE_COMMIT" ]]'
+assert_job_contains ".github/workflows/release.yml" \
+	"detect-version" \
+	'if [[ "$ACTUAL_WORKFLOW_COMMIT" != "$EXPECTED_WORKFLOW_COMMIT" ]]'
 assert_job_contains ".github/workflows/release.yml" \
 	"detect-version" \
 	'git rev-parse "refs/tags/${tag}^{commit}"'
 assert_file_contains ".github/workflows/release.yml" "source_commit: \${{ steps.parse.outputs.source_commit }}"
-assert_file_contains ".github/workflows/release.yml" "EXPECTED_SOURCE_COMMIT: \${{ needs.detect-version.outputs.source_commit }}"
-assert_file_contains ".github/workflows/release.yml" "EXPECTED_WORKFLOW_COMMIT: \${{ github.workflow_sha }}"
+assert_job_contains ".github/workflows/release.yml" \
+	"trigger-publish" \
+	"inputs.expected-source-commit"
+assert_job_contains ".github/workflows/release.yml" \
+	"trigger-publish" \
+	"inputs.expected-workflow-commit"
 assert_file_contains ".github/workflows/release.yml" 'WORKFLOW_REF: ${{ github.ref_name }}'
 assert_job_contains ".github/workflows/release.yml" \
 	"trigger-publish" \
@@ -223,8 +270,12 @@ assert_job_contains ".github/workflows/release.yml" \
 assert_file_contains "docs/releasing.md" "akua-dev/akua"
 assert_file_contains "docs/releasing.md" "release-publish.yml"
 assert_file_contains "docs/releasing.md" "Environment: none"
-assert_file_contains "docs/releasing.md" "--ref main -f tag=v0.8.25"
-assert_file_contains "docs/releasing.md" "only after the source PR CI is green"
+assert_file_contains "docs/releasing.md" "--ref main"
+assert_file_contains "docs/releasing.md" "-f expected-source-commit=6452eb662445d2ad7c108128f93b9c55138729bb"
+assert_file_contains "docs/releasing.md" '-f expected-workflow-commit="$reviewed_workflow_commit"'
+assert_file_contains "docs/releasing.md" 'merged into `main`'
+assert_file_contains "docs/releasing.md" 'test "$main_commit" = "$reviewed_workflow_commit"'
+assert_file_contains "docs/releasing.md" "CI is green"
 assert_file_contains "docs/releasing.md" "all ten packages"
 assert_file_contains "docs/releasing.md" "expected source and workflow commit SHAs"
 assert_file_contains "docs/releasing.md" "fails before npm publication"

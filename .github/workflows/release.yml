@@ -54,6 +54,14 @@ on:
       tag:
         description: 'Tag name (e.g. v0.8.7) — required for manual runs'
         required: true
+      expected-source-commit:
+        description: 'Reviewed commit the tag must resolve to — required for manual runs'
+        required: true
+        type: string
+      expected-workflow-commit:
+        description: 'Reviewed commit containing this workflow — required for manual runs'
+        required: true
+        type: string
 
 permissions:
   contents: write   # github-release: create Releases
@@ -86,6 +94,11 @@ jobs:
           fetch-depth: 0
 
       - id: parse
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.expected-source-commit }}
+          EXPECTED_WORKFLOW_COMMIT: ${{ inputs.expected-workflow-commit }}
+          ACTUAL_WORKFLOW_COMMIT: ${{ github.workflow_sha }}
         run: |
           set -eu
           tag="${{ github.event.inputs.tag || github.ref_name }}"
@@ -94,6 +107,24 @@ jobs:
             exit 1
           fi
           source_commit=$(git rev-parse "refs/tags/${tag}^{commit}")
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ ! "$EXPECTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::expected source commit is not a full lowercase SHA"
+              exit 1
+            fi
+            if [[ ! "$EXPECTED_WORKFLOW_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::expected workflow commit is not a full lowercase SHA"
+              exit 1
+            fi
+            if [[ "$source_commit" != "$EXPECTED_SOURCE_COMMIT" ]]; then
+              echo "::error::$tag resolves to $source_commit, expected $EXPECTED_SOURCE_COMMIT"
+              exit 1
+            fi
+            if [[ "$ACTUAL_WORKFLOW_COMMIT" != "$EXPECTED_WORKFLOW_COMMIT" ]]; then
+              echo "::error::workflow commit $ACTUAL_WORKFLOW_COMMIT does not match expected $EXPECTED_WORKFLOW_COMMIT"
+              exit 1
+            fi
+          fi
           head_commit=$(git rev-parse 'HEAD^{commit}')
           if [[ "$head_commit" != "$source_commit" ]]; then
             echo "::error::checkout $head_commit does not match $tag at $source_commit"
@@ -385,8 +416,8 @@ jobs:
         # works — no PAT needed.
         env:
           TAG: ${{ needs.detect-version.outputs.tag }}
-          EXPECTED_SOURCE_COMMIT: ${{ needs.detect-version.outputs.source_commit }}
-          EXPECTED_WORKFLOW_COMMIT: ${{ github.workflow_sha }}
+          EXPECTED_SOURCE_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.expected-source-commit || needs.detect-version.outputs.source_commit }}
+          EXPECTED_WORKFLOW_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.expected-workflow-commit || github.workflow_sha }}
           WORKFLOW_REF: ${{ github.ref_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
