@@ -11,6 +11,19 @@ Homebrew is explicitly outside this recovery. Formula ownership belongs to
 `akua-dev/cli` and the dedicated `akua-dev/homebrew-tap` lane; Akua core does not
 write, dispatch, or claim ownership of that formula.
 
+## Normal releases
+
+Land and verify release changes on `main`, batch them, and push one immutable
+`v<semver>` tag only when a human explicitly requests the release. The tag triggers
+the build workflow, which derives the workspace and package version from the tag;
+the committed `Cargo.toml` version remains a development placeholder. Stable tags
+publish npm packages under `latest` and update the container's `latest` tag.
+Prerelease tags publish npm packages under `next`, mark the GitHub Release as a
+prerelease, and do not update the container's `latest` tag.
+
+Do not delete and re-push a release tag. If a tagged run fails, use the SHA-bound
+recovery path below after correcting and reviewing the workflow on `main`.
+
 ## npm trusted publisher contract
 
 npm trusted-publisher configuration is external registry state. Source code can
@@ -55,10 +68,10 @@ lane. The publisher verifies that the tag still resolves to the expected source 
 that `github.sha` is the reviewed workflow commit; if either ref advances, recovery
 fails before npm publication.
 
-A captain may run recovery only after PR #69 CI is green, the corrected commit is
-merged into `main`, that exact reviewed merge commit is verified as the current
-`main` commit, and an npm administrator has confirmed the trusted-publisher identity
-above for all ten packages:
+A captain may run this recovery only after PR #69 CI is green, the corrected
+commit is merged into `main`, that exact reviewed merge commit is verified as the
+current `main` commit, and an npm administrator has confirmed the
+trusted-publisher identity above for all ten packages:
 
 ```sh
 reviewed_workflow_commit=$(gh pr view 69 --repo akua-dev/akua --json mergeCommit --jq '.mergeCommit.oid')
