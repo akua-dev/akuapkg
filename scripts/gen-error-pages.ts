@@ -21,8 +21,30 @@ import { renderMarkdown } from './site/markdown.ts';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
 const codesPath = join(root, 'crates/akua-core/src/cli_contract/codes.rs');
+const errorContractPath = join(root, 'crates/akua-core/src/cli_contract/error.rs');
 const richDocsDir = join(root, 'docs/errors');
 const outDir = join(root, 'site/errors');
+
+function readErrorDocsBase(): string {
+	const source = readFileSync(errorContractPath, 'utf8');
+	const match = source.match(/^const ERROR_DOCS_BASE: &str = "([^"]+)";$/m);
+	if (!match) {
+		throw new Error(`ERROR_DOCS_BASE not found in ${errorContractPath}`);
+	}
+	return match[1];
+}
+
+const errorDocsBase = readErrorDocsBase();
+
+function assertNoLegacyErrorDocsUrls(): void {
+	const legacyUrl = ['https://akua.dev', 'errors'].join('/');
+	const result = Bun.spawnSync(['git', 'grep', '-n', '-F', legacyUrl, '--']);
+	if (result.exitCode === 1) return;
+	if (result.exitCode !== 0) {
+		throw new Error(`git grep failed while checking legacy error URLs: ${result.stderr}`);
+	}
+	throw new Error(`tracked files contain legacy error URLs:\n${result.stdout}`);
+}
 
 interface CodeEntry {
 	name: string;
@@ -113,7 +135,8 @@ ${bodyHtml}
 		body: inner,
 		currentSection: '/errors/',
 		sidebar,
-		canonicalUrl: `https://akua.dev/errors/${entry.name}`,
+		canonicalUrl: `${errorDocsBase}/${entry.name}`,
+		emitCanonicalLink: true,
 	});
 }
 
@@ -166,7 +189,8 @@ ${groupsHtml}
 		body: inner,
 		currentSection: '/errors/',
 		sidebar,
-		canonicalUrl: 'https://akua.dev/errors/',
+		canonicalUrl: `${errorDocsBase}/`,
+		emitCanonicalLink: true,
 	});
 }
 
@@ -196,3 +220,23 @@ for (const entry of entries) {
 
 writeFileSync(join(outDir, 'index.html'), renderIndexPage(entries, buildSidebar(entries, null)));
 console.log(`wrote ${written} code pages + index.html → site/errors/`);
+
+function assertCanonicalMetadata(file: string, expectedUrl: string): void {
+	const html = readFileSync(file, 'utf8');
+	const canonical = `<link rel="canonical" href="${expectedUrl}" />`;
+	const openGraph = `<meta property="og:url" content="${expectedUrl}" />`;
+	if (!html.includes(canonical) || !html.includes(openGraph)) {
+		throw new Error(
+			`${file} must contain canonical and OpenGraph URLs for ${expectedUrl}`,
+		);
+	}
+}
+
+assertCanonicalMetadata(join(outDir, 'index.html'), `${errorDocsBase}/`);
+for (const entry of entries) {
+	assertCanonicalMetadata(
+		join(outDir, `${entry.name}.html`),
+		`${errorDocsBase}/${entry.name}`,
+	);
+}
+assertNoLegacyErrorDocsUrls();

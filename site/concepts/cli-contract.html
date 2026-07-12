@@ -313,7 +313,7 @@ akua deploy status --handle=r-4f2 --json</code></pre>
 <p>Without <code>--json</code>, verbs emit human-readable text to stdout. With <code>--json</code>, they emit structured data agents can parse.</p>
 <h3 id="12-structured-errors-on-stderr">1.2 Structured errors on stderr</h3>
 <p>Errors always go to stderr. With <code>--json</code>, errors are JSON-lines (one error per line). Without <code>--json</code>, errors are human-readable but still prefixed with a stable error code.</p>
-<pre><code>{&quot;level&quot;:&quot;error&quot;,&quot;code&quot;:&quot;E_SCHEMA_INVALID&quot;,&quot;path&quot;:&quot;apps/api/inputs.yaml&quot;,&quot;field&quot;:&quot;replicas&quot;,&quot;message&quot;:&quot;expected integer, got string&quot;,&quot;suggestion&quot;:&quot;remove quotes around 3&quot;,&quot;docs&quot;:&quot;https://akua.dev/errors/E_SCHEMA_INVALID&quot;}</code></pre>
+<pre><code>{&quot;level&quot;:&quot;error&quot;,&quot;code&quot;:&quot;E_SCHEMA_INVALID&quot;,&quot;path&quot;:&quot;apps/api/inputs.yaml&quot;,&quot;field&quot;:&quot;replicas&quot;,&quot;message&quot;:&quot;expected integer, got string&quot;,&quot;suggestion&quot;:&quot;remove quotes around 3&quot;,&quot;docs&quot;:&quot;https://cli.akua.dev/errors/E_SCHEMA_INVALID&quot;}</code></pre>
 <p>Every error has:</p>
 <ul><li><code>code</code> — stable, machine-readable identifier (SHOUTY_SNAKE_CASE)</li><li><code>message</code> — human-readable summary</li><li><code>path</code> — file, resource, or field that caused the error (if applicable)</li><li><code>suggestion</code> — actionable fix (if known)</li><li><code>docs</code> — URL to documentation (if available)</li></ul>
 <h3 id="13-determinism">1.3 Determinism</h3>

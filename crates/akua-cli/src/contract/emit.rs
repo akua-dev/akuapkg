@@ -146,7 +146,7 @@ mod tests {
             "{out}"
         );
         assert!(out.contains("suggestion: remove quotes around 3"), "{out}");
-        assert!(out.contains("docs: https://akua.dev/errors/E_SCHEMA_INVALID"));
+        assert!(out.contains("docs: https://cli.akua.dev/errors/E_SCHEMA_INVALID"));
         assert!(out.contains("next:"));
         assert!(out.contains("edit apps/api/inputs.yaml"));
     }

@@ -388,8 +388,10 @@ export interface PageOpts {
 	currentSection: string | null;
 	/** Sidebar spec, or null for full-width layouts (landing, /start). */
 	sidebar: SidebarSpec | null;
-	/** Canonical URL for OG metadata. */
+	/** Canonical URL used by OG metadata and, when enabled, a canonical link. */
 	canonicalUrl?: string;
+	/** Emit a canonical link tag in addition to the OG URL. */
+	emitCanonicalLink?: boolean;
 	/** Extra body class (e.g. `landing` for vertical-centered hero). */
 	bodyClass?: string;
 }
@@ -409,6 +411,9 @@ const SCROLL_SCRIPT = `<script>
 
 export function pageShell(opts: PageOpts): string {
 	const ogUrl = opts.canonicalUrl ?? 'https://akua.dev/';
+	const canonicalLink = opts.emitCanonicalLink
+		? `<link rel="canonical" href="${escape(ogUrl)}" />\n`
+		: '';
 	const sidebarHtml = opts.sidebar ? renderSidebar(opts.sidebar) : '';
 	const layoutClass = opts.sidebar ? 'layout' : 'layout no-sidebar';
 	const bodyClass = opts.bodyClass ?? '';
@@ -422,7 +427,7 @@ export function pageShell(opts: PageOpts): string {
 <meta name="color-scheme" content="dark" />
 <link rel="icon" type="image/png" href="/assets/logo.png" />
 <link rel="apple-touch-icon" href="/assets/logo.png" />
-<meta property="og:title" content="${escape(opts.title)} — akua" />
+${canonicalLink}<meta property="og:title" content="${escape(opts.title)} — akua" />
 <meta property="og:description" content="${escape(opts.description)}" />
 <meta property="og:url" content="${escape(ogUrl)}" />
 <meta property="og:image" content="https://akua.dev/assets/logo.png" />

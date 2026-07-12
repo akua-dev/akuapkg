@@ -43,7 +43,7 @@ line?: number | null,
 suggestion?: string | null, 
 /**
  * URL to the error's documentation page. Convention:
- * `https://akua.dev/errors/<CODE>`.
+ * `https://cli.akua.dev/errors/<CODE>`.
  */
 docs?: string | null, 
 /**

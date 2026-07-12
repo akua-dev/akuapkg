@@ -437,7 +437,7 @@ Reasons this matters:
 - [ ] `package.json` (or `jsr.json`) `exports` resolves the runtime-specific build automatically via conditions — single `"."` key, no runtime subpaths.
 - [ ] Wrap every verb against the same typed pattern. Blocking set for v0.1.0: `init`, `render`, `check`, `lint`, `fmt`, `test`, `dev`, `repl`, `add`, `remove`, `tree`, `lock`, `update`, `verify`, `diff`, `inspect`, `pack`, `push`, `sign`, `pull`, `publish`, `cache`, `auth`.
 - [ ] Per-verb tests mirror `whoami`'s shape — one payload assertion, one error-path assertion, validated against the generated JSON Schema.
-- [ ] `@akua-dev/sdk` README — `bun add @akua-dev/sdk`, one-screen render example (same import works in Node + browser), link to every `AkuaError` subclass's `akua.dev/errors/<code>` docs URL.
+- [ ] `@akua-dev/sdk` README — `bun add @akua-dev/sdk`, one-screen render example (same import works in Node + browser), link to every `AkuaError` subclass's `https://cli.akua.dev/errors/<code>` docs URL.
 - [ ] [docs/sdk.md](sdk.md) — WASM-in-process transport, single-entrypoint rationale, bundle size, lazy-init semantics, Node + Deno + Bun + browser matrix.
 - [ ] Tag `sdk-v0.1.0` to exercise the publish workflow — dry-run via `workflow_dispatch` first.
 - [ ] Drift guard (`task sdk:check`) wired into the v0.1.0 CI matrix so generated types + the WASM bundle + committed artifacts stay in sync.

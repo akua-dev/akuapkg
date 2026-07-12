@@ -625,7 +625,7 @@
           "type": "string"
         },
         "docs": {
-          "description": "URL to the error's documentation page. Convention:\n`https://akua.dev/errors/<CODE>`.",
+          "description": "URL to the error's documentation page. Convention:\n`https://cli.akua.dev/errors/<CODE>`.",
           "type": [
             "string",
             "null"
