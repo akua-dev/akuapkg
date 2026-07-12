@@ -455,8 +455,8 @@ tasks:
         echo "Bootstrap complete. Next:"
         echo "  1. https://www.npmjs.com/settings/akua-dev/packages — verify all 10 packages appear"
         echo "  2. For each package: Settings → Trusted Publishers → add GitHub Actions"
-        echo "     org=cnap-tech  repo=akua  workflow=release.yml"
-        echo "  3. Tag v0.6.0 — release.yml handles npm + GitHub Release + Docker + Homebrew."
+        echo "     org=akua-dev  repo=akua  workflow=release-publish.yml  environment=none"
+        echo "  3. See docs/releasing.md before running a release."
 
   release:dry-run:
     desc: Run the full pre-release pipeline locally (gen + check + build + pack)

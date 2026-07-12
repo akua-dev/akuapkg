@@ -80,11 +80,27 @@ jobs:
       version: ${{ steps.parse.outputs.version }}
       is_prerelease: ${{ steps.parse.outputs.is_prerelease }}
       npm_dist_tag: ${{ steps.parse.outputs.npm_dist_tag }}
+      source_commit: ${{ steps.parse.outputs.source_commit }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          fetch-depth: 0
+
       - id: parse
         run: |
           set -eu
           tag="${{ github.event.inputs.tag || github.ref_name }}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::tag '$tag' is not a valid semver v* tag"
+            exit 1
+          fi
+          source_commit=$(git rev-parse "refs/tags/${tag}^{commit}")
+          head_commit=$(git rev-parse 'HEAD^{commit}')
+          if [[ "$head_commit" != "$source_commit" ]]; then
+            echo "::error::checkout $head_commit does not match $tag at $source_commit"
+            exit 1
+          fi
           version="${tag#v}"
           # Semver prerelease has a `-` separator after the patch number
           # (1.2.3-rc1, 1.2.3-alpha.4). A bare `v1.2.3` doesn't match.
@@ -100,8 +116,9 @@ jobs:
             echo "version=$version"
             echo "is_prerelease=$is_prerelease"
             echo "npm_dist_tag=$npm_dist_tag"
+            echo "source_commit=$source_commit"
           } >> "$GITHUB_OUTPUT"
-          echo "Resolved: tag=$tag version=$version prerelease=$is_prerelease npm_dist_tag=$npm_dist_tag"
+          echo "Resolved: tag=$tag commit=$source_commit version=$version prerelease=$is_prerelease npm_dist_tag=$npm_dist_tag"
 
   # ---------------------------------------------------------------------------
   # wasm-bundle — engine + render-worker wasm artefacts built once on
@@ -116,6 +133,8 @@ jobs:
     needs: detect-version
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.detect-version.outputs.source_commit }}
 
       - uses: jdx/mise-action@v4
         with:
@@ -214,6 +233,8 @@ jobs:
     runs-on: ${{ matrix.host }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.detect-version.outputs.source_commit }}
 
       - uses: actions/setup-node@v4
         with:
@@ -327,7 +348,7 @@ jobs:
         with:
           # Same filter as the old native-publish step — without it,
           # download-artifact@v4 also pulls the docker job's
-          # `cnap-tech~akua~<id>.dockerbuild` provenance artifact whose
+          # `akua-dev~akua~<id>.dockerbuild` provenance artifact whose
           # `~`-containing name fails path validation.
           pattern: '{native-*,wasm-bundle,sdk-staged}'
           path: artifacts
@@ -387,6 +408,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.detect-version.outputs.source_commit }}
 
       - uses: jdx/mise-action@v4
         with:
@@ -415,9 +438,14 @@ jobs:
         run: |
           set -eu
           version="${{ needs.detect-version.outputs.version }}"
+          repo='git+https://github.com/akua-dev/akua.git'
+          homepage='https://github.com/akua-dev/akua#readme'
           echo "Preparing @akua-dev/sdk@${version}"
-          jq --arg v "$version" \
-            '.version = $v | .dependencies["@akua-dev/native"] = $v' \
+          jq --arg v "$version" --arg repo "$repo" --arg homepage "$homepage" \
+            '.version = $v
+             | .dependencies["@akua-dev/native"] = $v
+             | .repository.url = $repo
+             | .homepage = $homepage' \
             packages/sdk/package.json > packages/sdk/package.json.tmp
           mv packages/sdk/package.json.tmp packages/sdk/package.json
 
@@ -463,6 +491,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.detect-version.outputs.source_commit }}
 
       - uses: jdx/mise-action@v4
         with:
@@ -594,13 +624,15 @@ jobs:
     if: github.event_name == 'push' || inputs.dry-run == false
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.detect-version.outputs.source_commit }}
       - uses: actions/download-artifact@v8
         with:
           # Filter to the cli-build artifacts this job consumes —
           # `akua-<target>` per-platform tarballs + sha256 sidecars
           # (uploaded as `name: akua-${{ matrix.target }}` upstream).
           # Without the pattern, download-artifact also pulls the
-          # docker job's `cnap-tech~akua~<id>.dockerbuild` provenance
+          # docker job's `akua-dev~akua~<id>.dockerbuild` provenance
           # artifact whose `~`-containing name fails path validation
           # in v4 (and only silently slips by on v8 because the
           # merge-multiple flag tolerates it; defensive here so a
@@ -608,23 +640,37 @@ jobs:
           pattern: 'akua-*'
           path: dist
           merge-multiple: true
-      - name: Create release
+      - name: Create or update release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.detect-version.outputs.tag }}
+          VERSION: ${{ needs.detect-version.outputs.version }}
+          SOURCE_COMMIT: ${{ needs.detect-version.outputs.source_commit }}
+          IS_PRERELEASE: ${{ needs.detect-version.outputs.is_prerelease }}
         run: |
           set -eu
-          flags=()
-          if [ "${{ needs.detect-version.outputs.is_prerelease }}" = "true" ]; then
-            flags+=(--prerelease)
+          notes="See [CHANGELOG.md](https://github.com/akua-dev/akua/blob/main/CHANGELOG.md) for details."
+          if gh release view "${TAG}" --repo "${GH_REPO}" > /dev/null 2>&1; then
+            gh release upload "${TAG}" dist/*.tar.gz dist/*.zip dist/*.sha256 --clobber \
+              --repo "${GH_REPO}"
+          else
+            flags=()
+            if [ "${IS_PRERELEASE}" = "true" ]; then
+              flags+=(--prerelease)
+            fi
+            gh release create "${TAG}" \
+              --repo "${GH_REPO}" \
+              --verify-tag \
+              --target "${SOURCE_COMMIT}" \
+              --title "akua ${VERSION}" \
+              --notes "${notes}" \
+              "${flags[@]}" \
+              dist/*.tar.gz dist/*.zip dist/*.sha256
           fi
-          gh release create "${{ needs.detect-version.outputs.tag }}" \
-            --title "akua ${{ needs.detect-version.outputs.version }}" \
-            --notes "See [CHANGELOG.md](https://github.com/cnap-tech/akua/blob/main/CHANGELOG.md) for details." \
-            "${flags[@]}" \
-            dist/*.tar.gz dist/*.zip dist/*.sha256
 
   # ---------------------------------------------------------------------------
-  # docker — multi-arch image at `ghcr.io/cnap-tech/akua:<tag>`. Skips
+  # docker — multi-arch image at `ghcr.io/akua-dev/akua:<tag>`. Skips
   # the `:latest` tag for prereleases so `docker pull akua:latest`
   # stays on the most recent stable release.
   # ---------------------------------------------------------------------------
@@ -634,6 +680,8 @@ jobs:
     if: github.event_name == 'push' || inputs.dry-run == false
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.detect-version.outputs.source_commit }}
       - uses: actions/download-artifact@v8
         with:
           pattern: 'akua-*'
@@ -662,10 +710,10 @@ jobs:
           set -eu
           tag="${{ needs.detect-version.outputs.tag }}"
           # Versioned tag always; `:latest` only for stable releases.
-          tags="ghcr.io/cnap-tech/akua:${tag}"
+          tags="ghcr.io/akua-dev/akua:${tag}"
           if [ "${{ needs.detect-version.outputs.is_prerelease }}" = "false" ]; then
             tags="${tags}
-          ghcr.io/cnap-tech/akua:latest"
+          ghcr.io/akua-dev/akua:latest"
           fi
           {
             echo "tags<<EOF"
@@ -682,7 +730,7 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
 
   # ---------------------------------------------------------------------------
-  # homebrew-tap — auto-bump cnap-tech/homebrew-tap's `Formula/akua.rb`.
+  # homebrew-tap — auto-bump akua-dev/homebrew-tap's `Formula/akua.rb`.
   # Skipped for prereleases (regular `brew install akua` users
   # shouldn't get RC builds — they have to opt in via
   # `brew install --HEAD akua` or pin a specific version).
@@ -734,9 +782,9 @@ jobs:
           linux_arm_sha=$(get_sha aarch64-unknown-linux-gnu)
           linux_x86_sha=$(get_sha x86_64-unknown-linux-gnu)
 
-          git clone git@github.com-tap:cnap-tech/homebrew-tap.git tap
+          git clone git@github.com-tap:akua-dev/homebrew-tap.git tap
           cd tap
-          git config user.email "akua-tap-bumper@cnap-tech"
+          git config user.email "akua-tap-bumper@akua.dev"
           git config user.name  "akua-tap-bumper"
 
           # Rewrite the whole formula. Simpler than four sed passes,
@@ -745,32 +793,32 @@ jobs:
           cat > Formula/akua.rb <<RUBY
           # frozen_string_literal: true
 
-          # Auto-bumped by release.yml in cnap-tech/akua on every stable
+          # Auto-bumped by release.yml in akua-dev/akua on every stable
           # tag push. Manual edits get overwritten.
           class Akua < Formula
             desc "Cloud-native package build, transform, and preview toolkit"
-            homepage "https://github.com/cnap-tech/akua"
+            homepage "https://github.com/akua-dev/akua"
             version "${VERSION}"
             license "Apache-2.0"
 
             on_macos do
               on_arm do
-                url "https://github.com/cnap-tech/akua/releases/download/v#{version}/akua-v#{version}-aarch64-apple-darwin.tar.gz"
+                url "https://github.com/akua-dev/akua/releases/download/v#{version}/akua-v#{version}-aarch64-apple-darwin.tar.gz"
                 sha256 "${darwin_arm_sha}"
               end
               on_intel do
-                url "https://github.com/cnap-tech/akua/releases/download/v#{version}/akua-v#{version}-x86_64-apple-darwin.tar.gz"
+                url "https://github.com/akua-dev/akua/releases/download/v#{version}/akua-v#{version}-x86_64-apple-darwin.tar.gz"
                 sha256 "${darwin_x86_sha}"
               end
             end
 
             on_linux do
               on_arm do
-                url "https://github.com/cnap-tech/akua/releases/download/v#{version}/akua-v#{version}-aarch64-unknown-linux-gnu.tar.gz"
+                url "https://github.com/akua-dev/akua/releases/download/v#{version}/akua-v#{version}-aarch64-unknown-linux-gnu.tar.gz"
                 sha256 "${linux_arm_sha}"
               end
               on_intel do
-                url "https://github.com/cnap-tech/akua/releases/download/v#{version}/akua-v#{version}-x86_64-unknown-linux-gnu.tar.gz"
+                url "https://github.com/akua-dev/akua/releases/download/v#{version}/akua-v#{version}-x86_64-unknown-linux-gnu.tar.gz"
                 sha256 "${linux_x86_sha}"
               end
             end
@@ -793,5 +841,5 @@ jobs:
           fi
           git commit -m "akua ${TAG}
 
-          Released in https://github.com/cnap-tech/akua/releases/tag/${TAG}"
+          Released in https://github.com/akua-dev/akua/releases/tag/${TAG}"
           git push

@@ -20,10 +20,10 @@ name: release-publish
 # out of the GITHUB_TOKEN no-recursion rule, so the upstream workflow
 # can dispatch this one without a PAT.
 #
-# A failed run can also be re-run via `gh run rerun --failed <id>`;
-# the workflow file used will be the version on the dispatched ref
-# (typically main), not the one at the original tag's SHA — meaning
-# fixes to this workflow apply on rerun.
+# Recovery is a new deliberate workflow_dispatch from a reviewed workflow
+# head. Do not rerun a failed historical run: the requested tag remains the
+# immutable source and Release-asset identity while the workflow fix comes
+# from the explicitly selected dispatch ref. See docs/releasing.md.
 
 on:
   workflow_dispatch:
@@ -50,7 +50,13 @@ jobs:
       tag: ${{ steps.detect.outputs.tag }}
       is_prerelease: ${{ steps.detect.outputs.is_prerelease }}
       npm_dist_tag: ${{ steps.detect.outputs.npm_dist_tag }}
+      source_commit: ${{ steps.detect.outputs.source_commit }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+
       - id: detect
         env:
           TAG: ${{ inputs.tag }}
@@ -58,6 +64,12 @@ jobs:
           set -eu
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::tag '$TAG' is not a valid semver v* tag"
+            exit 1
+          fi
+          source_commit=$(git rev-parse "refs/tags/${TAG}^{commit}")
+          head_commit=$(git rev-parse 'HEAD^{commit}')
+          if [[ "$head_commit" != "$source_commit" ]]; then
+            echo "::error::checkout $head_commit does not match $TAG at $source_commit"
             exit 1
           fi
           version="${TAG#v}"
@@ -73,6 +85,7 @@ jobs:
             echo "version=$version"
             echo "is_prerelease=$is_prerelease"
             echo "npm_dist_tag=$npm_dist_tag"
+            echo "source_commit=$source_commit"
           } >> "$GITHUB_OUTPUT"
           echo "Will publish $version under dist-tag: $npm_dist_tag"
 
@@ -82,7 +95,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ needs.detect-version.outputs.source_commit }}
 
       - uses: actions/setup-node@v4
         # Node 24 ships npm 11.x — required for OIDC trusted publishing.
@@ -102,8 +115,11 @@ jobs:
         run: |
           set -eu
           version="${{ needs.detect-version.outputs.version }}"
-          jq --arg v "$version" \
-            '.version = $v | .dependencies["@akua-dev/native-engines"] = $v' \
+          repo='git+https://github.com/akua-dev/akua.git'
+          jq --arg v "$version" --arg repo "$repo" \
+            '.version = $v
+             | .dependencies["@akua-dev/native-engines"] = $v
+             | .repository.url = $repo' \
             crates/akua-napi/package.json > crates/akua-napi/package.json.tmp
           mv crates/akua-napi/package.json.tmp crates/akua-napi/package.json
 
@@ -149,11 +165,13 @@ jobs:
         run: |
           set -eu
           version="${{ needs.detect-version.outputs.version }}"
+          repo='git+https://github.com/akua-dev/akua.git'
           cp crates/akua-napi/artifacts/wasm-bundle/crates/helm-engine-wasm/assets/helm-engine.wasm \
              crates/akua-native-engines-npm/helm-engine.wasm
           cp crates/akua-napi/artifacts/wasm-bundle/crates/kustomize-engine-wasm/assets/kustomize-engine.wasm \
              crates/akua-native-engines-npm/kustomize-engine.wasm
-          jq --arg v "$version" '.version = $v' \
+          jq --arg v "$version" --arg repo "$repo" \
+            '.version = $v | .repository.url = $repo' \
             crates/akua-native-engines-npm/package.json \
             > crates/akua-native-engines-npm/package.json.tmp
           mv crates/akua-native-engines-npm/package.json.tmp \
@@ -243,7 +261,21 @@ jobs:
         # full node_modules tree. The npm provenance + OIDC publish
         # steps are unaffected by --ignore-scripts.
         if: ${{ inputs.dry-run == false }}
-        working-directory: sdk
         env:
           NPM_DIST_TAG: ${{ needs.detect-version.outputs.npm_dist_tag }}
-        run: npm publish --access public --provenance --tag "$NPM_DIST_TAG" --ignore-scripts
+        run: |
+          set -eu
+
+          publish_one() {
+            local dir="$1" name version
+            shift
+            name=$(jq -r '.name' "$dir/package.json")
+            version=$(jq -r '.version' "$dir/package.json")
+            if npm view "${name}@${version}" version > /dev/null 2>&1; then
+              echo "Skipping ${name}@${version} — already on npm"
+              return 0
+            fi
+            (cd "$dir" && npm publish --access public --provenance --tag "$NPM_DIST_TAG" "$@")
+          }
+
+          publish_one sdk --ignore-scripts

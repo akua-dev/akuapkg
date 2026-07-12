@@ -1,0 +1,60 @@
+# Releasing akua
+
+The build and publish lanes are intentionally separate. `.github/workflows/release.yml`
+builds the immutable tag, updates the GitHub Release assets with clobber semantics,
+pushes the container, updates Homebrew, and dispatches
+`.github/workflows/release-publish.yml`. The publish workflow downloads the assets
+owned by that tag and publishes npm packages in dependency order. Neither lane
+creates or moves a tag during recovery.
+
+## npm trusted publisher contract
+
+npm trusted-publisher configuration is external registry state. Source code can
+request a GitHub OIDC token, but it cannot create or repair the trust relationship.
+An npm package administrator must confirm the following identity on all ten packages
+before any recovery dispatch:
+
+- GitHub owner/repository: `akua-dev/akua`
+- Workflow filename: `release-publish.yml`
+- Environment: none (leave the optional npm Environment field empty)
+- Allowed action: `npm publish`
+
+The affected packages are:
+
+- `@akua-dev/native-engines`
+- `@akua-dev/native-darwin-arm64`
+- `@akua-dev/native-darwin-x64`
+- `@akua-dev/native-linux-arm64-gnu`
+- `@akua-dev/native-linux-arm64-musl`
+- `@akua-dev/native-linux-x64-gnu`
+- `@akua-dev/native-linux-x64-musl`
+- `@akua-dev/native-win32-x64-msvc`
+- `@akua-dev/native`
+- `@akua-dev/sdk`
+
+Change each package under npm package settings → Trusted Publisher. Do not create,
+request, or pass an npm token: the workflow has `id-token: write`, uses GitHub-hosted
+runners, and deliberately has no `NODE_AUTH_TOKEN`. Each package manifest also uses
+the exact repository URL `git+https://github.com/akua-dev/akua.git`, as required for
+trusted publishing.
+
+## Recovering the partial v0.8.25 release
+
+Recovery is manual and fail-closed. Do not rerun either failed run, retag
+`v0.8.25`, recreate its GitHub Release, or upload assets by hand. The existing tag
+resolves to commit `6452eb662445d2ad7c108128f93b9c55138729bb`; the manual build lane
+checks out that tag, verifies and propagates its commit, and never builds the current
+workflow head as the tagged source. Existing Release assets are overwritten by name,
+and npm versions already present are skipped before the missing packages publish.
+
+A captain may run recovery only after the source PR CI is green and an npm
+administrator has confirmed the trusted-publisher identity above for all ten packages:
+
+```sh
+gh workflow run release.yml --repo akua-dev/akua --ref main -f tag=v0.8.25 -f dry-run=false
+```
+
+That single deliberate dispatch rebuilds from the immutable tag, repairs the GitHub
+Release assets, publishes `ghcr.io/akua-dev/akua`, updates the generated Homebrew
+formula, and then dispatches the idempotent npm publish lane. There are no automatic
+recovery retries.
