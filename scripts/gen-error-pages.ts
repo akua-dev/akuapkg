@@ -21,7 +21,9 @@ import { renderMarkdown } from './site/markdown.ts';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
 const codesPath = join(root, 'crates/akua-core/src/cli_contract/codes.rs');
-const errorContractPath = join(root, 'crates/akua-core/src/cli_contract/error.rs');
+const errorContractSource = 'crates/akua-core/src/cli_contract/error.rs';
+const errorContractPath = join(root, errorContractSource);
+const pagesWorkflowPath = join(root, '.github/workflows/pages.yml');
 const richDocsDir = join(root, 'docs/errors');
 const outDir = join(root, 'site/errors');
 
@@ -35,6 +37,14 @@ function readErrorDocsBase(): string {
 }
 
 const errorDocsBase = readErrorDocsBase();
+
+function assertPagesWorkflowWatchesErrorContract(): void {
+	const workflow = readFileSync(pagesWorkflowPath, 'utf8');
+	const trigger = `- '${errorContractSource}'`;
+	if (!workflow.includes(trigger)) {
+		throw new Error(`${pagesWorkflowPath} must watch ${errorContractSource}`);
+	}
+}
 
 function assertNoLegacyErrorDocsUrls(): void {
 	const legacyUrl = ['https://akua.dev', 'errors'].join('/');
@@ -239,4 +249,5 @@ for (const entry of entries) {
 		`${errorDocsBase}/${entry.name}`,
 	);
 }
+assertPagesWorkflowWatchesErrorContract();
 assertNoLegacyErrorDocsUrls();
