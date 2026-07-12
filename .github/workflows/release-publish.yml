@@ -13,8 +13,8 @@ name: release-publish
 #                          Release assets and runs `npm publish`.
 #
 # When publish fails (npm hiccup, OIDC config drift, version-pin
-# mismatch, …) you fix the workflow on main, then re-dispatch THIS
-# workflow with the same tag. ~1 minute, no rebuild.
+# mismatch, …), recovery re-dispatches this workflow with the tag and
+# the expected source/workflow commits. Already-published versions skip.
 #
 # Per GitHub Actions docs: `workflow_dispatch` is explicitly carved
 # out of the GITHUB_TOKEN no-recursion rule, so the upstream workflow
@@ -30,6 +30,14 @@ on:
     inputs:
       tag:
         description: 'Tag to publish (e.g. v0.8.7).'
+        required: true
+        type: string
+      expected-source-commit:
+        description: 'Commit the tag must resolve to.'
+        required: true
+        type: string
+      expected-workflow-commit:
+        description: 'Commit containing this reviewed workflow.'
         required: true
         type: string
       dry-run:
@@ -60,13 +68,32 @@ jobs:
       - id: detect
         env:
           TAG: ${{ inputs.tag }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.expected-source-commit }}
+          EXPECTED_WORKFLOW_COMMIT: ${{ inputs.expected-workflow-commit }}
+          ACTUAL_WORKFLOW_COMMIT: ${{ github.sha }}
         run: |
           set -eu
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::tag '$TAG' is not a valid semver v* tag"
             exit 1
           fi
+          if [[ ! "$EXPECTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::expected source commit is not a full lowercase SHA"
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_WORKFLOW_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::expected workflow commit is not a full lowercase SHA"
+            exit 1
+          fi
+          if [[ "$ACTUAL_WORKFLOW_COMMIT" != "$EXPECTED_WORKFLOW_COMMIT" ]]; then
+            echo "::error::workflow commit $ACTUAL_WORKFLOW_COMMIT does not match expected $EXPECTED_WORKFLOW_COMMIT"
+            exit 1
+          fi
           source_commit=$(git rev-parse "refs/tags/${TAG}^{commit}")
+          if [[ "$source_commit" != "$EXPECTED_SOURCE_COMMIT" ]]; then
+            echo "::error::$TAG resolves to $source_commit, expected $EXPECTED_SOURCE_COMMIT"
+            exit 1
+          fi
           head_commit=$(git rev-parse 'HEAD^{commit}')
           if [[ "$head_commit" != "$source_commit" ]]; then
             echo "::error::checkout $head_commit does not match $TAG at $source_commit"

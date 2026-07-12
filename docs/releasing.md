@@ -46,6 +46,10 @@ resolves to commit `6452eb662445d2ad7c108128f93b9c55138729bb`; the manual build 
 checks out that tag, verifies and propagates its commit, and never builds the current
 workflow head as the tagged source. Existing Release assets are overwritten by name,
 and npm versions already present are skipped before the missing packages publish.
+The build lane passes its expected source and workflow commit SHAs to the publish
+lane. The publisher verifies that the tag still resolves to the expected source and
+that `github.sha` is the reviewed workflow commit; if either ref advances, recovery
+fails before npm publication.
 
 A captain may run recovery only after the source PR CI is green and an npm
 administrator has confirmed the trusted-publisher identity above for all ten packages:

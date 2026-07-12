@@ -125,6 +125,30 @@ assert_job_contains ".github/workflows/release.yml" \
 	"detect-version" \
 	'git rev-parse "refs/tags/${tag}^{commit}"'
 assert_file_contains ".github/workflows/release.yml" "source_commit: \${{ steps.parse.outputs.source_commit }}"
+assert_file_contains ".github/workflows/release.yml" "EXPECTED_SOURCE_COMMIT: \${{ needs.detect-version.outputs.source_commit }}"
+assert_file_contains ".github/workflows/release.yml" "EXPECTED_WORKFLOW_COMMIT: \${{ github.workflow_sha }}"
+assert_file_contains ".github/workflows/release.yml" 'WORKFLOW_REF: ${{ github.ref_name }}'
+assert_job_contains ".github/workflows/release.yml" \
+	"trigger-publish" \
+	'--ref "$WORKFLOW_REF"'
+assert_job_contains ".github/workflows/release.yml" \
+	"trigger-publish" \
+	'-f expected-source-commit="$EXPECTED_SOURCE_COMMIT"'
+assert_job_contains ".github/workflows/release.yml" \
+	"trigger-publish" \
+	'-f expected-workflow-commit="$EXPECTED_WORKFLOW_COMMIT"'
+for input in expected-source-commit expected-workflow-commit; do
+	assert_file_contains ".github/workflows/release-publish.yml" "$input:"
+done
+assert_job_contains ".github/workflows/release-publish.yml" \
+	"detect-version" \
+	'ACTUAL_WORKFLOW_COMMIT: ${{ github.sha }}'
+assert_job_contains ".github/workflows/release-publish.yml" \
+	"detect-version" \
+	'if [[ "$ACTUAL_WORKFLOW_COMMIT" != "$EXPECTED_WORKFLOW_COMMIT" ]]'
+assert_job_contains ".github/workflows/release-publish.yml" \
+	"detect-version" \
+	'if [[ "$source_commit" != "$EXPECTED_SOURCE_COMMIT" ]]'
 for job in wasm-bundle native-build sdk-build cli-build github-release docker; do
 	assert_job_contains ".github/workflows/release.yml" \
 		"$job" \
@@ -192,6 +216,8 @@ assert_file_contains "docs/releasing.md" "Environment: none"
 assert_file_contains "docs/releasing.md" "--ref main -f tag=v0.8.25"
 assert_file_contains "docs/releasing.md" "only after the source PR CI is green"
 assert_file_contains "docs/releasing.md" "all ten packages"
+assert_file_contains "docs/releasing.md" "expected source and workflow commit SHAs"
+assert_file_contains "docs/releasing.md" "fails before npm publication"
 assert_file_contains "Taskfile.yml" "org=akua-dev  repo=akua  workflow=release-publish.yml  environment=none"
 assert_file_excludes "Taskfile.yml" "org=cnap-tech  repo=akua  workflow=release.yml"
 assert_file_excludes "packages/sdk/README.md" "github.com/cnap-tech/akua"

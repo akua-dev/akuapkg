@@ -20,9 +20,9 @@ name: release
 # version-pin mismatch). When it fails today, fixing it required
 # re-running the whole build matrix (~hours). With the split:
 #
-#   $ gh workflow run release-publish.yml -f tag=vX.Y.Z
+#   See docs/releasing.md for the SHA-bound recovery dispatch.
 #
-# re-runs publish only — ~1 minute, no rebuild. The build outputs
+# re-runs publish without repeating successful npm versions. The build outputs
 # this workflow produces (native-*.tar.gz / wasm-bundle.tar.gz /
 # sdk-staged.tar.gz) are uploaded to the GitHub Release as durable
 # assets, addressable by tag, with no 90-day workflow-artifact TTL.
@@ -387,14 +387,19 @@ jobs:
         # works — no PAT needed.
         env:
           TAG: ${{ needs.detect-version.outputs.tag }}
+          EXPECTED_SOURCE_COMMIT: ${{ needs.detect-version.outputs.source_commit }}
+          EXPECTED_WORKFLOW_COMMIT: ${{ github.workflow_sha }}
+          WORKFLOW_REF: ${{ github.ref_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
           gh workflow run release-publish.yml \
             --repo "$GITHUB_REPOSITORY" \
-            --ref main \
-            -f tag="$TAG"
-          echo "Dispatched release-publish.yml with tag=$TAG. Watch:"
+            --ref "$WORKFLOW_REF" \
+            -f tag="$TAG" \
+            -f expected-source-commit="$EXPECTED_SOURCE_COMMIT" \
+            -f expected-workflow-commit="$EXPECTED_WORKFLOW_COMMIT"
+          echo "Dispatched release-publish.yml with tag=$TAG source=$EXPECTED_SOURCE_COMMIT workflow=$EXPECTED_WORKFLOW_COMMIT. Watch:"
           echo "  https://github.com/$GITHUB_REPOSITORY/actions/workflows/release-publish.yml"
 
   # ---------------------------------------------------------------------------
