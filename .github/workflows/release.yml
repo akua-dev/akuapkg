@@ -12,7 +12,6 @@ name: release
 #                   │                │                  │
 #                   │                └─> cli-build ─┬─> github-release ┬─> trigger-publish ──> release-publish.yml
 #                   │                               └─> docker         │
-#                   │                                                  └─> homebrew-tap
 #                   └─ (version + is_prerelease propagated to every job)
 #
 # Why split publish into a separate workflow: `npm publish` is the
@@ -40,8 +39,7 @@ name: release
 #
 # Prerelease handling: tags containing `-` (e.g. `v0.8.7-rc1`) publish
 # to the npm `next` dist-tag instead of `latest`, are marked as
-# prereleases on GitHub Releases, skip `:latest` Docker tag, and skip
-# the Homebrew tap bump entirely. Stable tags get the full surface.
+# prereleases on GitHub Releases, and skip the `:latest` Docker tag.
 
 on:
   push:
@@ -733,118 +731,3 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.tags }}
-
-  # ---------------------------------------------------------------------------
-  # homebrew-tap — auto-bump akua-dev/homebrew-tap's `Formula/akua.rb`.
-  # Skipped for prereleases (regular `brew install akua` users
-  # shouldn't get RC builds — they have to opt in via
-  # `brew install --HEAD akua` or pin a specific version).
-  # ---------------------------------------------------------------------------
-  homebrew-tap:
-    needs: [detect-version, github-release]
-    runs-on: ubuntu-latest
-    if: |
-      (github.event_name == 'push' || inputs.dry-run == false) &&
-      needs.detect-version.outputs.is_prerelease == 'false'
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: 'akua-*'
-          path: dist
-          merge-multiple: true
-
-      - name: Configure SSH for the tap repo
-        env:
-          TAP_BUMP_SSH_KEY: ${{ secrets.TAP_BUMP_SSH_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "$TAP_BUMP_SSH_KEY" > ~/.ssh/tap_bump_key
-          chmod 600 ~/.ssh/tap_bump_key
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-          cat > ~/.ssh/config <<'EOF'
-          Host github.com-tap
-            HostName github.com
-            User git
-            IdentityFile ~/.ssh/tap_bump_key
-            IdentitiesOnly yes
-          EOF
-          chmod 600 ~/.ssh/config
-
-      - name: Clone tap, rewrite formula, push
-        env:
-          TAG: ${{ needs.detect-version.outputs.tag }}
-          VERSION: ${{ needs.detect-version.outputs.version }}
-        run: |
-          set -eu
-
-          # Read each target's sha256 from the per-asset .sha256 file.
-          get_sha() {
-            awk '{print $1}' "dist/akua-${TAG}-$1.tar.gz.sha256"
-          }
-          darwin_arm_sha=$(get_sha aarch64-apple-darwin)
-          darwin_x86_sha=$(get_sha x86_64-apple-darwin)
-          linux_arm_sha=$(get_sha aarch64-unknown-linux-gnu)
-          linux_x86_sha=$(get_sha x86_64-unknown-linux-gnu)
-
-          git clone git@github.com-tap:akua-dev/homebrew-tap.git tap
-          cd tap
-          git config user.email "akua-tap-bumper@akua.dev"
-          git config user.name  "akua-tap-bumper"
-
-          # Rewrite the whole formula. Simpler than four sed passes,
-          # and the formula shape is our own — no surprise stanzas
-          # another maintainer might have added mid-file.
-          cat > Formula/akua.rb <<RUBY
-          # frozen_string_literal: true
-
-          # Auto-bumped by release.yml in akua-dev/akua on every stable
-          # tag push. Manual edits get overwritten.
-          class Akua < Formula
-            desc "Cloud-native package build, transform, and preview toolkit"
-            homepage "https://github.com/akua-dev/akua"
-            version "${VERSION}"
-            license "Apache-2.0"
-
-            on_macos do
-              on_arm do
-                url "https://github.com/akua-dev/akua/releases/download/v#{version}/akua-v#{version}-aarch64-apple-darwin.tar.gz"
-                sha256 "${darwin_arm_sha}"
-              end
-              on_intel do
-                url "https://github.com/akua-dev/akua/releases/download/v#{version}/akua-v#{version}-x86_64-apple-darwin.tar.gz"
-                sha256 "${darwin_x86_sha}"
-              end
-            end
-
-            on_linux do
-              on_arm do
-                url "https://github.com/akua-dev/akua/releases/download/v#{version}/akua-v#{version}-aarch64-unknown-linux-gnu.tar.gz"
-                sha256 "${linux_arm_sha}"
-              end
-              on_intel do
-                url "https://github.com/akua-dev/akua/releases/download/v#{version}/akua-v#{version}-x86_64-unknown-linux-gnu.tar.gz"
-                sha256 "${linux_x86_sha}"
-              end
-            end
-
-            def install
-              bin.install "akua"
-              doc.install "README.md", "SECURITY.md" if File.exist?("README.md")
-            end
-
-            test do
-              assert_match(/akua/, shell_output("#{bin}/akua --version"))
-            end
-          end
-          RUBY
-
-          git add Formula/akua.rb
-          if git diff --cached --quiet; then
-            echo "formula already at ${VERSION}, nothing to bump"
-            exit 0
-          fi
-          git commit -m "akua ${TAG}
-
-          Released in https://github.com/akua-dev/akua/releases/tag/${TAG}"
-          git push

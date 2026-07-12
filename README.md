@@ -123,9 +123,6 @@ For cross-Package composition (install one Akua package on top of another, with 
 # macOS / Linux
 curl -fsSL https://cli.akua.dev/install | sh
 
-# Homebrew
-brew install akua-dev/tap/akua
-
 # Windows
 irm https://cli.akua.dev/install.ps1 | iex
 

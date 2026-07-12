@@ -83,7 +83,7 @@ SDK versions track the Rust workspace version. A `v<semver>` tag drives `release
 
 1. Land changes on `main`; `task ci` must be green.
 2. Bump versions in `Cargo.toml`, `crates/akua-napi/package.json`, `packages/sdk/package.json`, all `crates/akua-napi/npm/<platform>/package.json`, `crates/akua-native-engines-npm/package.json`. Commit `release: vX.Y.Z`.
-3. Tag `v<semver>` and push. The release workflows handle npm, GitHub Release, Docker, and Homebrew. Prerelease tags like `v<x.y.z>-rc1` publish to the npm `next` dist-tag and are marked as prereleases on GitHub.
+3. Tag `v<semver>` and push. The release workflows handle npm, GitHub Release, and Docker. Prerelease tags like `v<x.y.z>-rc1` publish to the npm `next` dist-tag and are marked as prereleases on GitHub.
 
 See [`docs/releasing.md`](../../docs/releasing.md) for the release and recovery contract.
 

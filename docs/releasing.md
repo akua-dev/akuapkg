@@ -2,10 +2,14 @@
 
 The build and publish lanes are intentionally separate. `.github/workflows/release.yml`
 builds the immutable tag, updates the GitHub Release assets with clobber semantics,
-pushes the container, updates Homebrew, and dispatches
+pushes the container, and dispatches
 `.github/workflows/release-publish.yml`. The publish workflow downloads the assets
 owned by that tag and publishes npm packages in dependency order. Neither lane
 creates or moves a tag during recovery.
+
+Homebrew is explicitly outside this recovery. Formula ownership belongs to
+`akua-dev/cli` and the dedicated `akua-dev/homebrew-tap` lane; Akua core does not
+write, dispatch, or claim ownership of that formula.
 
 ## npm trusted publisher contract
 
@@ -59,6 +63,6 @@ gh workflow run release.yml --repo akua-dev/akua --ref main -f tag=v0.8.25 -f dr
 ```
 
 That single deliberate dispatch rebuilds from the immutable tag, repairs the GitHub
-Release assets, publishes `ghcr.io/akua-dev/akua`, updates the generated Homebrew
-formula, and then dispatches the idempotent npm publish lane. There are no automatic
-recovery retries.
+Release assets, publishes `ghcr.io/akua-dev/akua`, and then dispatches the idempotent
+npm publish lane. It has no Homebrew side effects. There are no automatic recovery
+retries.

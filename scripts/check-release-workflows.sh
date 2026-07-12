@@ -110,15 +110,23 @@ assert_before ".github/workflows/release.yml" \
 	"Bump package.json version + native dep pin from the tag" \
 	"Pack dry-run (manifest sanity)"
 
-# Release-owned coordinates moved with the repository. Keep the image, release,
-# and generated Homebrew formula identities on the current GitHub organization.
+# Release-owned coordinates moved with the repository. Keep the image and
+# release identities on the current GitHub organization.
 for workflow in .github/workflows/*.yml; do
 	assert_file_excludes "$workflow" "cnap-tech"
 done
 assert_file_contains ".github/workflows/release.yml" "ghcr.io/akua-dev/akua:\${tag}"
-assert_file_contains ".github/workflows/release.yml" "git@github.com-tap:akua-dev/homebrew-tap.git"
-assert_file_contains ".github/workflows/release.yml" "homepage \"https://github.com/akua-dev/akua\""
 assert_file_contains ".github/workflows/release.yml" "gh release upload \"\${TAG}\" dist/*.tar.gz dist/*.zip dist/*.sha256 --clobber"
+
+# Homebrew belongs to akua-dev/cli and its dedicated tap lane. Akua core must
+# never configure tap credentials, generate a formula, or dispatch a tap writer.
+if grep -Eiq 'homebrew|TAP_BUMP|github\.com-tap|Formula/akua\.rb' .github/workflows/release.yml; then
+	echo "ERROR: release.yml contains an Akua-core Homebrew/tap side effect or ownership claim" >&2
+	exit 1
+fi
+assert_file_excludes "README.md" "brew install akua-dev/tap/akua"
+assert_file_excludes "packages/sdk/README.md" "Homebrew"
+assert_file_excludes "docs/sdk-runtime-compat.md" "Homebrew"
 
 # A manual recovery runs workflow code from a green branch, but every source
 # checkout must resolve to the requested immutable tag. The workflow verifies
@@ -220,6 +228,11 @@ assert_file_contains "docs/releasing.md" "only after the source PR CI is green"
 assert_file_contains "docs/releasing.md" "all ten packages"
 assert_file_contains "docs/releasing.md" "expected source and workflow commit SHAs"
 assert_file_contains "docs/releasing.md" "fails before npm publication"
+assert_file_contains "docs/releasing.md" "Homebrew is explicitly outside this recovery"
+assert_file_contains "docs/releasing.md" "akua-dev/cli"
+assert_file_contains "docs/releasing.md" 'dedicated `akua-dev/homebrew-tap` lane'
+assert_file_excludes "docs/releasing.md" "updates Homebrew"
+assert_file_excludes "docs/releasing.md" "updates the generated Homebrew"
 assert_file_contains "Taskfile.yml" "org=akua-dev  repo=akua  workflow=release-publish.yml  environment=none"
 assert_file_excludes "Taskfile.yml" "org=cnap-tech  repo=akua  workflow=release.yml"
 assert_file_excludes "packages/sdk/README.md" "github.com/cnap-tech/akua"
