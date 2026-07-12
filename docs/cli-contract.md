@@ -34,7 +34,7 @@ Every error has:
 - `message` — human-readable summary
 - `path` — file, resource, or field that caused the error (if applicable)
 - `suggestion` — actionable fix (if known)
-- `docs` — URL to documentation (if available)
+- `docs` — URL to `https://cli.akua.dev/errors/<CODE>` (if available)
 
 ### 1.3 Determinism
 

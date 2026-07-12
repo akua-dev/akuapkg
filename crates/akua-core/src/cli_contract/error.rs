@@ -114,7 +114,7 @@ impl StructuredError {
     }
 
     /// Auto-fill `docs` using the standard URL convention
-    /// `https://cli.akua.dev/errors/<code>`. Call after `new()` or `with_code()`.
+    /// `https://cli.akua.dev/errors/<code>`. Call after `new()`.
     pub fn with_default_docs(mut self) -> Self {
         self.docs = Some(format!("{ERROR_DOCS_BASE}/{}", self.code));
         self

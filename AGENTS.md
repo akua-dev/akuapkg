@@ -107,7 +107,7 @@ That's it. akua does **not** specify `App`, `Environment`, `Cluster`, `Secret`, 
 
 **Project domain is `akua.dev`.** Reverse-DNS namespaces (OCI annotations, Java-style package roots, anything following the `org.kcllang.*` shape) use **`dev.akua.*`** — *not* `org.akua.*`. The npm scope is `@akua-dev` because npm scopes have to be unique on the registry and bare `@akua` was taken; the scope name doesn't follow the reverse-DNS rule.
 
-**Canonical CLI documentation uses `https://cli.akua.dev/`.** This includes structured error links; do not rewrite legitimate `https://akua.dev` product, dashboard, API, logo, or unrelated links.
+**CLI documentation domains follow [the CLI contract](docs/cli-contract.md).** Do not rewrite legitimate `https://akua.dev` product, dashboard, API, logo, or unrelated links.
 
 ## What we refuse
 
