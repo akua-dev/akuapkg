@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn text_mode_renders_context_fields_when_present() {
         let mut buf = Vec::new();
-        let err = StructuredError::new("E_SCHEMA_INVALID", "expected int, got string")
+        let err = StructuredError::new("E_INPUTS_PARSE", "expected int, got string")
             .with_path("apps/api/inputs.yaml")
             .with_field("spec.replicas")
             .with_line(14)
@@ -146,7 +146,7 @@ mod tests {
             "{out}"
         );
         assert!(out.contains("suggestion: remove quotes around 3"), "{out}");
-        assert!(out.contains("docs: https://cli.akua.dev/errors/E_SCHEMA_INVALID"));
+        assert!(out.contains("docs: https://cli.akua.dev/errors/E_INPUTS_PARSE"));
         assert!(out.contains("next:"));
         assert!(out.contains("edit apps/api/inputs.yaml"));
     }
