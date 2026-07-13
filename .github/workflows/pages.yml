@@ -12,8 +12,8 @@ name: pages
 # `curl | sh` doesn't care about Content-Type, so hosting the script at a
 # no-extension path is fine — and keeps the URL clean.
 #
-# Error pages are regenerated from `crates/akua-core/src/cli_contract/codes.rs`
-# at deploy time so the live site can't drift from the source-of-truth list.
+# Error pages are regenerated from `crates/akua-core/src/cli_contract/{codes,error}.rs`
+# at deploy time so the live site can't drift from the source-of-truth contract.
 
 on:
   push:
@@ -26,6 +26,7 @@ on:
       - 'scripts/check-site-links.ts'
       - 'scripts/site/**'
       - 'crates/akua-core/src/cli_contract/codes.rs'
+      - 'crates/akua-core/src/cli_contract/error.rs'
       - 'docs/**'
       - 'examples/**/README.md'
       - 'examples/**/package.k'
@@ -58,7 +59,7 @@ jobs:
           cache: true
 
       - name: Regenerate every site page from its source-of-truth
-        # Sources: codes.rs (errors), docs/cli.md (cli), docs/*.md
+        # Sources: codes.rs + error.rs (errors), docs/cli.md (cli), docs/*.md
         # (concepts), examples/* (examples). Committed HTML under site/
         # is for local preview; deploy regenerates so the live site can
         # never drift from the underlying data.

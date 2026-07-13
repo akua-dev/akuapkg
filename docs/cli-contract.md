@@ -25,7 +25,7 @@ Without `--json`, verbs emit human-readable text to stdout. With `--json`, they 
 Errors always go to stderr. With `--json`, errors are JSON-lines (one error per line). Without `--json`, errors are human-readable but still prefixed with a stable error code.
 
 ```
-{"level":"error","code":"E_SCHEMA_INVALID","path":"apps/api/inputs.yaml","field":"replicas","message":"expected integer, got string","suggestion":"remove quotes around 3","docs":"https://akua.dev/errors/E_SCHEMA_INVALID"}
+{"level":"error","code":"E_INPUTS_PARSE","path":"apps/api/inputs.yaml","field":"replicas","message":"expected integer, got string","suggestion":"remove quotes around 3","docs":"https://cli.akua.dev/errors/E_INPUTS_PARSE"}
 ```
 
 Every error has:
@@ -34,7 +34,7 @@ Every error has:
 - `message` — human-readable summary
 - `path` — file, resource, or field that caused the error (if applicable)
 - `suggestion` — actionable fix (if known)
-- `docs` — URL to documentation (if available)
+- `docs` — URL to `https://cli.akua.dev/errors/<CODE>` (if available)
 
 ### 1.3 Determinism
 

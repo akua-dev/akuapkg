@@ -66,7 +66,7 @@ If anything breaks, akua emits a structured error on stderr with a stable \`code
   "level": "error",
   "code": "E_RENDER_KCL",
   "message": "schema validation failed: …",
-  "docs": "https://akua.dev/errors/E_RENDER_KCL"
+  "docs": "https://cli.akua.dev/errors/E_RENDER_KCL"
 }
 \`\`\`
 

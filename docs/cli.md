@@ -698,7 +698,7 @@ Each elevated audience exits with `E_UNSUPPORTED` until the hosted API serves au
 Failed hosted API calls emit Akua structured errors on stderr. Under `--json` or agent context, stderr is JSON-lines:
 
 ```json
-{"code":"E_AUTH_INVALID","message":"token is invalid or expired","docs":"https://akua.dev/errors/E_AUTH_INVALID"}
+{"code":"E_AUTH_INVALID","message":"token is invalid or expired","docs":"https://cli.akua.dev/errors/E_AUTH_INVALID"}
 ```
 
 HTTP `401` maps to auth errors, `403` maps to forbidden user errors, `429` exits with the rate-limited exit code, and transport/timeouts use the standard CLI contract exit codes.

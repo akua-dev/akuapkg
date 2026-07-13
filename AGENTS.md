@@ -107,6 +107,8 @@ That's it. akua does **not** specify `App`, `Environment`, `Cluster`, `Secret`, 
 
 **Project domain is `akua.dev`.** Reverse-DNS namespaces (OCI annotations, Java-style package roots, anything following the `org.kcllang.*` shape) use **`dev.akua.*`** — *not* `org.akua.*`. The npm scope is `@akua-dev` because npm scopes have to be unique on the registry and bare `@akua` was taken; the scope name doesn't follow the reverse-DNS rule.
 
+**CLI documentation domains follow [the CLI contract](docs/cli-contract.md).** Do not rewrite legitimate `https://akua.dev` product, dashboard, API, logo, or unrelated links.
+
 ## What we refuse
 
 - Marketing-speak ("empower," "democratize," "unlock," "revolutionize," "AI-first"). Describe what things do; don't frame.
@@ -161,3 +163,10 @@ Validate: `npx skills-ref validate ./skills/<name>`. Skills ship with the repo a
 ## The one-sentence discipline
 
 Everything in akua follows one rule: **typed, signed, deterministic state lives in git; tools compose through shell; renderers target any substrate.** When a proposed change reads well against that rule, it's probably right. When it doesn't, it probably isn't.
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.

@@ -559,6 +559,35 @@ fn lint_reports_ok_on_scaffold_and_fail_on_syntax_error() {
     assert!(!parsed["issues"].as_array().unwrap().is_empty());
 }
 
+#[test]
+fn lint_missing_package_human_error_uses_canonical_docs_url() {
+    let dir = tempdir();
+    let out = run(dir.path(), &["lint"]);
+    assert_exit(&out, 1);
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("docs: https://cli.akua.dev/errors/E_PACKAGE_MISSING"),
+        "unexpected stderr:\n{stderr}"
+    );
+}
+
+#[test]
+fn lint_missing_package_json_error_uses_canonical_docs_url() {
+    let dir = tempdir();
+    let out = run(dir.path(), &["lint", "--json"]);
+    assert_exit(&out, 1);
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let parsed: serde_json::Value =
+        serde_json::from_str(stderr.trim()).expect("structured error on stderr");
+    assert_eq!(parsed["code"], "E_PACKAGE_MISSING");
+    assert_eq!(
+        parsed["docs"],
+        "https://cli.akua.dev/errors/E_PACKAGE_MISSING"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // inspect
 // ---------------------------------------------------------------------------

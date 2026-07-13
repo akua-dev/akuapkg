@@ -7,6 +7,8 @@
 
 use serde::{Deserialize, Serialize};
 
+const ERROR_DOCS_BASE: &str = "https://cli.akua.dev/errors";
+
 crate::contract_type! {
 /// The canonical error shape. One struct; every verb reuses it.
 ///
@@ -46,7 +48,7 @@ pub struct StructuredError {
     pub suggestion: Option<String>,
 
     /// URL to the error's documentation page. Convention:
-    /// `https://akua.dev/errors/<CODE>`.
+    /// `https://cli.akua.dev/errors/<CODE>`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub docs: Option<String>,
 
@@ -112,9 +114,9 @@ impl StructuredError {
     }
 
     /// Auto-fill `docs` using the standard URL convention
-    /// `https://akua.dev/errors/<code>`. Call after `new()` or `with_code()`.
+    /// `https://cli.akua.dev/errors/<code>`. Call after `new()`.
     pub fn with_default_docs(mut self) -> Self {
-        self.docs = Some(format!("https://akua.dev/errors/{}", self.code));
+        self.docs = Some(format!("{ERROR_DOCS_BASE}/{}", self.code));
         self
     }
 
@@ -164,7 +166,7 @@ mod tests {
 
     #[test]
     fn builder_composes_all_fields() {
-        let err = StructuredError::new("E_SCHEMA_INVALID", "expected integer, got string")
+        let err = StructuredError::new("E_INPUTS_PARSE", "expected integer, got string")
             .with_path("apps/api/inputs.yaml")
             .with_field("spec.replicas")
             .with_line(14)
@@ -178,7 +180,7 @@ mod tests {
         assert_eq!(err.suggestion.as_deref(), Some("remove quotes around 3"));
         assert_eq!(
             err.docs.as_deref(),
-            Some("https://akua.dev/errors/E_SCHEMA_INVALID")
+            Some("https://cli.akua.dev/errors/E_INPUTS_PARSE")
         );
         assert_eq!(err.next_actions.len(), 1);
     }
@@ -186,22 +188,22 @@ mod tests {
     #[test]
     fn json_line_matches_contract_example() {
         // Mirror the example in cli-contract §1.2 closely.
-        let err = StructuredError::new("E_SCHEMA_INVALID", "expected integer, got string")
+        let err = StructuredError::new("E_INPUTS_PARSE", "expected integer, got string")
             .with_path("apps/api/inputs.yaml")
             .with_field("replicas")
             .with_suggestion("remove quotes around 3")
-            .with_docs("https://akua.dev/errors/E_SCHEMA_INVALID");
+            .with_docs("https://cli.akua.dev/errors/E_INPUTS_PARSE");
 
         let line = err.to_json_line();
         let parsed: serde_json::Value = serde_json::from_str(&line).expect("valid json");
 
         assert_eq!(parsed["level"], "error");
-        assert_eq!(parsed["code"], "E_SCHEMA_INVALID");
+        assert_eq!(parsed["code"], "E_INPUTS_PARSE");
         assert_eq!(parsed["message"], "expected integer, got string");
         assert_eq!(parsed["path"], "apps/api/inputs.yaml");
         assert_eq!(parsed["field"], "replicas");
         assert_eq!(parsed["suggestion"], "remove quotes around 3");
-        assert_eq!(parsed["docs"], "https://akua.dev/errors/E_SCHEMA_INVALID");
+        assert_eq!(parsed["docs"], "https://cli.akua.dev/errors/E_INPUTS_PARSE");
 
         // No newline in the serialized line itself.
         assert!(!line.contains('\n'));
@@ -250,8 +252,27 @@ mod tests {
         let err = StructuredError::new("E_FOO_BAR", "m").with_default_docs();
         assert_eq!(
             err.docs.as_deref(),
-            Some("https://akua.dev/errors/E_FOO_BAR")
+            Some("https://cli.akua.dev/errors/E_FOO_BAR")
         );
+    }
+
+    #[test]
+    fn every_known_error_code_uses_the_canonical_docs_route() {
+        let source = include_str!("codes.rs");
+        let codes = source.lines().filter_map(|line| {
+            let declaration = line.strip_prefix("pub const E_")?;
+            let (_, value) = declaration.split_once(" = \"")?;
+            value.strip_suffix("\";")
+        });
+
+        for code in codes {
+            let err = StructuredError::new(code, "test").with_default_docs();
+            assert_eq!(
+                err.docs.as_deref(),
+                Some(format!("https://cli.akua.dev/errors/{code}").as_str()),
+                "unexpected docs URL for {code}"
+            );
+        }
     }
 
     #[test]

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 
 import { standardSchemaFor } from './validate.ts';
+import akuaSchema from './schemas/akua.json' with { type: 'json' };
 import type { VersionOutput } from './types/VersionOutput.ts';
 
 type IssueResult = { issues: ReadonlyArray<{ message: string; path?: ReadonlyArray<unknown> }> };
@@ -51,4 +52,12 @@ test('numeric array indices in path are numbers, not strings', () => {
 	});
 	const offending = issues.find((i) => i.path?.some((p) => typeof p === 'number'));
 	assert.ok(offending, 'expected an issue with a numeric path segment');
+});
+
+test('StructuredError schema documents the canonical error URL', () => {
+	const docs = akuaSchema.$defs.StructuredError.properties.docs;
+	assert.equal(
+		docs?.description,
+		"URL to the error's documentation page. Convention:\n`https://cli.akua.dev/errors/<CODE>`.",
+	);
 });
