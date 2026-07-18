@@ -22,10 +22,9 @@ name: release
 #   See docs/releasing.md for the SHA-bound recovery dispatch.
 #
 # re-runs publish without repeating successful npm versions. The build outputs
-# this workflow produces (native-*.tar.gz / wasm-bundle.tar.gz /
-# sdk-staged.tar.gz) are uploaded to the GitHub Release as durable
-# assets, addressable by tag, with no 90-day workflow-artifact TTL.
-# The publish workflow downloads them via `gh release download`.
+# remain Actions artifacts for the source run; a recovery preserves existing
+# GitHub Release assets byte-for-byte and publishes only from the exact verified
+# source-run artifacts.
 #
 # `trigger-publish` calls `gh workflow run release-publish.yml` —
 # `workflow_dispatch` is explicitly carved out of the GITHUB_TOKEN
@@ -148,6 +147,28 @@ jobs:
             echo "source_commit=$source_commit"
           } >> "$GITHUB_OUTPUT"
           echo "Resolved: tag=$tag commit=$source_commit version=$version prerelease=$is_prerelease npm_dist_tag=$npm_dist_tag"
+
+      - name: Record immutable recovery inputs
+        env:
+          TAG: ${{ steps.parse.outputs.tag }}
+          SOURCE_COMMIT: ${{ steps.parse.outputs.source_commit }}
+          WORKFLOW_COMMIT: ${{ github.workflow_sha }}
+        run: |
+          set -eu
+          jq -n \
+            --arg tag "$TAG" \
+            --arg source_commit "$SOURCE_COMMIT" \
+            --arg workflow_commit "$WORKFLOW_COMMIT" \
+            '{tag: $tag, source_commit: $source_commit, workflow_commit: $workflow_commit}' \
+            > release-inputs.json
+
+      - name: Upload immutable recovery inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-inputs
+          path: release-inputs.json
+          if-no-files-found: error
+          retention-days: 1
 
   # ---------------------------------------------------------------------------
   # wasm-bundle — engine + render-worker wasm artefacts built once on
@@ -351,21 +372,14 @@ jobs:
           retention-days: 1
 
   # ---------------------------------------------------------------------------
-  # native-publish — stages npm packages from the matrix artefacts +
-  # the wasm bundle, publishes via OIDC trusted publishing.
-  # ---------------------------------------------------------------------------
-  # ---------------------------------------------------------------------------
-  # trigger-publish — last step of release.yml. Bundles workflow-artifact
-  # outputs (native binaries, wasm engines, staged sdk tree) into
-  # tarballs, uploads them to the GitHub Release as durable assets, and
-  # dispatches `release-publish.yml` which runs `npm publish` against
-  # those assets.
+  # trigger-publish — last step of release.yml. Dispatches
+  # `release-publish.yml` with this run ID so it can consume the verified
+  # native binaries, wasm engines, and staged SDK from Actions artifacts.
+  # Recovery must never alter the immutable GitHub Release assets.
   #
-  # Why split: `npm publish` is the most failure-prone step in the
-  # pipeline (OIDC config drift, registry hiccups, version-pin
-  # mismatch). Putting it in its own dispatchable workflow means a
-  # publish-only retry takes ~1 minute instead of re-running the full
-  # build matrix (~hours). See release-publish.yml for the publish
+  # Why split: npm publication has its own idempotency boundary, but every
+  # recovery starts a fresh immutable source build so publish inputs never
+  # depend on mutable Release assets. See release-publish.yml for the publish
   # logic itself.
   # ---------------------------------------------------------------------------
   trigger-publish:
@@ -373,43 +387,6 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || inputs.dry-run == false
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          # Same filter as the old native-publish step — without it,
-          # download-artifact@v4 also pulls the docker job's
-          # `akua-dev~akua~<id>.dockerbuild` provenance artifact whose
-          # `~`-containing name fails path validation.
-          pattern: '{native-*,wasm-bundle,sdk-staged}'
-          path: artifacts
-
-      - name: Bundle artifacts into release-asset tarballs
-        # Each per-platform `native-<target>` and the shared `wasm-bundle`
-        # / `sdk-staged` directories get tar+gz'd. Downloading from a
-        # release is one HTTP request per file; the .tar.gz wrapper keeps
-        # internal directory layout intact (e.g. wasm-bundle preserves
-        # `crates/<engine>/assets/<engine>.wasm`) so release-publish.yml
-        # can reproduce the workflow-artifact view byte-for-byte.
-        run: |
-          set -eu
-          mkdir -p bundles
-          for d in artifacts/native-*; do
-            name=$(basename "$d")
-            tar -czf "bundles/${name}.tar.gz" -C "$d" .
-          done
-          tar -czf bundles/wasm-bundle.tar.gz -C artifacts/wasm-bundle .
-          tar -czf bundles/sdk-staged.tar.gz -C artifacts/sdk-staged .
-          ls -la bundles/
-
-      - name: Upload bundles to the GitHub Release
-        # `--clobber` means re-runs of trigger-publish are idempotent
-        # (overwrites existing assets with the same name).
-        env:
-          TAG: ${{ needs.detect-version.outputs.tag }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -eu
-          gh release upload "$TAG" bundles/*.tar.gz --clobber --repo "$GITHUB_REPOSITORY"
-
       - name: Dispatch release-publish.yml
         # workflow_dispatch is explicitly carved out of the GITHUB_TOKEN
         # no-recursion rule (per Actions docs), so the default token
@@ -427,7 +404,8 @@ jobs:
             --ref "$WORKFLOW_REF" \
             -f tag="$TAG" \
             -f expected-source-commit="$EXPECTED_SOURCE_COMMIT" \
-            -f expected-workflow-commit="$EXPECTED_WORKFLOW_COMMIT"
+            -f expected-workflow-commit="$EXPECTED_WORKFLOW_COMMIT" \
+            -f source-run-id="$GITHUB_RUN_ID"
           echo "Dispatched release-publish.yml with tag=$TAG source=$EXPECTED_SOURCE_COMMIT workflow=$EXPECTED_WORKFLOW_COMMIT. Watch:"
           echo "  https://github.com/$GITHUB_REPOSITORY/actions/workflows/release-publish.yml"
 
@@ -674,7 +652,7 @@ jobs:
           pattern: 'akua-*'
           path: dist
           merge-multiple: true
-      - name: Create or update release
+      - name: Create or verify immutable release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -685,23 +663,23 @@ jobs:
         run: |
           set -eu
           notes="See [CHANGELOG.md](https://github.com/akua-dev/akua/blob/main/CHANGELOG.md) for details."
-          if gh release view "${TAG}" --repo "${GH_REPO}" > /dev/null 2>&1; then
-            gh release upload "${TAG}" dist/*.tar.gz dist/*.zip dist/*.sha256 --clobber \
-              --repo "${GH_REPO}"
-          else
-            flags=()
-            if [ "${IS_PRERELEASE}" = "true" ]; then
-              flags+=(--prerelease)
-            fi
-            gh release create "${TAG}" \
-              --repo "${GH_REPO}" \
-              --verify-tag \
-              --target "${SOURCE_COMMIT}" \
-              --title "akua ${VERSION}" \
-              --notes "${notes}" \
-              "${flags[@]}" \
-              dist/*.tar.gz dist/*.zip dist/*.sha256
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            gh release view "${TAG}" --repo "${GH_REPO}" > /dev/null
+            echo "Verified existing immutable Release ${TAG}; recovery does not upload or replace assets."
+            exit 0
           fi
+          flags=()
+          if [ "${IS_PRERELEASE}" = "true" ]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "${TAG}" \
+            --repo "${GH_REPO}" \
+            --verify-tag \
+            --target "${SOURCE_COMMIT}" \
+            --title "akua ${VERSION}" \
+            --notes "${notes}" \
+            "${flags[@]}" \
+            dist/*.tar.gz dist/*.zip dist/*.sha256
 
   # ---------------------------------------------------------------------------
   # docker — multi-arch image at `ghcr.io/akua-dev/akua:<tag>`. Skips

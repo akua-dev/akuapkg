@@ -1,11 +1,12 @@
 # Releasing akua
 
 The build and publish lanes are intentionally separate. `.github/workflows/release.yml`
-builds the immutable tag, updates the GitHub Release assets with clobber semantics,
-pushes the container, and dispatches
-`.github/workflows/release-publish.yml`. The publish workflow downloads the assets
-owned by that tag and publishes npm packages in dependency order. Neither lane
-creates or moves a tag during recovery.
+builds the immutable tag, creates Release assets only for a new tag push, pushes the
+container, and dispatches `.github/workflows/release-publish.yml` with the source-run
+artifact identity. The publish workflow downloads those Actions artifacts and
+publishes npm packages in dependency order. A recovery verifies the existing Release
+but never uploads, replaces, or otherwise changes its assets. Neither lane creates or
+moves a tag during recovery.
 
 Homebrew is explicitly outside this recovery. Formula ownership belongs to
 `akua-dev/cli` and the dedicated `akua-dev/homebrew-tap` lane; Akua core does not
@@ -61,8 +62,12 @@ Recovery is manual and fail-closed. Do not rerun either failed run, retag
 `v0.8.25`, recreate its GitHub Release, or upload assets by hand. The existing tag
 resolves to commit `6452eb662445d2ad7c108128f93b9c55138729bb`; the manual build lane
 checks out that tag, verifies and propagates its commit, and never builds the current
-workflow head as the tagged source. Existing Release assets are overwritten by name,
-and npm versions already present are skipped before the missing packages publish.
+workflow head as the tagged source. Existing Release assets are verified and left
+byte-for-byte unchanged, and npm versions already present are skipped before the
+missing packages publish.
+Recovery starts a new full source build so the publisher can consume that run's
+short-lived verified Actions artifacts; do not dispatch `release-publish.yml` alone
+with a stale or guessed run ID.
 The build lane passes its expected source and workflow commit SHAs to the publish
 lane. The publisher verifies that the tag still resolves to the expected source and
 that `github.sha` is the reviewed workflow commit; if either ref advances, recovery
@@ -87,7 +92,7 @@ gh workflow run release.yml \
   -f dry-run=false
 ```
 
-That single deliberate dispatch rebuilds from the immutable tag, repairs the GitHub
-Release assets, publishes `ghcr.io/akua-dev/akua`, and then dispatches the idempotent
-npm publish lane. It has no Homebrew side effects. There are no automatic recovery
-retries.
+That single deliberate dispatch rebuilds from the immutable tag, verifies the existing
+GitHub Release without changing any asset bytes, publishes `ghcr.io/akua-dev/akua`,
+and then dispatches the idempotent npm publish lane from that run's artifacts. It has
+no Homebrew side effects. There are no automatic recovery retries.

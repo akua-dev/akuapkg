@@ -141,7 +141,41 @@ for workflow in .github/workflows/*.yml; do
 	assert_file_excludes "$workflow" "cnap-tech"
 done
 assert_file_contains ".github/workflows/release.yml" "ghcr.io/akua-dev/akua:\${tag}"
-assert_file_contains ".github/workflows/release.yml" "gh release upload \"\${TAG}\" dist/*.tar.gz dist/*.zip dist/*.sha256 --clobber"
+assert_file_excludes_pattern ".github/workflows/release.yml" 'gh[[:space:]]+release[[:space:]]+upload'
+assert_file_excludes ".github/workflows/release.yml" "--clobber"
+assert_file_excludes ".github/workflows/release-publish.yml" "gh release download"
+assert_file_contains ".github/workflows/release-publish.yml" "source-run-id:"
+assert_file_contains ".github/workflows/release.yml" '-f source-run-id="$GITHUB_RUN_ID"'
+assert_job_contains ".github/workflows/release.yml" \
+	"detect-version" \
+	"release-inputs.json"
+assert_job_contains ".github/workflows/release-publish.yml" \
+	"detect-version" \
+	'gh run view "$SOURCE_RUN_ID"'
+assert_job_contains ".github/workflows/release-publish.yml" \
+	"detect-version" \
+	'.status == "in_progress"'
+assert_job_contains ".github/workflows/release-publish.yml" \
+	"detect-version" \
+	'.status == "completed"'
+assert_job_contains ".github/workflows/release-publish.yml" \
+	"detect-version" \
+	'.conclusion == "success"'
+assert_job_contains ".github/workflows/release-publish.yml" \
+	"detect-version" \
+	"release-inputs"
+assert_job_contains ".github/workflows/release.yml" \
+	"trigger-publish" \
+	'-f expected-workflow-commit="$EXPECTED_WORKFLOW_COMMIT" \\'
+assert_job_contains ".github/workflows/release-publish.yml" \
+	"native-publish" \
+	"--pattern 'native-*'"
+assert_job_contains ".github/workflows/release-publish.yml" \
+	"sdk-publish" \
+	'gh run download "$SOURCE_RUN_ID"'
+assert_job_contains ".github/workflows/release.yml" \
+	"github-release" \
+	'if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]'
 
 # Homebrew belongs to akua-dev/cli and its dedicated tap lane. Akua core must
 # never configure tap credentials, generate a formula, or dispatch a tap writer.
