@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Patterns passed to the assertion helpers intentionally remain literal.
-# shellcheck disable=SC2016
+# shellcheck disable=SC1003,SC2016
 set -euo pipefail
 
 line_in_job() {

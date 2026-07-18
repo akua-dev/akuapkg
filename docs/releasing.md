@@ -62,9 +62,9 @@ Recovery is manual and fail-closed. Do not rerun either failed run, retag
 `v0.8.25`, recreate its GitHub Release, or upload assets by hand. The existing tag
 resolves to commit `6452eb662445d2ad7c108128f93b9c55138729bb`; the manual build lane
 checks out that tag, verifies and propagates its commit, and never builds the current
-workflow head as the tagged source. Existing Release assets are verified and left
-byte-for-byte unchanged, and npm versions already present are skipped before the
-missing packages publish.
+workflow head as the tagged source. The existing Release is verified; all 19 assets
+are left byte-for-byte unchanged, and npm versions already present are skipped before
+the missing packages publish.
 Recovery starts a new full source build so the publisher can consume that run's
 short-lived verified Actions artifacts; do not dispatch `release-publish.yml` alone
 with a stale or guessed run ID.
