@@ -274,6 +274,14 @@ jobs:
             echo "Publishing ${dir}"
             publish_one "${dir%/}"
           done
+          # The meta publish runs its prepublishOnly hook ON PURPOSE — unlike
+          # sdk-publish it must NOT use --ignore-scripts. `napi prepublish`
+          # injects the per-platform optionalDependencies (absent from the
+          # committed package.json) and copies the addons; skipping it ships a
+          # meta with no optionalDependencies and no native binary for
+          # consumers. The immutable-Release write that hook used to attempt is
+          # disabled at its source via `--no-gh-release` in the prepublishOnly
+          # script (crates/akua-napi/package.json).
           echo "Publishing meta @akua-dev/native"
           publish_one crates/akua-napi
 
