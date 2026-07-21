@@ -60,7 +60,7 @@ cp -r path/to/akua/skills/* ~/.claude/skills/
 Install via the Codex skills manager:
 
 ```sh
-codex skills install github:cnap-tech/akua/skills
+codex skills install github:akua-dev/akua/skills
 ```
 
 ### Cursor
@@ -84,7 +84,7 @@ gemini extensions install @akua/skills
 All support the open [Agent Skills Specification](https://agentskills.io). Any of:
 
 - Symlink `skills/` into the agent's expected location
-- Use `npx skills install github:cnap-tech/akua/skills`
+- Use `npx skills install github:akua-dev/akua/skills`
 - Follow each agent's skill-installation instructions (linked from [agentskills.io/overview](https://agentskills.io/))
 
 ### Universal: `npx skills`
@@ -92,7 +92,7 @@ All support the open [Agent Skills Specification](https://agentskills.io). Any o
 The [Vercel Labs skills manager](https://github.com/vercel-labs/skills) works across all Agent Skills compatible agents:
 
 ```sh
-npx skills install github:cnap-tech/akua/skills
+npx skills install github:akua-dev/akua/skills
 npx skills list
 npx skills remove akua-*
 ```

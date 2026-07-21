@@ -6,30 +6,41 @@ name: release-publish
 # from `release.yml` so the retry boundary is scoped:
 #
 #   release.yml          — tag-triggered. Builds binaries, creates the
-#                          GitHub Release, uploads native + wasm + sdk
-#                          tarballs as Release assets, then dispatches
-#                          this workflow.
+#                          GitHub Release, then dispatches this workflow
+#                          with the source-run artifact identity.
 #   release-publish.yml  — workflow_dispatch with `tag` input. Downloads
-#                          Release assets and runs `npm publish`.
+#                          source-run artifacts and runs `npm publish`.
 #
 # When publish fails (npm hiccup, OIDC config drift, version-pin
-# mismatch, …) you fix the workflow on main, then re-dispatch THIS
-# workflow with the same tag. ~1 minute, no rebuild.
+# mismatch, …), recovery starts a new source build and dispatches this
+# workflow with that run's verified artifacts. Already-published versions skip.
 #
 # Per GitHub Actions docs: `workflow_dispatch` is explicitly carved
 # out of the GITHUB_TOKEN no-recursion rule, so the upstream workflow
 # can dispatch this one without a PAT.
 #
-# A failed run can also be re-run via `gh run rerun --failed <id>`;
-# the workflow file used will be the version on the dispatched ref
-# (typically main), not the one at the original tag's SHA — meaning
-# fixes to this workflow apply on rerun.
+# Recovery is a new deliberate workflow_dispatch from a reviewed workflow
+# head. Do not rerun a failed historical run: the requested tag remains the
+# immutable source and Release assets remain untouched while the workflow fix
+# comes from the explicitly selected dispatch ref. See docs/releasing.md.
 
 on:
   workflow_dispatch:
     inputs:
       tag:
         description: 'Tag to publish (e.g. v0.8.7).'
+        required: true
+        type: string
+      expected-source-commit:
+        description: 'Commit the tag must resolve to.'
+        required: true
+        type: string
+      expected-workflow-commit:
+        description: 'Commit containing this reviewed workflow.'
+        required: true
+        type: string
+      source-run-id:
+        description: 'Release workflow run whose artifacts are the publication inputs.'
         required: true
         type: string
       dry-run:
@@ -39,7 +50,8 @@ on:
         default: false
 
 permissions:
-  contents: read   # gh release download
+  actions: read    # gh run download
+  contents: read
   id-token: write  # npm publish: OIDC trusted publishing
 
 jobs:
@@ -50,14 +62,82 @@ jobs:
       tag: ${{ steps.detect.outputs.tag }}
       is_prerelease: ${{ steps.detect.outputs.is_prerelease }}
       npm_dist_tag: ${{ steps.detect.outputs.npm_dist_tag }}
+      source_commit: ${{ steps.detect.outputs.source_commit }}
+      source_run_id: ${{ steps.detect.outputs.source_run_id }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+
       - id: detect
         env:
           TAG: ${{ inputs.tag }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.expected-source-commit }}
+          EXPECTED_WORKFLOW_COMMIT: ${{ inputs.expected-workflow-commit }}
+          SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+          ACTUAL_WORKFLOW_COMMIT: ${{ github.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::tag '$TAG' is not a valid semver v* tag"
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::expected source commit is not a full lowercase SHA"
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_WORKFLOW_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::expected workflow commit is not a full lowercase SHA"
+            exit 1
+          fi
+          if [[ ! "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::source run ID must be numeric"
+            exit 1
+          fi
+          if [[ "$ACTUAL_WORKFLOW_COMMIT" != "$EXPECTED_WORKFLOW_COMMIT" ]]; then
+            echo "::error::workflow commit $ACTUAL_WORKFLOW_COMMIT does not match expected $EXPECTED_WORKFLOW_COMMIT"
+            exit 1
+          fi
+          run_json=$(gh run view "$SOURCE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json workflowName,status,conclusion,headSha)
+          if ! jq -e --arg expected_workflow "$EXPECTED_WORKFLOW_COMMIT" '
+            .workflowName == "release"
+            and (
+              .status == "in_progress"
+              or (.status == "completed" and .conclusion == "success")
+            )
+            and .headSha == $expected_workflow
+          ' <<< "$run_json" > /dev/null; then
+            echo "::error::source run is not the active or successful release workflow at the expected workflow commit"
+            exit 1
+          fi
+          mkdir source-run
+          gh run download "$SOURCE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name release-inputs \
+            --dir source-run
+          if ! jq -e \
+            --arg tag "$TAG" \
+            --arg source_commit "$EXPECTED_SOURCE_COMMIT" \
+            --arg workflow_commit "$EXPECTED_WORKFLOW_COMMIT" '
+              .tag == $tag
+              and .source_commit == $source_commit
+              and .workflow_commit == $workflow_commit
+            ' source-run/release-inputs.json > /dev/null; then
+            echo "::error::source-run artifact identity does not match the requested immutable recovery inputs"
+            exit 1
+          fi
+          source_commit=$(git rev-parse "refs/tags/${TAG}^{commit}")
+          if [[ "$source_commit" != "$EXPECTED_SOURCE_COMMIT" ]]; then
+            echo "::error::$TAG resolves to $source_commit, expected $EXPECTED_SOURCE_COMMIT"
+            exit 1
+          fi
+          head_commit=$(git rev-parse 'HEAD^{commit}')
+          if [[ "$head_commit" != "$source_commit" ]]; then
+            echo "::error::checkout $head_commit does not match $TAG at $source_commit"
             exit 1
           fi
           version="${TAG#v}"
@@ -73,6 +153,8 @@ jobs:
             echo "version=$version"
             echo "is_prerelease=$is_prerelease"
             echo "npm_dist_tag=$npm_dist_tag"
+            echo "source_commit=$source_commit"
+            echo "source_run_id=$SOURCE_RUN_ID"
           } >> "$GITHUB_OUTPUT"
           echo "Will publish $version under dist-tag: $npm_dist_tag"
 
@@ -82,7 +164,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ needs.detect-version.outputs.source_commit }}
 
       - uses: actions/setup-node@v4
         # Node 24 ships npm 11.x — required for OIDC trusted publishing.
@@ -102,33 +184,31 @@ jobs:
         run: |
           set -eu
           version="${{ needs.detect-version.outputs.version }}"
-          jq --arg v "$version" \
-            '.version = $v | .dependencies["@akua-dev/native-engines"] = $v' \
+          repo='git+https://github.com/akua-dev/akua.git'
+          jq --arg v "$version" --arg repo "$repo" \
+            '.version = $v
+             | .dependencies["@akua-dev/native-engines"] = $v
+             | .repository.url = $repo' \
             crates/akua-napi/package.json > crates/akua-napi/package.json.tmp
           mv crates/akua-napi/package.json.tmp crates/akua-napi/package.json
 
-      - name: Download release assets (native + wasm)
+      - name: Download source-run artifacts (native + wasm)
         env:
-          TAG: ${{ needs.detect-version.outputs.tag }}
+          SOURCE_RUN_ID: ${{ needs.detect-version.outputs.source_run_id }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -eu
           mkdir -p crates/akua-napi/artifacts
           cd crates/akua-napi/artifacts
-          # Each `native-<target>` and `wasm-bundle` was uploaded as
-          # `<name>.tar.gz` by release.yml's trigger-publish job.
-          gh release download "$TAG" \
-            --pattern 'native-*.tar.gz' \
-            --pattern 'wasm-bundle.tar.gz'
-          for f in native-*.tar.gz; do
-            name="${f%.tar.gz}"
-            mkdir "$name"
-            tar -xzf "$f" -C "$name"
-            rm "$f"
-          done
-          mkdir wasm-bundle
-          tar -xzf wasm-bundle.tar.gz -C wasm-bundle
-          rm wasm-bundle.tar.gz
+          gh run download "$SOURCE_RUN_ID" \
+            --repo "$GH_REPO" \
+            --pattern 'native-*' \
+            --dir .
+          gh run download "$SOURCE_RUN_ID" \
+            --repo "$GH_REPO" \
+            --name wasm-bundle \
+            --dir wasm-bundle
           ls -R
 
       - name: Generate per-platform npm dirs
@@ -149,11 +229,13 @@ jobs:
         run: |
           set -eu
           version="${{ needs.detect-version.outputs.version }}"
+          repo='git+https://github.com/akua-dev/akua.git'
           cp crates/akua-napi/artifacts/wasm-bundle/crates/helm-engine-wasm/assets/helm-engine.wasm \
              crates/akua-native-engines-npm/helm-engine.wasm
           cp crates/akua-napi/artifacts/wasm-bundle/crates/kustomize-engine-wasm/assets/kustomize-engine.wasm \
              crates/akua-native-engines-npm/kustomize-engine.wasm
-          jq --arg v "$version" '.version = $v' \
+          jq --arg v "$version" --arg repo "$repo" \
+            '.version = $v | .repository.url = $repo' \
             crates/akua-native-engines-npm/package.json \
             > crates/akua-native-engines-npm/package.json.tmp
           mv crates/akua-native-engines-npm/package.json.tmp \
@@ -213,23 +295,19 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Download release asset (sdk-staged)
-        # `gh release download` infers the repo from the cwd's git
-        # config — pass --repo explicitly so the job doesn't need a
-        # checkout (the sdk staging tree is fully reconstructed from
-        # the asset tarball).
+      - name: Download source-run artifact (sdk-staged)
         env:
-          TAG: ${{ needs.detect-version.outputs.tag }}
+          SOURCE_RUN_ID: ${{ needs.detect-version.outputs.source_run_id }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -eu
           mkdir sdk
-          cd sdk
-          gh release download "$TAG" --pattern 'sdk-staged.tar.gz' --repo "$GH_REPO"
-          tar -xzf sdk-staged.tar.gz
-          rm sdk-staged.tar.gz
-          ls -la
+          gh run download "$SOURCE_RUN_ID" \
+            --repo "$GH_REPO" \
+            --name sdk-staged \
+            --dir sdk
+          ls -la sdk
 
       - name: Pack dry-run (manifest sanity)
         working-directory: sdk
@@ -243,7 +321,21 @@ jobs:
         # full node_modules tree. The npm provenance + OIDC publish
         # steps are unaffected by --ignore-scripts.
         if: ${{ inputs.dry-run == false }}
-        working-directory: sdk
         env:
           NPM_DIST_TAG: ${{ needs.detect-version.outputs.npm_dist_tag }}
-        run: npm publish --access public --provenance --tag "$NPM_DIST_TAG" --ignore-scripts
+        run: |
+          set -eu
+
+          publish_one() {
+            local dir="$1" name version
+            shift
+            name=$(jq -r '.name' "$dir/package.json")
+            version=$(jq -r '.version' "$dir/package.json")
+            if npm view "${name}@${version}" version > /dev/null 2>&1; then
+              echo "Skipping ${name}@${version} — already on npm"
+              return 0
+            fi
+            (cd "$dir" && npm publish --access public --provenance --tag "$NPM_DIST_TAG" "$@")
+          }
+
+          publish_one sdk --ignore-scripts

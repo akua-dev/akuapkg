@@ -1,6 +1,6 @@
 # @akua-dev/sdk
 
-TypeScript SDK for [akua](https://github.com/cnap-tech/akua). Every verb runs in-process via a bundled native addon (napi-rs) — same `akua-core` the CLI uses, no `akua` binary on `$PATH` required.
+TypeScript SDK for [akua](https://github.com/akua-dev/akua). Every verb runs in-process via a bundled native addon (napi-rs) — same `akua-core` the CLI uses, no `akua` binary on `$PATH` required.
 
 ## Install
 
@@ -79,13 +79,8 @@ task sdk:publish:check   # npm pack --dry-run
 
 ## Release flow
 
-SDK versions track the Rust workspace version: one `v<semver>` tag drives a single unified `release.yml` workflow that builds the wasm bundle once, fans out into the native + cli matrices in parallel, then chains npm publishes (engines → per-platform native → meta-native → SDK) via job-level `needs:` dependencies. No npm polling, no inter-workflow races.
-
-1. Land changes on `main`; `task ci` must be green.
-2. Bump versions in `Cargo.toml`, `crates/akua-napi/package.json`, `packages/sdk/package.json`, all `crates/akua-napi/npm/<platform>/package.json`, `crates/akua-native-engines-npm/package.json`. Commit `release: vX.Y.Z`.
-3. Tag `v<semver>` and push. The single `release.yml` workflow handles everything (npm + GitHub Release + Docker + Homebrew). Prerelease tags like `v<x.y.z>-rc1` publish to the npm `next` dist-tag and are marked as prereleases on GitHub.
-
-See [`.github/workflows/release.yml`](../../.github/workflows/release.yml) for the full job graph.
+SDK versions track the release tag. See [`docs/releasing.md`](../../docs/releasing.md)
+for the authoritative release and recovery contract.
 
 ## Still coming
 

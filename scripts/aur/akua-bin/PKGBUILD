@@ -11,9 +11,9 @@
 #   git add PKGBUILD .SRCINFO && git commit -m "akua-bin <VERSION>"
 #   git push
 #
-# Version bumps happen via the cli-release workflow's Homebrew bump
-# job; we'd need to add a separate AUR-push job once the maintainer
-# SSH key is in CI. For now this is manual.
+# AUR version bumps are manual. Automation would require a dedicated
+# AUR-push lane and maintainer SSH key; the Akua core release does not
+# update external package-manager repositories.
 
 pkgname=akua-bin
 _pkgname=akua
