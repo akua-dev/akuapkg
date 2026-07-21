@@ -15,6 +15,22 @@ line_in_job() {
 	' "$file"
 }
 
+command_line_in_job() {
+	local file="$1"
+	local job="$2"
+	local pattern="$3"
+
+	awk -v job="$job" -v pattern="$pattern" '
+		$0 ~ "^  " job ":$" { in_job = 1; next }
+		in_job && $0 ~ /^  [A-Za-z0-9_-]+:$/ { exit }
+		in_job {
+			command = $0
+			sub(/^[[:space:]]+/, "", command)
+			if (command !~ /^#/ && index(command, pattern)) { print NR; exit }
+		}
+	' "$file"
+}
+
 assert_before() {
 	local file="$1"
 	local job="$2"
@@ -46,9 +62,22 @@ assert_job_contains() {
 	local pattern="$3"
 	local line
 
-	line="$(line_in_job "$file" "$job" "$pattern")"
+	line="$(command_line_in_job "$file" "$job" "$pattern")"
 	if [[ -z "$line" ]]; then
 		echo "ERROR: $file job '$job' is missing '$pattern'" >&2
+		exit 1
+	fi
+}
+
+assert_job_excludes() {
+	local file="$1"
+	local job="$2"
+	local pattern="$3"
+	local line
+
+	line="$(command_line_in_job "$file" "$job" "$pattern")"
+	if [[ -n "$line" ]]; then
+		echo "ERROR: $file job '$job' still contains forbidden text '$pattern'" >&2
 		exit 1
 	fi
 }
@@ -273,6 +302,14 @@ assert_before ".github/workflows/release-publish.yml" \
 	"native-publish" \
 	"publish_one crates/akua-native-engines-npm" \
 	"publish_one crates/akua-napi"
+if [[ "$(jq -r '.scripts.prepublishOnly' crates/akua-napi/package.json)" != \
+	"napi prepublish -t npm --no-gh-release" ]]; then
+	echo "ERROR: native meta prepublish must preserve package injection while disabling GitHub Release uploads" >&2
+	exit 1
+fi
+assert_job_excludes ".github/workflows/release-publish.yml" \
+	"native-publish" \
+	"--ignore-scripts"
 assert_job_contains ".github/workflows/release-publish.yml" \
 	"sdk-publish" \
 	"needs: [detect-version, native-publish]"

@@ -25,6 +25,13 @@ prerelease, and do not update the container's `latest` tag.
 Do not delete and re-push a release tag. If a tagged run fails, use the SHA-bound
 recovery path below after correcting and reviewing the workflow on `main`.
 
+The `@akua-dev/native` meta-package must publish with lifecycle scripts enabled. Its
+`prepublishOnly` hook runs `napi prepublish -t npm --no-gh-release`: `napi prepublish`
+injects the generated per-platform `optionalDependencies` and copies the native
+addons into the package, while `--no-gh-release` prevents the hook from uploading
+assets to the immutable GitHub Release. Do not add `--ignore-scripts` to the native
+publish; that flag is only valid for the separately staged SDK publish.
+
 ## npm trusted publisher contract
 
 npm trusted-publisher configuration is external registry state. Source code can
