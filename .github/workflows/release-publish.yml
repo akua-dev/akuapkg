@@ -56,7 +56,7 @@ permissions:
 
 jobs:
   detect-version:
-    runs-on: ubuntu-latest
+    runs-on: akua-x64-ci-v2
     outputs:
       version: ${{ steps.detect.outputs.version }}
       tag: ${{ steps.detect.outputs.tag }}
@@ -160,7 +160,7 @@ jobs:
 
   native-publish:
     needs: detect-version
-    runs-on: ubuntu-latest
+    runs-on: akua-x64-ci-v2
     steps:
       - uses: actions/checkout@v6
         with:
@@ -297,7 +297,7 @@ jobs:
 
   sdk-publish:
     needs: [detect-version, native-publish]
-    runs-on: ubuntu-latest
+    runs-on: akua-x64-ci-v2
     steps:
       - uses: actions/setup-node@v4
         with:

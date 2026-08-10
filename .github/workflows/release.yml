@@ -79,7 +79,7 @@ jobs:
   # place (the only spot a typo here would surface).
   # ---------------------------------------------------------------------------
   detect-version:
-    runs-on: ubuntu-latest
+    runs-on: akua-x64-ci-v2
     outputs:
       tag: ${{ steps.parse.outputs.tag }}
       version: ${{ steps.parse.outputs.version }}
@@ -179,7 +179,7 @@ jobs:
   # Windows natively).
   # ---------------------------------------------------------------------------
   wasm-bundle:
-    runs-on: ubuntu-latest
+    runs-on: akua-heavy-ci-v2
     needs: detect-version
     steps:
       - uses: actions/checkout@v6
@@ -267,15 +267,15 @@ jobs:
           # + Apple SDK handle this without extra setup.
           - host: macos-14
             target: x86_64-apple-darwin
-          - host: ubuntu-latest
+          - host: akua-heavy-ci-v2
             target: x86_64-unknown-linux-gnu
-          - host: ubuntu-latest
+          - host: akua-heavy-ci-v2
             target: aarch64-unknown-linux-gnu
             cross: true
-          - host: ubuntu-latest
+          - host: akua-heavy-ci-v2
             target: x86_64-unknown-linux-musl
             cross: true
-          - host: ubuntu-latest
+          - host: akua-heavy-ci-v2
             target: aarch64-unknown-linux-musl
             cross: true
           - host: windows-latest
@@ -384,7 +384,7 @@ jobs:
   # ---------------------------------------------------------------------------
   trigger-publish:
     needs: [detect-version, wasm-bundle, native-build, sdk-build, github-release]
-    runs-on: ubuntu-latest
+    runs-on: akua-x64-ci-v2
     if: github.event_name == 'push' || inputs.dry-run == false
     steps:
       - name: Dispatch release-publish.yml
@@ -417,7 +417,7 @@ jobs:
   # ---------------------------------------------------------------------------
   sdk-build:
     needs: detect-version
-    runs-on: ubuntu-latest
+    runs-on: akua-heavy-ci-v2
     steps:
       - uses: actions/checkout@v6
         with:
@@ -486,10 +486,10 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-latest
+            runner: akua-heavy-ci-v2
             archive: tar.gz
           - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-latest
+            runner: akua-heavy-ci-v2
             archive: tar.gz
           - target: x86_64-apple-darwin
             runner: macos-latest
@@ -531,8 +531,7 @@ jobs:
       - name: Cross-compile for linux/arm64
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
+          aarch64-linux-gnu-gcc --version
           echo 'CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc' >> "$GITHUB_ENV"
 
       - name: Rust target
@@ -633,7 +632,7 @@ jobs:
   # ---------------------------------------------------------------------------
   github-release:
     needs: [detect-version, cli-build]
-    runs-on: ubuntu-latest
+    runs-on: akua-x64-ci-v2
     if: github.event_name == 'push' || inputs.dry-run == false
     steps:
       - uses: actions/checkout@v6
@@ -689,7 +688,7 @@ jobs:
   # ---------------------------------------------------------------------------
   docker:
     needs: [detect-version, cli-build]
-    runs-on: ubuntu-latest
+    runs-on: akua-docker-ci-v2
     if: github.event_name == 'push' || inputs.dry-run == false
     steps:
       - uses: actions/checkout@v6
