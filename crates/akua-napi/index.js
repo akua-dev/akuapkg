@@ -579,6 +579,7 @@ module.exports = nativeBinding
 module.exports.add = nativeBinding.add
 module.exports.check = nativeBinding.check
 module.exports.diff = nativeBinding.diff
+module.exports.execute = nativeBinding.execute
 module.exports.export = nativeBinding.export
 module.exports.fmt = nativeBinding.fmt
 module.exports.inspect = nativeBinding.inspect

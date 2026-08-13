@@ -9,6 +9,7 @@
 pub mod api_config;
 pub mod auth_parse;
 pub mod contract;
+pub mod entrypoint;
 pub mod observability;
 pub mod render_worker;
 pub mod verbs;

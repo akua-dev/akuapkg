@@ -33,6 +33,20 @@ pub fn version() -> Result<serde_json::Value> {
     invoke_verb(|ctx, stdout| verbs::version::run(ctx, stdout).map_err(into_napi_io))
 }
 
+/// Execute any supported package command through the same parser and
+/// dispatcher as the standalone `akuapkg` binary.
+///
+/// Output is intentionally written by the package command itself, preserving
+/// its documented JSON/text streams. The numeric result is the package
+/// contract's stable exit code, not a Node or shell-process exit status.
+#[napi]
+pub fn execute(args: Vec<String>) -> Result<i32> {
+    Ok(akuapkg_cli::entrypoint::run_embedded_from(
+        std::iter::once("akuapkg".to_string()).chain(args),
+    )
+    .code())
+}
+
 /// Point the embedded helm/kustomize engines at a directory holding
 /// their `.wasm`/`.cwasm` artifacts. The JS loader calls this with the
 /// resolved `@akua-dev/native-engines` directory at module-load time.
@@ -695,6 +709,14 @@ edition = "akua.dev/v1alpha1"
         fs::write(dir.join("akua.toml"), MINIMAL_AKUA_TOML).unwrap();
         fs::write(dir.join("package.k"), MINIMAL_PACKAGE_K).unwrap();
         dir
+    }
+
+    #[test]
+    fn execute_returns_the_package_contract_exit_code() {
+        assert_eq!(
+            execute(vec!["not-a-command".to_string()]).unwrap(),
+            ExitCode::UserError.code()
+        );
     }
 
     #[test]

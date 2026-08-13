@@ -342,6 +342,19 @@ export class Akua {
 		return validateAs<VersionOutput>('VersionOutput', callNapi(() => napi.version()));
 	}
 
+	/**
+	 * Run any `akuapkg` command through the native package dispatcher.
+	 *
+	 * Pass command arguments only, for example
+	 * `['render', '--package', 'package.k']`. Output is streamed
+	 * directly by the native command, exactly as when invoking `akuapkg` in a
+	 * terminal; the resolved value is its documented numeric exit code.
+	 */
+	async execute(args: readonly string[]): Promise<number> {
+		const napi = loadNapi();
+		return callNapi<number>(() => napi.execute([...args]));
+	}
+
 	async whoami(): Promise<WhoamiOutput> {
 		const napi = loadNapi();
 		return validateAs<WhoamiOutput>('WhoamiOutput', callNapi(() => napi.whoami()));
