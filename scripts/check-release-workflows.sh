@@ -335,6 +335,9 @@ assert_job_contains ".github/workflows/release.yml" \
 assert_job_contains ".github/workflows/release.yml" \
 	"sdk-build" \
 	'.homepage = $homepage'
+assert_file_excludes ".github/workflows/release.yml" "github.com/akua-dev/akua.git"
+assert_file_excludes ".github/workflows/release.yml" "github.com/akua-dev/akua/blob"
+assert_file_excludes ".github/workflows/release-publish.yml" "github.com/akua-dev/akua.git"
 
 # The external trusted-publisher identity and the deliberately gated recovery
 # command are authoritative release contract, not tribal knowledge.

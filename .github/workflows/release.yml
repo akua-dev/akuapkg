@@ -450,8 +450,8 @@ jobs:
         run: |
           set -eu
           version="${{ needs.detect-version.outputs.version }}"
-          repo='git+https://github.com/akua-dev/akua.git'
-          homepage='https://github.com/akua-dev/akua#readme'
+          repo='git+https://github.com/akua-dev/akuapkg.git'
+          homepage='https://github.com/akua-dev/akuapkg#readme'
           echo "Preparing @akua-dev/sdk@${version}"
           jq --arg v "$version" --arg repo "$repo" --arg homepage "$homepage" \
             '.version = $v
@@ -662,7 +662,7 @@ jobs:
           IS_PRERELEASE: ${{ needs.detect-version.outputs.is_prerelease }}
         run: |
           set -eu
-          notes="See [CHANGELOG.md](https://github.com/akua-dev/akua/blob/main/CHANGELOG.md) for details."
+          notes="See [CHANGELOG.md](https://github.com/akua-dev/akuapkg/blob/main/CHANGELOG.md) for details."
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
             gh release view "${TAG}" --repo "${GH_REPO}" > /dev/null
             echo "Verified existing immutable Release ${TAG}; recovery does not upload or replace assets."
