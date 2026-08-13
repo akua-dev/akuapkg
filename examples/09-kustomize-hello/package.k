@@ -7,7 +7,7 @@
 #
 # Render:
 #
-#   akua render --package examples/09-kustomize-hello/package.k --out ./rendered
+#   akuapkg render --package examples/09-kustomize-hello/package.k --out ./rendered
 #
 # No inputs — the kustomization tree is fully declarative.
 

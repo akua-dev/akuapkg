@@ -4,7 +4,7 @@
 // covers the pure-KCL cases where no binary is needed.
 //
 // Run with the CLI built: `task build:engines && cargo install
-// --path crates/akua-cli`, or point at your local debug build:
+// --path crates/akuapkg-cli`, or point at your local debug build:
 // `AKUA_BINARY=/path/to/target/debug/akua bun run 08-...ts`.
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';

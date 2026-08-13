@@ -303,11 +303,11 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 </header>
 <p>How to make the render pipeline cough up useful diagnostics when something goes wrong. This is the playbook the maintainer uses; agents should reach for it before guessing.</p>
 <h2 id="tldr">TL;DR</h2>
-<pre><code class="lang-sh">akua render --package package.k --inputs ... --log=json --log-level=debug 2&gt;&amp;1 | head -20</code></pre>
+<pre><code class="lang-sh">akuapkg render --package package.k --inputs ... --log=json --log-level=debug 2&gt;&amp;1 | head -20</code></pre>
 <p>Three knobs cover almost every case:</p>
 <table><thead><tr><th>knob</th><th>what it adds</th></tr></thead><tbody><tr><td><code>--log=json</code></td><td>structured stderr lines you can <code>jq</code> over</td></tr><tr><td><code>--log-level=debug</code></td><td>host + worker spans, every plugin-bridge call</td></tr><tr><td><code>RUST_LOG=...</code></td><td>full <code>EnvFilter</code> syntax, lights up transitive crates</td></tr></tbody></table>
 <h2 id="sources-of-truth">Sources of truth</h2>
-<ul><li><strong>CLI contract §9</strong> — <a href="/concepts/cli-contract#9-logging">docs/cli-contract.md</a> — flag semantics, JSON line shape, target taxonomy.</li><li><strong>CLI contract §9.1</strong> — OpenTelemetry env-var surface.</li><li><strong><code>crates/akua-cli/src/observability.rs</code></strong> — host-side subscriber wiring.</li><li><strong><code>crates/akua-render-worker/src/observability.rs</code></strong> — worker-side subscriber.</li></ul>
+<ul><li><strong>CLI contract §9</strong> — <a href="/concepts/cli-contract#9-logging">docs/cli-contract.md</a> — flag semantics, JSON line shape, target taxonomy.</li><li><strong>CLI contract §9.1</strong> — OpenTelemetry env-var surface.</li><li><strong><code>crates/akuapkg-cli/src/observability.rs</code></strong> — host-side subscriber wiring.</li><li><strong><code>crates/akua-render-worker/src/observability.rs</code></strong> — worker-side subscriber.</li></ul>
 <h2 id="what-youll-see">What you'll see</h2>
 <p>Successful render at <code>--log-level=debug</code>:</p>
 <pre><code class="lang-json">{&quot;level&quot;:&quot;DEBUG&quot;,&quot;fields&quot;:{&quot;message&quot;:&quot;worker.invoke.start&quot;},&quot;target&quot;:&quot;akua&quot;,&quot;span&quot;:{...,&quot;name&quot;:&quot;worker.invoke&quot;}}
@@ -326,7 +326,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <p>Frame names + file:line resolve via:</p>
 <ul><li><code>Config::wasm_backtrace_details(Enable)</code> + <code>Config::generate_address_map(true)</code> in <code>engine_host_wasm::shared_config</code>. Backtrace capture itself is on by default in wasmtime 43.</li><li>The worker <code>.wasm</code>'s <code>name</code> section preserved by overriding the workspace <code>[profile.release]</code> strip via the <code>task build:render-worker</code> <code>--config</code> flags (see <code>Taskfile.yml</code>).</li></ul>
 <p>If a trap shows bare <code>wasm function NNNN</code>:</p>
-<ol><li>The worker <code>.wasm</code> is stale or stripped — run <code>task build:render-worker</code> and verify the file size grew.</li><li>The <code>.cwasm</code> AOT artifact may be cached — <code>cargo clean -p akua-cli &amp;&amp; cargo build -p akua-cli</code> to force a re-bake against the current Config.</li></ol>
+<ol><li>The worker <code>.wasm</code> is stale or stripped — run <code>task build:render-worker</code> and verify the file size grew.</li><li>The <code>.cwasm</code> AOT artifact may be cached — <code>cargo clean -p akuapkg-cli &amp;&amp; cargo build -p akuapkg-cli</code> to force a re-bake against the current Config.</li></ol>
 <h2 id="when-a-plugin-handler-fails">When a plugin handler fails</h2>
 <p>KCL plugin calls (<code>pkg.render</code>, <code>helm.template</code>, <code>kustomize.build</code>) cross from inside-the-sandbox guest code to host functions. Failures look like:</p>
 <pre><code class="lang-json">{&quot;code&quot;:&quot;E_RENDER_KCL&quot;,&quot;message&quot;:&quot;plugin panic: pkg.render: &lt;details&gt;&quot;}</code></pre>
@@ -338,14 +338,14 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <h2 id="replicating-a-failing-render-minimally">Replicating a failing render minimally</h2>
 <p>If a render fails inside an example:</p>
 <pre><code class="lang-sh">cd examples/&lt;name&gt;
-cargo run -q -p akua-cli -- render \
+cargo run -q -p akuapkg-cli -- render \
     --package package.k \
     --inputs inputs.example.yaml \
     --log=json --log-level=debug 2&gt;&amp;1 | tail -30</code></pre>
 <p>Tail (not head) grabs the failing event + envelope; head grabs the warm-up traffic. Pipe through <code>jq -c 'select(.level==&quot;ERROR&quot; or .target==&quot;akua::bridge&quot;)'</code> to narrow to the salient lines.</p>
 <h2 id="when-the-worker-is-the-wrong-version">When the worker is the wrong version</h2>
-<p>A persistent gotcha: <code>cargo build -p akua-cli</code> does <strong>not</strong> rebuild the render-worker <code>.wasm</code>. The build script emits a warning when sources are newer than the staged <code>.wasm</code>:</p>
-<pre><code>warning: akua-cli@0.7.0: akua-render-worker.wasm is older than crates/akua-core/... — run `task build:render-worker`</code></pre>
+<p>A persistent gotcha: <code>cargo build -p akuapkg-cli</code> does <strong>not</strong> rebuild the render-worker <code>.wasm</code>. The build script emits a warning when sources are newer than the staged <code>.wasm</code>:</p>
+<pre><code>warning: akuapkg-cli@0.7.0: akua-render-worker.wasm is older than crates/akua-core/... — run `task build:render-worker`</code></pre>
 <p>Rebuild explicitly:</p>
 <pre><code class="lang-sh">task build:render-worker</code></pre>
 <p>Worker-side changes that need this:</p>
@@ -360,7 +360,7 @@ cargo run -q -p akua-cli -- render \
 <pre><code class="lang-sh">docker run --rm -p 4317:4317 -p 16686:16686 jaegertracing/all-in-one
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
   OTEL_SERVICE_NAME=akua-dev \
-  cargo run -q -p akua-cli -- render --package examples/00-helm-hello/package.k</code></pre>
+  cargo run -q -p akuapkg-cli -- render --package examples/00-helm-hello/package.k</code></pre>
 <p>The same trace tree (<code>worker.invoke → bridge.call → kcl eval</code>) shows up at <code>http://localhost:16686</code>. The OTel layer is gated on the <code>otel</code> cargo feature — on by default for the CLI binary, off for the napi distribution. cli-contract §9.1 lists every honored <code>OTEL_*</code> env var.</p>
 <h2 id="anti-patterns">Anti-patterns</h2>
 <p>Things that don't work and aren't worth trying:</p>
@@ -368,7 +368,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/cnap-tech/akua">github.com/cnap-tech/akua</a> ·
+  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
   Apache-2.0
 </footer>
 </main>

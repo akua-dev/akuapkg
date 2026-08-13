@@ -1,11 +1,11 @@
 //! Stable content hash of source trees.
 //!
 //! Used to verify that the embedded `akua-render-worker.wasm` was built
-//! from the same akua-core sources that `akua-cli` is currently being
+//! from the same akua-core sources that `akuapkg-cli` is currently being
 //! compiled against. Mismatch = host/worker drift = release-quality bug.
 //!
 //! The producer (`task build:render-worker`) invokes the binary to write
-//! the hash to a file alongside the .wasm. The consumer (akua-cli's
+//! the hash to a file alongside the .wasm. The consumer (akuapkg-cli's
 //! build.rs) imports this lib and recomputes; mismatch flips
 //! `cargo:warning=` → `panic!` in release-like profiles.
 //!
@@ -98,7 +98,7 @@ fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 /// Whether `path` is a source file the freshness protocol covers.
-/// Shared with akua-cli's mtime fallback walker so a future addition
+/// Shared with akuapkg-cli's mtime fallback walker so a future addition
 /// (e.g. `.kcl`) only has to land in one place.
 pub fn is_tracked_source(path: &Path) -> bool {
     matches!(

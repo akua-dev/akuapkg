@@ -5,8 +5,8 @@
 # preserving end-to-end type safety.
 #
 # Render:
-#   akua add
-#   akua render --inputs inputs.yaml
+#   akuapkg add
+#   akuapkg render --inputs inputs.yaml
 
 import akua.ctx
 import akua.pkg                            # package-as-source engine callable
@@ -92,14 +92,14 @@ _extra_ingresses = [
 # owner references, not list position.
 resources = [*_base, _dashboard, *_extra_ingresses]
 
-# Metadata for `akua inspect` and audit surfaces.
+# Metadata for `akuapkg inspect` and audit surfaces.
 metadata = {
     name:        "checkout-with-dashboard"
     version:     "0.1.0"
     description: "platform-base + experimental dashboard + multi-host routing"
     publisher:   "github.com/acme/checkout"
 
-    # The walk that `akua verify` follows: this Package's attestation
+    # The walk that `akuapkg verify` follows: this Package's attestation
     # references the base's attestation, which references its source charts.
     extends: ["oci://pkg.acme.corp/platform-base@sha256:c7e4b8a1..."]
 }

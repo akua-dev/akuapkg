@@ -4,14 +4,14 @@ Shows where tests live and what each kind looks like:
 
 - **`test_*.k`** — KCL unit tests. Exercise the Package's `Input` schema, defaults, and `check:` blocks.
 - **`*_test.rego`** — Rego policy tests. Feed fixtures to the policy package and assert verdicts.
-- **`testdata/golden/<fixture>/`** — golden render output. `akua test --golden` renders the Package against each input under `testdata/inputs/` and diffs the result against the expected bytes. A drift is a test failure.
+- **`testdata/golden/<fixture>/`** — golden render output. `akuapkg test --golden` renders the Package against each input under `testdata/inputs/` and diffs the result against the expected bytes. A drift is a test failure.
 
 All three kinds run under one verb:
 
 ```sh
-akua test                   # runs *_test.rego, test_*.k, golden fixtures
-akua test --golden          # golden-only
-akua test --update-golden   # overwrite golden with current render (use carefully)
+akuapkg test                   # runs *_test.rego, test_*.k, golden fixtures
+akuapkg test --golden          # golden-only
+akuapkg test --update-golden   # overwrite golden with current render (use carefully)
 ```
 
 ## Layout
@@ -82,9 +82,9 @@ test_denies_missing_label {
 
 ## Golden tests
 
-For each fixture under `testdata/inputs/`, `akua test --golden`:
+For each fixture under `testdata/inputs/`, `akuapkg test --golden`:
 
-1. Runs `akua render --inputs=testdata/inputs/<name>.yaml`.
+1. Runs `akuapkg render --inputs=testdata/inputs/<name>.yaml`.
 2. Writes a temporary output.
 3. Diffs against `testdata/golden/<name>/` byte-for-byte.
 4. Fails the test on any drift, printing the diff.
@@ -92,9 +92,9 @@ For each fixture under `testdata/inputs/`, `akua test --golden`:
 Updates go through the human:
 
 ```sh
-akua render --inputs=testdata/inputs/minimal.yaml --out=/tmp/render
+akuapkg render --inputs=testdata/inputs/minimal.yaml --out=/tmp/render
 diff -r /tmp/render testdata/golden/minimal/    # eyeball the drift
-akua test --update-golden                        # commit the new expectation
+akuapkg test --update-golden                        # commit the new expectation
 ```
 
 Golden tests are the cheapest way to catch "I accidentally changed the output shape in a refactor" regressions. They're also the cheapest way to generate false positives when engine versions bump — the diff is the signal, not the test's opinion.
@@ -104,7 +104,7 @@ Golden tests are the cheapest way to catch "I accidentally changed the output sh
 - Writing a Package for the first time → `test_*.k` for schema + defaults.
 - Landing non-trivial rendering logic → add a golden fixture.
 - Authoring a policy → always write `*_test.rego` alongside.
-- Bumping an engine version (e.g. Helm v4 → v4.1) → run `akua test --golden` first; expect some drift, review it, update if sound.
+- Bumping an engine version (e.g. Helm v4 → v4.1) → run `akuapkg test --golden` first; expect some drift, review it, update if sound.
 
 ## See also
 

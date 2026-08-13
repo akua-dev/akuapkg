@@ -2,7 +2,7 @@
 
 akua's threat model assumes the **package author is untrusted**. A
 worker process, CI runner, local developer, or agent sandbox should be
-able to run `akua render` / `akua inspect` / `akua publish` / `akua
+able to run `akuapkg render` / `akuapkg inspect` / `akuapkg publish` / `akua
 policy check` / `@akua-dev/sdk` calls against attacker-controlled
 `Package.k` + chart tarballs + Rego modules **without an OS-level
 sandbox** for the vast majority of workflows.
@@ -23,7 +23,7 @@ entry — symlinks, hard links, device files, FIFOs all error out with
 
 Without this, a malicious `mychart.tgz` could ship
 `mychart/values.schema.json -> /etc/passwd` and a subsequent
-`akua inspect` would read the symlink target and surface its contents
+`akuapkg inspect` would read the symlink target and surface its contents
 in the JSON output.
 
 ### Decompression bombs + entry-count caps
@@ -106,7 +106,7 @@ build time.
 Enable only if you trust every package you build:
 
 ```sh
-cargo build -p akua-cli --features akua-core/engine-helmfile
+cargo build -p akuapkg-cli --features akua-core/engine-helmfile
 ```
 
 When on, akua still validates source paths but cannot constrain what

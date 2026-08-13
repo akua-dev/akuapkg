@@ -25,7 +25,7 @@ akua is a **sandboxed-by-default** render substrate. Every render runs inside a 
 
 - **Declarative mischief** in the Package's rendered output. akua produces whatever YAML the author writes. Policy evaluation ([docs/policy-format.md](policy-format.md)) is the layer that catches "this Package declares a root-privileged Deployment." The renderer's job is faithful execution of the Package, not moral judgment.
 - **Side-channel leaks** (timing, memory-access patterns). wasmtime provides strong isolation but not constant-time; a sophisticated adversary could extract bits via timing. Not our bar.
-- **Bugs in the dep supply chain beyond what the lockfile catches.** `akua.lock` pins OCI deps by sha256 of the chart blob; a drift between what the lockfile recorded and what the registry now serves is rejected (`LockDigestMismatch`). But if the *initial* `akua add` pulled from a compromised registry that served a malicious chart and recorded its digest, every subsequent render faithfully reproduces it. Phase 6 (cosign verification + SLSA attestation walk) closes this gap.
+- **Bugs in the dep supply chain beyond what the lockfile catches.** `akua.lock` pins OCI deps by sha256 of the chart blob; a drift between what the lockfile recorded and what the registry now serves is rejected (`LockDigestMismatch`). But if the *initial* `akuapkg add` pulled from a compromised registry that served a malicious chart and recorded its digest, every subsequent render faithfully reproduces it. Phase 6 (cosign verification + SLSA attestation walk) closes this gap.
 
 ---
 
@@ -48,7 +48,7 @@ akua follows wasmtime's documented pattern: **one process-global `Engine`, one `
 When a Package calls `helm.template(...)` or `kustomize.build(...)` from inside the render worker:
 
 ```
-akua-cli (native Rust)
+akuapkg-cli (native Rust)
   └ Engine (shared)
       ├ Store A — render worker, KCL evaluator paused in host import
       │     ⇣ kcl_plugin_invoke_json_wasm (wasm import)
@@ -88,7 +88,7 @@ Even inside the sandbox, akua applies additional invariants on the Package's own
 - **Path-traversal guard** on every plugin callable's path argument. `kcl_plugin::resolve_in_package` canonicalizes + asserts-under-package-dir + resolves symlinks. A Package that passes `"../../etc/passwd"` to `pkg.render(...)` gets a typed error, not a render. Absolute paths are accepted only when they fall under an `allowed_roots` entry the renderer registered — today, that's exactly the set of resolved `charts.*` deps (path-based dep dir or OCI cache dir for the blob we just pulled). Nothing else.
 - **KCL language-level sandbox.** The KCL language itself has no `os.read`, `http.get`, env reads, or `time.now()`. A pure-KCL Package is deterministic by construction. This is upstream KCL's own invariant.
 - **Plugin registry is closed.** Only akua-core can register plugins (`kcl_plugin::register` is pub but only called at akua startup). Packages cannot invent their own.
-- **Strict render mode** (`--strict`): reject raw-string paths in plugin callables. Forces typed `charts.*` imports resolved via `akua.toml`. Default for `akua publish` and `akua serve`; optional for interactive `akua render`.
+- **Strict render mode** (`--strict`): reject raw-string paths in plugin callables. Forces typed `charts.*` imports resolved via `akua.toml`. Default for `akuapkg publish` and `akua serve`; optional for interactive `akuapkg render`.
 
 ---
 
@@ -101,22 +101,22 @@ This is the current-state gap vs the target. See [docs/roadmap.md](roadmap.md) p
 | Path-traversal rejection in plugin handlers | Shipped — `resolve_in_package` + `allowed_roots` | ✅ Phase 0 |
 | `helm.template` / `kustomize.build` via WASM engines | Shipped — no shell-out, wasmtime-hosted | ✅ Phases 1 + 3 |
 | Typed `charts.*` imports + lockfile digests | Shipped — path + OCI, replace override | ✅ Phase 2a, 2b A+B |
-| `akua render --strict` rejects raw chart paths | Shipped — `E_STRICT_UNTYPED_CHART` | ✅ Phase 2b C |
-| `akua verify` path-dep digest drift detection | Shipped — `PathDigestDrift` / `PathMissing` | ✅ Phase 2b C |
+| `akuapkg render --strict` rejects raw chart paths | Shipped — `E_STRICT_UNTYPED_CHART` | ✅ Phase 2b C |
+| `akuapkg verify` path-dep digest drift detection | Shipped — `PathDigestDrift` / `PathMissing` | ✅ Phase 2b C |
 | Render worker wrapped in wasmtime | Shipped — every render runs inside a `Store` with memory/epoch caps + capability-model preopens | ✅ Phase 4 |
 | `akua serve` per-tenant isolation | Verb doesn't exist | Phase 5 |
 | cosign keyed verification on OCI deps | Shipped — `[signing] cosign_public_key`, ECDSA P-256 | ✅ Phase 6 A |
-| `akua publish` with cosign sign-by-default | Shipped — P-256 PKCS#8 PEM private keys | ✅ Phase 7 A |
-| `akua pull` with manifest digest verify | Shipped | ✅ Phase 7 A |
+| `akuapkg publish` with cosign sign-by-default | Shipped — P-256 PKCS#8 PEM private keys | ✅ Phase 7 A |
+| `akuapkg pull` with manifest digest verify | Shipped | ✅ Phase 7 A |
 | cosign keyless (fulcio + rekor) verification | Not implemented | Phase 6 B |
 | SLSA v1 attestation generation on publish | Shipped — DSSE envelope, in-toto v1 statement | ✅ Phase 7 B |
-| `akua verify` attestation chain walk | Shipped — pulls `.att` sidecars + DSSE verify + subject-digest check for every OCI dep | ✅ Phase 7 C |
+| `akuapkg verify` attestation chain walk | Shipped — pulls `.att` sidecars + DSSE verify + subject-digest check for every OCI dep | ✅ Phase 7 C |
 | Recursive attestation walk over transitive deps | Not implemented — needs published Package to attest its own deps | Phase 7 C (follow-up) |
 | Encrypted cosign private keys — PKCS#8 PBES2 | Shipped — `$AKUA_COSIGN_PASSPHRASE` env var | ✅ Phase 7 C |
-| OCI-vendored deps → network-free `akua render` after pull | Shipped — `.akua/vendor/<name>/` convention | ✅ Phase 7 C |
+| OCI-vendored deps → network-free `akuapkg render` after pull | Shipped — `.akua/vendor/<name>/` convention | ✅ Phase 7 C |
 | HSM / cosign-native key format | Not implemented | Phase 7 D |
 | Git dep checkout via `gix` | Shipped — pure Rust, no shell-out | ✅ Phase 2b C |
-| Private-repo OCI auth (docker config / akua auth.toml) | Shipped — Basic + bearer PAT | ✅ Phase 2b C |
+| Private-repo OCI auth (docker config / akuapkg auth.toml) | Shipped — Basic + bearer PAT | ✅ Phase 2b C |
 | Docker credential helpers | Not implemented — would require shell-out | Won't ship |
 
 ---

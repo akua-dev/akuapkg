@@ -3,7 +3,7 @@
 > **Renders end-to-end** off the local vendor tree. No registry, no
 > network, no credentials needed at render time. The same Package
 > renders identically inside an air-gapped environment or behind a
-> firewall once `akua vendor add` has staged the bytes.
+> firewall once `akuapkg vendor add` has staged the bytes.
 
 A Package whose dep is materialized into `.akua/vendor/<name>/` so
 render works without re-fetching from the canonical source. This
@@ -16,7 +16,7 @@ succeeds because the resolver finds the bytes under
 
 The resolver prefers `.akua/vendor/<name>/` when it exists for *every*
 dep kind — path, OCI, and git alike (see
-`chart_resolver::resolve_with_options`). `akua vendor add` is the
+`chart_resolver::resolve_with_options`). `akuapkg vendor add` is the
 public CLI verb that populates that path from a declared dep and pins
 the digest in `akua.lock`. The contract:
 
@@ -52,21 +52,21 @@ ls upstream-chart/  # → No such file or directory
 ls .akua/vendor/upstream/  # → Chart.yaml  templates/
 
 # 3. Render — succeeds without network, auth, or canonical source:
-akua render --out ./rendered
+akuapkg render --out ./rendered
 
-# 4. Verify integrity — `akua vendor check` re-hashes the vendor tree
+# 4. Verify integrity — `akuapkg vendor check` re-hashes the vendor tree
 #    and compares against akua.lock:
-akua vendor check
+akuapkg vendor check
 # → ok
 
 # 5. List what's vendored, including any orphan trees that no longer
 #    correspond to a dep in akua.toml:
-akua vendor list
+akuapkg vendor list
 ```
 
 To regenerate the vendor tree from a canonical source (e.g., during
 development before committing), restore `upstream-chart/` and run
-`akua vendor add upstream`.
+`akuapkg vendor add upstream`.
 
 ## When vendoring matters
 
@@ -93,16 +93,16 @@ It earns its keep when:
 
 ## Out of scope (for now)
 
-- **Recursive transitive vendoring.** `akua vendor add upstream`
+- **Recursive transitive vendoring.** `akuapkg vendor add upstream`
   vendors `upstream` only. If `upstream` itself depends on a chart
   that needs network at render time, vendor that too — track CI
-  drift with `akua vendor check`.
+  drift with `akuapkg vendor check`.
 - **Workspace-wide `vendor add` (no name).** Currently `add` takes
   exactly one dep name. Looping is the caller's job.
 
 ## Path-escape safety
 
-`akua vendor add` rejects:
+`akuapkg vendor add` rejects:
 
 - Absolute paths in `path = "..."`. `path = "/etc"` → `E_PATH_ESCAPE`.
 - Relative paths that canonicalize outside the workspace. `path =

@@ -7,7 +7,7 @@ should reach for it before guessing.
 ## TL;DR
 
 ```sh
-akua render --package package.k --inputs ... --log=json --log-level=debug 2>&1 | head -20
+akuapkg render --package package.k --inputs ... --log=json --log-level=debug 2>&1 | head -20
 ```
 
 Three knobs cover almost every case:
@@ -22,7 +22,7 @@ Three knobs cover almost every case:
 
 - **CLI contract §9** — [docs/cli-contract.md](cli-contract.md#9-logging) — flag semantics, JSON line shape, target taxonomy.
 - **CLI contract §9.1** — OpenTelemetry env-var surface.
-- **`crates/akua-cli/src/observability.rs`** — host-side subscriber wiring.
+- **`crates/akuapkg-cli/src/observability.rs`** — host-side subscriber wiring.
 - **`crates/akua-render-worker/src/observability.rs`** — worker-side subscriber.
 
 ## What you'll see
@@ -62,7 +62,7 @@ Frame names + file:line resolve via:
 If a trap shows bare `wasm function NNNN`:
 
 1. The worker `.wasm` is stale or stripped — run `task build:render-worker` and verify the file size grew.
-2. The `.cwasm` AOT artifact may be cached — `cargo clean -p akua-cli && cargo build -p akua-cli` to force a re-bake against the current Config.
+2. The `.cwasm` AOT artifact may be cached — `cargo clean -p akuapkg-cli && cargo build -p akuapkg-cli` to force a re-bake against the current Config.
 
 ## When a plugin handler fails
 
@@ -94,7 +94,7 @@ If a render fails inside an example:
 
 ```sh
 cd examples/<name>
-cargo run -q -p akua-cli -- render \
+cargo run -q -p akuapkg-cli -- render \
     --package package.k \
     --inputs inputs.example.yaml \
     --log=json --log-level=debug 2>&1 | tail -30
@@ -104,10 +104,10 @@ Tail (not head) grabs the failing event + envelope; head grabs the warm-up traff
 
 ## When the worker is the wrong version
 
-A persistent gotcha: `cargo build -p akua-cli` does **not** rebuild the render-worker `.wasm`. The build script emits a warning when sources are newer than the staged `.wasm`:
+A persistent gotcha: `cargo build -p akuapkg-cli` does **not** rebuild the render-worker `.wasm`. The build script emits a warning when sources are newer than the staged `.wasm`:
 
 ```
-warning: akua-cli@0.7.0: akua-render-worker.wasm is older than crates/akua-core/... — run `task build:render-worker`
+warning: akuapkg-cli@0.7.0: akua-render-worker.wasm is older than crates/akua-core/... — run `task build:render-worker`
 ```
 
 Rebuild explicitly:
@@ -145,7 +145,7 @@ For cross-render or production traces, set `OTEL_EXPORTER_OTLP_ENDPOINT`. Exampl
 docker run --rm -p 4317:4317 -p 16686:16686 jaegertracing/all-in-one
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
   OTEL_SERVICE_NAME=akua-dev \
-  cargo run -q -p akua-cli -- render --package examples/00-helm-hello/package.k
+  cargo run -q -p akuapkg-cli -- render --package examples/00-helm-hello/package.k
 ```
 
 The same trace tree (`worker.invoke → bridge.call → kcl eval`) shows up at `http://localhost:16686`. The OTel layer is gated on the `otel` cargo feature — on by default for the CLI binary, off for the napi distribution. cli-contract §9.1 lists every honored `OTEL_*` env var.

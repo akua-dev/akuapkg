@@ -476,7 +476,7 @@ jobs:
           retention-days: 1
 
   # ---------------------------------------------------------------------------
-  # cli-build — per-platform `akua` binary matrix. Downloads the wasm
+  # cli-build — per-platform `akuapkg` binary matrix. Downloads the wasm
   # bundle (same artefact native-build consumes), packages tarballs +
   # sha256 sidecars.
   # ---------------------------------------------------------------------------
@@ -547,7 +547,7 @@ jobs:
 
       # Pull the wasm bundle the wasm-bundle job built. Bytes land at
       # their original paths under the workspace root — exactly where
-      # akua-cli/build.rs + helm-engine-wasm/build.rs +
+      # akuapkg-cli/build.rs + helm-engine-wasm/build.rs +
       # kustomize-engine-wasm/build.rs look for them. The matrix runner's
       # build.rs precompiles each .wasm into a target-arch cwasm via
       # wasmtime AOT.
@@ -557,14 +557,14 @@ jobs:
           name: wasm-bundle
           path: .
 
-      - name: Build akua CLI
+      - name: Build Akuapkg CLI
         # `ci-release` profile: lto off, codegen-units=16, symbols
         # stripped, line-tables-only debug. Trades ~5-10% runtime perf
         # for ~25-40% compile-time reduction. See Cargo.toml.
-        run: mise exec -- cargo build -p akua-cli --profile ci-release --target ${{ matrix.target }}
+        run: mise exec -- cargo build -p akuapkg-cli --profile ci-release --target ${{ matrix.target }}
 
-      # Smoke-test the binary the way an end-user would: `akua init` +
-      # `akua render` against the scaffolded Package. Catches any future
+      # Smoke-test the binary the way an end-user would: `akuapkg init` +
+      # `akuapkg render` against the scaffolded Package. Catches any future
       # "binary ships without a worker" / wrong-arch cwasm regression
       # before users see it. Skipped on cross-compiled targets where the
       # runner can't execute the output.
@@ -573,17 +573,17 @@ jobs:
         shell: bash
         run: |
           set -eu
-          bin="$PWD/target/${{ matrix.target }}/ci-release/akua"
+          bin="$PWD/target/${{ matrix.target }}/ci-release/akuapkg"
           # Guard: the binary must report the tag it ships under. Catches a
           # regression in the version-injection step before users see a
-          # release whose `akua -V` disagrees with its tag.
+          # release whose `akuapkg -V` disagrees with its tag.
           expected="${{ needs.detect-version.outputs.version }}"
           got="$("$bin" -V | awk '{print $NF}')"
           if [ "$got" != "$expected" ]; then
             echo "version mismatch: binary reports '$got', tag is '$expected'" >&2
             exit 1
           fi
-          echo "version ok: akua -V == $expected"
+          echo "version ok: akuapkg -V == $expected"
           tmp=$(mktemp -d)
           cd "$tmp"
           "$bin" init smoke
@@ -597,29 +597,29 @@ jobs:
         if: matrix.archive == 'tar.gz'
         shell: bash
         run: |
-          name="akua-${{ needs.detect-version.outputs.tag }}-${{ matrix.target }}"
+          name="akuapkg-${{ needs.detect-version.outputs.tag }}-${{ matrix.target }}"
           mkdir -p dist
-          cp target/${{ matrix.target }}/ci-release/akua dist/
+          cp target/${{ matrix.target }}/ci-release/akuapkg dist/
           cp README.md SECURITY.md LICENSE dist/ 2>/dev/null || true
-          cd dist && tar -czf "${name}.tar.gz" akua README.md SECURITY.md LICENSE
+          cd dist && tar -czf "${name}.tar.gz" akuapkg README.md SECURITY.md LICENSE
           shasum -a 256 "${name}.tar.gz" > "${name}.tar.gz.sha256"
 
       - name: Package (windows)
         if: matrix.archive == 'zip'
         shell: pwsh
         run: |
-          $name = "akua-${{ needs.detect-version.outputs.tag }}-${{ matrix.target }}"
+          $name = "akuapkg-${{ needs.detect-version.outputs.tag }}-${{ matrix.target }}"
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item "target/${{ matrix.target }}/ci-release/akua.exe" -Destination dist/
+          Copy-Item "target/${{ matrix.target }}/ci-release/akuapkg.exe" -Destination dist/
           Copy-Item README.md,SECURITY.md,LICENSE -Destination dist/ -ErrorAction SilentlyContinue
           Push-Location dist
-          7z a "$name.zip" akua.exe README.md SECURITY.md LICENSE
+          7z a "$name.zip" akuapkg.exe README.md SECURITY.md LICENSE
           (Get-FileHash -Algorithm SHA256 "$name.zip").Hash.ToLower() + "  $name.zip" | Out-File -Encoding ascii "$name.zip.sha256"
           Pop-Location
 
       - uses: actions/upload-artifact@v7
         with:
-          name: akua-${{ matrix.target }}
+          name: akuapkg-${{ matrix.target }}
           path: |
             dist/*.tar.gz*
             dist/*.zip*
@@ -641,15 +641,15 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           # Filter to the cli-build artifacts this job consumes —
-          # `akua-<target>` per-platform tarballs + sha256 sidecars
-          # (uploaded as `name: akua-${{ matrix.target }}` upstream).
+          # `akuapkg-<target>` per-platform tarballs + sha256 sidecars
+          # (uploaded as `name: akuapkg-${{ matrix.target }}` upstream).
           # Without the pattern, download-artifact also pulls the
           # docker job's `akua-dev~akua~<id>.dockerbuild` provenance
           # artifact whose `~`-containing name fails path validation
           # in v4 (and only silently slips by on v8 because the
           # merge-multiple flag tolerates it; defensive here so a
           # v8 → v4 downgrade doesn't bring back the bug).
-          pattern: 'akua-*'
+          pattern: 'akuapkg-*'
           path: dist
           merge-multiple: true
       - name: Create or verify immutable release
@@ -676,14 +676,14 @@ jobs:
             --repo "${GH_REPO}" \
             --verify-tag \
             --target "${SOURCE_COMMIT}" \
-            --title "akua ${VERSION}" \
+            --title "Akuapkg ${VERSION}" \
             --notes "${notes}" \
             "${flags[@]}" \
             dist/*.tar.gz dist/*.zip dist/*.sha256
 
   # ---------------------------------------------------------------------------
-  # docker — multi-arch image at `ghcr.io/akua-dev/akua:<tag>`. Skips
-  # the `:latest` tag for prereleases so `docker pull akua:latest`
+  # docker — multi-arch image at `ghcr.io/akua-dev/akuapkg:<tag>`. Skips
+  # the `:latest` tag for prereleases so `docker pull akuapkg:latest`
   # stays on the most recent stable release.
   # ---------------------------------------------------------------------------
   docker:
@@ -696,7 +696,7 @@ jobs:
           ref: ${{ needs.detect-version.outputs.source_commit }}
       - uses: actions/download-artifact@v8
         with:
-          pattern: 'akua-*'
+          pattern: 'akuapkg-*'
           path: dist
           merge-multiple: true
       - uses: docker/setup-qemu-action@v4
@@ -714,18 +714,18 @@ jobs:
           set -eu
           mkdir -p image-context/amd64 image-context/arm64
           tag="${{ needs.detect-version.outputs.tag }}"
-          tar -xzf "dist/akua-${tag}-x86_64-unknown-linux-gnu.tar.gz" -C image-context/amd64 akua
-          tar -xzf "dist/akua-${tag}-aarch64-unknown-linux-gnu.tar.gz" -C image-context/arm64 akua
+          tar -xzf "dist/akuapkg-${tag}-x86_64-unknown-linux-gnu.tar.gz" -C image-context/amd64 akuapkg
+          tar -xzf "dist/akuapkg-${tag}-aarch64-unknown-linux-gnu.tar.gz" -C image-context/arm64 akuapkg
       - name: Compute image tags
         id: tags
         run: |
           set -eu
           tag="${{ needs.detect-version.outputs.tag }}"
           # Versioned tag always; `:latest` only for stable releases.
-          tags="ghcr.io/akua-dev/akua:${tag}"
+          tags="ghcr.io/akua-dev/akuapkg:${tag}"
           if [ "${{ needs.detect-version.outputs.is_prerelease }}" = "false" ]; then
             tags="${tags}
-          ghcr.io/akua-dev/akua:latest"
+          ghcr.io/akua-dev/akuapkg:latest"
           fi
           {
             echo "tags<<EOF"

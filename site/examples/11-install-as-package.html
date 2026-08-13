@@ -303,9 +303,9 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 </header>
 <p>Composes a third-party Akua package (<code>./upstream/</code>) and applies a tenant overlay, drops a kind, and appends extras — the install-as-Package shape. Demonstrates the natural call form <code>upstream.render(upstream.Input{...})</code>: typed inputs at the consumer call site, no path strings in user code.</p>
 <h2 id="layout">Layout</h2>
-<table><thead><tr><th>file</th><th>purpose</th></tr></thead><tbody><tr><td><code>upstream/package.k</code></td><td>Sibling Akua package — Deployment + Service + PodDisruptionBudget. Authored as a normal Package; nothing about it is install-aware.</td></tr><tr><td><code>akua.toml</code></td><td>Dep alias <code>upstream = { path = &quot;./upstream&quot; }</code> for <code>akua tree</code> + lock-time validation.</td></tr><tr><td><code>package.k</code></td><td>The install: <code>upstream.render(...)</code>, overlay tenant label, drop PDB, append a ConfigMap.</td></tr><tr><td><code>inputs.example.yaml</code></td><td>Per-install inputs (tenant, app, replicas).</td></tr><tr><td><code>rendered/</code></td><td>Reference output (3 files: Deployment, Service, ConfigMap).</td></tr></tbody></table>
+<table><thead><tr><th>file</th><th>purpose</th></tr></thead><tbody><tr><td><code>upstream/package.k</code></td><td>Sibling Akua package — Deployment + Service + PodDisruptionBudget. Authored as a normal Package; nothing about it is install-aware.</td></tr><tr><td><code>akua.toml</code></td><td>Dep alias <code>upstream = { path = &quot;./upstream&quot; }</code> for <code>akuapkg tree</code> + lock-time validation.</td></tr><tr><td><code>package.k</code></td><td>The install: <code>upstream.render(...)</code>, overlay tenant label, drop PDB, append a ConfigMap.</td></tr><tr><td><code>inputs.example.yaml</code></td><td>Per-install inputs (tenant, app, replicas).</td></tr><tr><td><code>rendered/</code></td><td>Reference output (3 files: Deployment, Service, ConfigMap).</td></tr></tbody></table>
 <h2 id="render">Render</h2>
-<pre><code class="lang-sh">akua render --out ./rendered</code></pre>
+<pre><code class="lang-sh">akuapkg render --out ./rendered</code></pre>
 <h2 id="the-install-pattern">The install pattern</h2>
 <pre><code class="lang-kcl">import pkgs.upstream as upstream
 
@@ -321,7 +321,7 @@ _filtered = [r for r in _patched if r.kind != &quot;PodDisruptionBudget&quot;]
 _extras = [{apiVersion = &quot;v1&quot;, kind = &quot;ConfigMap&quot;, ...}]
 
 resources = _filtered + _extras</code></pre>
-<p>The import lands a synthesized stub that owns a <code>render</code> lambda and re-exports upstream's schemas — KCL type-checks <code>upstream.Input{...}</code> at the call site (typos surface as compile errors, not as runtime worker traps). The mechanism mirrors <code>import charts.&lt;name&gt;</code> for Helm charts; see <a href="https://github.com/cnap-tech/akua/blob/main/docs/package-format.md">docs/package-format.md</a> for the full shape.</p>
+<p>The import lands a synthesized stub that owns a <code>render</code> lambda and re-exports upstream's schemas — KCL type-checks <code>upstream.Input{...}</code> at the call site (typos surface as compile errors, not as runtime worker traps). The mechanism mirrors <code>import charts.&lt;name&gt;</code> for Helm charts; see <a href="https://github.com/akua-dev/akua/blob/main/docs/package-format.md">docs/package-format.md</a> for the full shape.</p>
 <h2>package.k</h2><pre><code class="lang-kcl">import akua.ctx
 import pkgs.upstream as upstream
 
@@ -415,12 +415,12 @@ data:
   upstreamApp: webapp
 </code></pre>
 <p style="margin-top: 32px; color: var(--muted); font-size: 14px;">
-  Source: <a href="https://github.com/cnap-tech/akua/tree/main/examples/11-install-as-package">examples/11-install-as-package/</a>
+  Source: <a href="https://github.com/akua-dev/akua/tree/main/examples/11-install-as-package">examples/11-install-as-package/</a>
 </p>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/cnap-tech/akua">github.com/cnap-tech/akua</a> ·
+  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
   Apache-2.0
 </footer>
 </main>

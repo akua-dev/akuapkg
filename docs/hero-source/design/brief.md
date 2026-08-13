@@ -11,10 +11,10 @@ akua is the bun/deno collapse for cloud-native packaging. One Rust binary that c
 Three invariants are wired into the runtime, not bolted on:
 
 1. **Typed.** Inputs are KCL schemas with compile-time constraints. A typo fails at parse time, not at `kubectl apply`. (KCL is a CNCF Sandbox project; we don't own it, we embed it.)
-2. **Signed.** Every `akua publish` emits a cosign ECDSA P-256 signature plus a SLSA v1 attestation. Consumers verify on pull. Unsigned publishing is a flag, not a default.
+2. **Signed.** Every `akuapkg publish` emits a cosign ECDSA P-256 signature plus a SLSA v1 attestation. Consumers verify on pull. Unsigned publishing is a flag, not a default.
 3. **Sandboxed.** Every render runs inside a wasmtime WASI sandbox: no shell-out, no `$PATH` lookup, no ambient filesystem, no network. Untrusted Packages are safe to render on shared hosts.
 
-Same inputs + same lockfile + same akua version → byte-identical output. That determinism is load-bearing for the audit story (Compiled GitOps: render at CI, diff in the deploy repo is exactly what hits the cluster).
+Same inputs + same lockfile + same akuapkg version → byte-identical output. That determinism is load-bearing for the audit story (Compiled GitOps: render at CI, diff in the deploy repo is exactly what hits the cluster).
 
 ## Who this is for
 
@@ -40,8 +40,8 @@ Convey, in 30 seconds, to a skeptical platform engineer scrolling past on github
 
 - The before state — the nine-tool pipeline they currently run (`helm template`, `kustomize build`, `kyverno test`, `syft`, `cosign sign`, `cosign attest`, `docker buildx`, `argocd sync`, `verifyImages` admission). Nine configs, nine failure modes.
 - The collapse — these become one binary. One signed artifact per version, one Rekor entry per publish, one git diff per deploy.
-- The CLI as living thing — actual terminal output from `akua add` / `akua lock` / `akua tree`, showing Helm charts as typed deps with cosign-locked digests. (You'll get a real terminal recording to embed; design the frame around it.)
-- The Compiled GitOps loop — Package authored in KCL → CI runs `akua render` + `akua publish` → signed OCI artifact lands in a deploy repo → ArgoCD / Flux syncs → admission re-verifies on apply. Render at CI, apply at the cluster.
+- The CLI as living thing — actual terminal output from `akuapkg add` / `akuapkg lock` / `akuapkg tree`, showing Helm charts as typed deps with cosign-locked digests. (You'll get a real terminal recording to embed; design the frame around it.)
+- The Compiled GitOps loop — Package authored in KCL → CI runs `akuapkg render` + `akuapkg publish` → signed OCI artifact lands in a deploy repo → ArgoCD / Flux syncs → admission re-verifies on apply. Render at CI, apply at the cluster.
 - The three invariants as the close — Typed, Signed, Sandboxed.
 
 The piece is the README hero on github.com. It autoplays muted, loops, and is the first thing anyone sees. It runs alongside a `<img>` fallback for npm/crates.io readers who don't get `<video>`.

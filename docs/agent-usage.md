@@ -41,7 +41,7 @@ At process start, akua checks environment variables in this order:
 
 If any matches, akua silently enables `--json`, `--log=json`, `--no-color`, `--no-progress`, `--no-interactive`. Explicit flags always win (user can force text output with `--no-json` or `--format=text`).
 
-No stderr announcement. No prelude on stdout. Detection is observable via `akua whoami --json` (reveals the `agent_context` field) or at `--log-level=debug`. Otherwise invisible.
+No stderr announcement. No prelude on stdout. Detection is observable via `akuapkg whoami --json` (reveals the `agent_context` field) or at `--log-level=debug`. Otherwise invisible.
 
 ---
 
@@ -162,13 +162,13 @@ agent loads new-package SKILL.md fully:
   now has full procedure for scaffolding + adding sources
 
 agent executes:
-  $ akua add chart oci://ghcr.io/bitnami/charts/redis --version 21.0.0
+  $ akuapkg add chart oci://ghcr.io/bitnami/charts/redis --version 21.0.0
   $ edit package.k to wire redis values to existing schema
-  $ akua lint
-  $ akua render --inputs inputs.yaml --out ./rendered
+  $ akuapkg lint
+  $ akuapkg render --inputs inputs.yaml --out ./rendered
 
 agent verifies:
-  $ akua diff previous:v1.2 ./rendered --json
+  $ akuapkg diff previous:v1.2 ./rendered --json
   (structural diff shows: new source redis, new schema field redis.replicas)
 
 agent commits + opens PR:
@@ -176,7 +176,7 @@ agent commits + opens PR:
   $ gh pr create
 
 CI runs:
-  akua lint + diff-gate + policy check → attached to PR as comments
+  akuapkg lint + diff-gate + policy check → attached to PR as comments
 
 human reviews + approves + merges
 

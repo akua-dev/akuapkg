@@ -62,7 +62,7 @@ bun run packages/sdk/examples/06-diff-renders.ts
 
 ## Types + schema are derived, not hand-written
 
-- `src/types/*.ts` — per-type TS from `ts-rs` derives on Rust serde types in `akua-core` + `akua-cli`.
+- `src/types/*.ts` — per-type TS from `ts-rs` derives on Rust serde types in `akua-core` + `akuapkg-cli`.
 - `src/schemas/akua.json` — a single bundled JSON Schema from `schemars`. Polyglot consumers (Python, Go, agents) validate against the same shape.
 
 Drift is guarded by `task sdk:check` — regenerate + `git diff --exit-code`.

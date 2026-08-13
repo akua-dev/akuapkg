@@ -10,7 +10,7 @@ discuss direction.
 - **Issues** — bug reports, feature requests, design feedback
 - **Docs** — `docs/`, example READMEs, the top-level `README.md`; these drift fastest
 - **Test coverage** — especially for engines + CEL expression edge cases
-- **Regression coverage on real charts** — `akua render` against popular Helm charts from ArtifactHub; file issues for any that mis-render
+- **Regression coverage on real charts** — `akuapkg render` against popular Helm charts from ArtifactHub; file issues for any that mis-render
 
 ## Development setup
 
@@ -40,8 +40,8 @@ Subsequent builds are fast.
 ## Running the examples
 
 ```bash
-cargo run -p akua-cli -- tree --package examples/hello-package
-cargo run -p akua-cli -- render --package examples/hello-package --out dist/chart --release demo
+cargo run -p akuapkg-cli -- tree --package examples/hello-package
+cargo run -p akuapkg-cli -- render --package examples/hello-package --out dist/chart --release demo
 ```
 
 ## What's landed / what's next

@@ -7,8 +7,8 @@
 #   - Inline KCL  (NetworkPolicy authored directly in KCL)
 #
 # Render:
-#   akua add
-#   akua render --inputs inputs.yaml --out ./deploy
+#   akuapkg add
+#   akuapkg render --inputs inputs.yaml --out ./deploy
 
 import akua.ctx
 import akua.kustomize

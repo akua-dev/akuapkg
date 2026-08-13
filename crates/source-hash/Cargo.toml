@@ -1,6 +1,6 @@
 [package]
 name = "source-hash"
-description = "Stable content hash of source trees. Used by `task build:render-worker` (producer) and akua-cli's build.rs (consumer) to verify host/worker lockstep."
+description = "Stable content hash of source trees. Used by `task build:render-worker` (producer) and akuapkg-cli's build.rs (consumer) to verify host/worker lockstep."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

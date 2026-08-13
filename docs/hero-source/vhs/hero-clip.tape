@@ -26,7 +26,7 @@ Sleep 400ms
 Show
 
 # Beat 1 — add a real Helm chart from OCI as a typed dep.
-Type "akua add --oci oci://ghcr.io/stefanprodan/charts/podinfo --version 6.7.1 podinfo"
+Type "akuapkg add --oci oci://ghcr.io/stefanprodan/charts/podinfo --version 6.7.1 podinfo"
 Sleep 300ms
 Enter
 Sleep 3000ms
@@ -37,7 +37,7 @@ Enter
 Sleep 150ms
 
 # Beat 2 — lockfile pinned by content-addressed digest.
-Type "akua lock"
+Type "akuapkg lock"
 Sleep 250ms
 Enter
 Sleep 3200ms
@@ -48,7 +48,7 @@ Enter
 Sleep 150ms
 
 # Beat 3 — typed dep graph.
-Type "akua tree"
+Type "akuapkg tree"
 Sleep 250ms
 Enter
 Sleep 3500ms
@@ -60,7 +60,7 @@ Sleep 150ms
 
 # Beat 4 — sandboxed deterministic render. Output: real K8s manifests
 # plus the deterministic sha256 of the rendered output.
-Type "akua render --inputs inputs.yaml --out ./deploy"
+Type "akuapkg render --inputs inputs.yaml --out ./deploy"
 Sleep 250ms
 Enter
 Sleep 4000ms
@@ -73,7 +73,7 @@ Sleep 150ms
 # Beat 5 — materialize the typed OCI dep into the workspace's vendor tree.
 # Output shows the cosign-verified digest, on-disk path, and byte size —
 # proof the dep was fetched, content-addressed, and pinned without `helm`.
-Type "akua vendor add podinfo"
+Type "akuapkg vendor add podinfo"
 Sleep 300ms
 Enter
 Sleep 6000ms

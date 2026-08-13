@@ -11,7 +11,7 @@ Every green row in the table below renders through the shipped `akua` binary and
 | 00 | [00-helm-hello/](00-helm-hello/) | simplest Package exercising `helm.template` against a bundled chart | ✅ renders |
 | 01 | [01-hello-webapp/](01-hello-webapp/) | typed `charts.*` dep from `akua.toml`, Helm template, Deployment + Service | ✅ renders |
 | 02 | [02-webapp-postgres/](02-webapp-postgres/) | cross-source wiring — a webapp consuming a CNPG-managed Postgres secret via convention; `test_package.k` | ⚠ target-state (OCI chart refs need refreshing) |
-| 03 | [03-multi-env-app/](03-multi-env-app/) | Package + App + Environment as typed KCL — the full workspace authoring shape | 📘 pattern reference (no single `akua render` target) |
+| 03 | [03-multi-env-app/](03-multi-env-app/) | Package + App + Environment as typed KCL — the full workspace authoring shape | 📘 pattern reference (no single `akuapkg render` target) |
 | 04 | [04-policy-tier/](04-policy-tier/) | Rego tier + Kyverno compile-resolved import, passing + failing fixtures | 📘 target-state (policy engine not shipped) |
 | 05 | [05-tests-and-golden/](05-tests-and-golden/) | `test_*.k` + `*_test.rego` + golden-fixture render snapshots | ⚠ target-state (lockfile pins OCI refs that need refreshing) |
 | 06 | [06-multi-engine/](06-multi-engine/) | Helm + Kustomize + kro RGD + inline KCL in one Package | ⚠ target-state (references `pkg.akua.dev` — not yet published) |
@@ -25,7 +25,7 @@ Every green row in the table below renders through the shipped `akua` binary and
 
 **Legend:**
 
-- ✅ **renders** — end-to-end through `akua render`, golden output committed, deterministic across machines.
+- ✅ **renders** — end-to-end through `akuapkg render`, golden output committed, deterministic across machines.
 - 📘 **pattern reference** — illustrates an authoring shape; not a single-command render target (policy composition, multi-env workspace walks).
 - ⚠ **target-state** — references remote sources (OCI registries we don't yet publish to, or example corporate registries). The shape is current; the concrete refs will work once `pkg.akua.dev` is live or once the tagged chart versions are pinned against current registries.
 
@@ -37,18 +37,18 @@ Prerequisite: build the embedded engines once.
 
 ```sh
 task build:engines          # helm + kustomize wasip1 artifacts
-cargo install --path crates/akua-cli
+cargo install --path crates/akuapkg-cli
 ```
 
 Render a green example:
 
 ```sh
 cd examples/00-helm-hello
-akua render --out /tmp/hello
+akuapkg render --out /tmp/hello
 diff -r /tmp/hello rendered/   # byte-identical to committed golden
 ```
 
-The other green examples (01, 08, 09, 10, 11, 13) follow the same pattern — `akua render --package ./package.k --inputs ./inputs.yaml --out /tmp/<name>` and compare against `rendered/`. Example 14 requires `akua add` online first (to populate the cache) then renders identically to a local Helm dep.
+The other green examples (01, 08, 09, 10, 11, 13) follow the same pattern — `akuapkg render --package ./package.k --inputs ./inputs.yaml --out /tmp/<name>` and compare against `rendered/`. Example 14 requires `akuapkg add` online first (to populate the cache) then renders identically to a local Helm dep.
 
 ---
 

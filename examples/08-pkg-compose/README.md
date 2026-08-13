@@ -12,18 +12,18 @@ the results. Renders end-to-end today (pure KCL; no helm needed).
 | `shared/package.k` | Inner Package; emits one ConfigMap parameterized by `name` + `payload`. |
 | `shared/akua.toml` | Inner manifest — marks `shared/` as an Akua package. |
 | `akua.toml` | Outer manifest — declares `shared` as a workspace-local path dep. |
-| `inputs.example.yaml` | Per-component inputs, auto-discovered by `akua render`. |
+| `inputs.example.yaml` | Per-component inputs, auto-discovered by `akuapkg render`. |
 
 ## Render
 
 ```sh
-cargo run -q -p akua-cli -- render --package examples/08-pkg-compose/package.k --out ./rendered
+cargo run -q -p akuapkg-cli -- render --package examples/08-pkg-compose/package.k --out ./rendered
 ```
 
 Or, from the example directory:
 
 ```sh
-akua render --out ./rendered
+akuapkg render --out ./rendered
 ```
 
 Two ConfigMaps land in `./rendered/` (checked in as reference output):

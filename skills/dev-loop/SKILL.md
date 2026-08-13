@@ -1,13 +1,13 @@
 ---
 name: dev-loop
-description: Run a sub-second hot-reload development loop against a local Kubernetes cluster using `akua dev`. Use when iterating on a Package, debugging rendering, seeing a live diff of manifests as schema or inputs change, demoing an infra change, or when a user asks to preview how a change will affect deployed resources.
+description: Run a sub-second hot-reload development loop against a local Kubernetes cluster using `akuapkg dev`. Use when iterating on a Package, debugging rendering, seeing a live diff of manifests as schema or inputs change, demoing an infra change, or when a user asks to preview how a change will affect deployed resources.
 license: Apache-2.0
 compatibility: Requires Docker (for kind/k3d), or an existing k8s cluster context. Port 5173 available for the browser UI.
 ---
 
-# Hot-reload development with `akua dev`
+# Hot-reload development with `akuapkg dev`
 
-`akua dev` is the signature akua experience. Watches the workspace; renders on every file save; applies to a local cluster in under 500ms; surfaces pipeline events in a browser UI at `http://localhost:5173`.
+`akuapkg dev` is the signature akua experience. Watches the workspace; renders on every file save; applies to a local cluster in under 500ms; surfaces pipeline events in a browser UI at `http://localhost:5173`.
 
 ## When to use
 
@@ -24,7 +24,7 @@ compatibility: Requires Docker (for kind/k3d), or an existing k8s cluster contex
 From the workspace root:
 
 ```sh
-akua dev
+akuapkg dev
 ```
 
 On first run: creates a kind cluster named `akua-dev`, installs Traefik ingress, sets up `*.127.0.0.1.nip.io` DNS. Browser opens `http://localhost:5173`.
@@ -60,7 +60,7 @@ The pipeline fires: parse → validate → render → policy check → diff → 
 If an agent is driving the dev loop, use `--json` (auto-enabled when agent context detected — see [CLI contract §1.5](../../docs/cli-contract.md#15-agent-context-auto-detection)):
 
 ```sh
-akua dev --json
+akuapkg dev --json
 ```
 
 Each line is a JSON event:
@@ -84,13 +84,13 @@ Each line is a JSON event:
 Ctrl-C. The process:
 
 - Drains in-flight reconciliations gracefully (up to `--shutdown-timeout`, default 10s)
-- Preserves the kind cluster + persistent data (next `akua dev` resumes where you left off)
+- Preserves the kind cluster + persistent data (next `akuapkg dev` resumes where you left off)
 - Closes the browser UI
 
 To fully reset:
 
 ```sh
-akua dev --fresh
+akuapkg dev --fresh
 # OR
 kind delete cluster --name akua-dev
 ```
@@ -100,16 +100,16 @@ kind delete cluster --name akua-dev
 - **`render` slow (>500ms)** — workspace too large, or a source engine is misbehaving. Profile with `--log-level=debug`.
 - **`policy` denies** — UI shows the failing rule and the field/resource at fault. Fix the input and save; re-check is automatic.
 - **`reconcile` stuck** — pod crashlooping or health-check failing. UI surfaces last log lines; follow links to `kubectl describe`.
-- **`drift detected`** — someone ran `kubectl apply` outside `akua dev`. Options: `adopt` (accept cluster state as new desired) or `revert` (snap cluster back to desired).
+- **`drift detected`** — someone ran `kubectl apply` outside `akuapkg dev`. Options: `adopt` (accept cluster state as new desired) or `revert` (snap cluster back to desired).
 
 ## Failure modes
 
-- **Docker not running** — `akua dev` needs Docker for kind. Start Docker Desktop / colima / podman.
-- **Port 5173 in use** — `akua dev --ui-port 5174`
+- **Docker not running** — `akuapkg dev` needs Docker for kind. Start Docker Desktop / colima / podman.
+- **Port 5173 in use** — `akuapkg dev --ui-port 5174`
 - **kubeconfig not found** — set `$KUBECONFIG` or use `--target=cluster:<name>`
-- **Persistent data corrupt after abrupt shutdown** — `akua dev --fresh` wipes and restarts
+- **Persistent data corrupt after abrupt shutdown** — `akuapkg dev --fresh` wipes and restarts
 
 ## Reference
 
-- [cli.md — akua dev](../../docs/cli.md#akua-dev)
+- [cli.md — akuapkg dev](../../docs/cli.md#akua-dev)
 - [Masterplan §11 — the signature experience](https://github.com/cnap-tech/cortex/blob/docs/cnap-masterplan/workspaces/robin/akua-masterplan.md)

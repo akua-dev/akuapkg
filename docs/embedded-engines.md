@@ -14,7 +14,7 @@ Three reasons, same as the helm-engine-wasm decision:
 2. **Version determinism.** akua ships with a known-good engine version. No "works on my machine" where my `opa` is 0.55 and yours is 0.62 and we get different verdicts.
 3. **Air-gap friendly.** Environments where customers can't install arbitrary binaries (FedRAMP, certain enterprise networks) still work because akua is self-contained.
 
-Plus the agent case: agents can't install binaries. If `akua test` needs `opa` and there's no `opa` in the sandbox, the agent is stuck. Embedded means the agent gets the full toolkit from one install.
+Plus the agent case: agents can't install binaries. If `akuapkg test` needs `opa` and there's no `opa` in the sandbox, the agent is stuck. Embedded means the agent gets the full toolkit from one install.
 
 ---
 
@@ -58,7 +58,7 @@ Precompilation: each engine's `build.rs` calls `engine_host_wasm::precompile(...
 | **Helm v4 template engine** | Go → wasip1 | wasmtime-hosted | shipped (forked to strip client-go; ~20 MB WASM) |
 | **OPA** (Rego) | Go → wasip1 or OPA-native WASM | wasmtime-hosted | v0.2 |
 | **Regal** (Rego linter) | Go → wasip1 | wasmtime-hosted | v0.2 |
-| **Kyverno-to-Rego converter** | Go → wasip1 | wasmtime-hosted; runs at `akua add` time | v0.3 |
+| **Kyverno-to-Rego converter** | Go → wasip1 | wasmtime-hosted; runs at `akuapkg add` time | v0.3 |
 | **CEL** (`cel-go`) | Go → wasip1 | wasmtime-hosted | v0.3 |
 | **kustomize** | Go → wasip1 | wasmtime-hosted | v0.3 |
 | **kro RGD instantiator** | Go → wasip1 (offline path) | wasmtime-hosted | v0.2 |
@@ -75,27 +75,27 @@ Each verb that invokes engines documents which ones. From [cli.md](cli.md):
 
 | verb | engines used |
 |---|---|
-| `akua init` | KCL (scaffold) |
-| `akua add` | (fetch/convert) Kyverno-to-Rego converter, KCL schema generator |
-| `akua render` | KCL + Helm + kro offline instantiator + Kustomize + output emitters |
-| `akua lint` | KCL + Regal |
-| `akua fmt` | KCL + opa fmt |
-| `akua check` | KCL + OPA (parse-only) |
-| `akua test` | KCL + OPA |
+| `akuapkg init` | KCL (scaffold) |
+| `akuapkg add` | (fetch/convert) Kyverno-to-Rego converter, KCL schema generator |
+| `akuapkg render` | KCL + Helm + kro offline instantiator + Kustomize + output emitters |
+| `akuapkg lint` | KCL + Regal |
+| `akuapkg fmt` | KCL + opa fmt |
+| `akuapkg check` | KCL + OPA (parse-only) |
+| `akuapkg test` | KCL + OPA |
 | `akua trace` | OPA (`--explain`) |
 | `akua bench` | OPA partial evaluation, KCL interpreter timing |
 | `akua policy check` | OPA + CEL (via Rego runtime) |
-| `akua repl` | KCL + OPA |
+| `akuapkg repl` | KCL + OPA |
 | `akua eval` | KCL or OPA per `--lang` |
 | `akua attest` | (no engines; just signing + SLSA predicate generation) |
-| `akua diff` | KCL + OPA (for policy compat diff) |
+| `akuapkg diff` | KCL + OPA (for policy compat diff) |
 
 ---
 
 ## Determinism guarantees
 
-- Embedded engines are version-pinned to the akua release. Two runs of `akua render` at the same akua version produce byte-identical output (the [CLI contract §1.3](cli-contract.md#13-determinism)).
-- An `akua bundle lock` manifest (forthcoming) will record the exact embedded engine versions for the workspace; `akua bundle verify` confirms a CI runner has the same akua version as the last known-good.
+- Embedded engines are version-pinned to the akua release. Two runs of `akuapkg render` at the same akuapkg version produce byte-identical output (the [CLI contract §1.3](cli-contract.md#13-determinism)).
+- An `akua bundle lock` manifest (forthcoming) will record the exact embedded engine versions for the workspace; `akua bundle verify` confirms a CI runner has the same akuapkg version as the last known-good.
 
 ---
 
@@ -117,7 +117,7 @@ System integrations are a separate category from engines. `akua deploy` calls `k
 ## What's NOT embedded
 
 - **`kubectl`** — used only by `akua deploy --to=kubectl`. Too specific to a user's cluster context; we rely on the system version.
-- **`git`** — used for `akua publish` and workspace operations. Extremely stable and universally available.
+- **`git`** — used for `akuapkg publish` and workspace operations. Extremely stable and universally available.
 - **`cosign`** — used for signing. We embed the verification path (cryptographic primitives are in akua-core) but use `cosign` CLI for signing operations that need hardware keys.
 - **`docker` / `podman`** — used only if a user opts into a Dockerfile-based build. Rare for akua workflows.
 
@@ -126,14 +126,14 @@ System integrations are a separate category from engines. `akua deploy` calls `k
 ## Performance notes
 
 - Cold-start overhead for a wasmtime-hosted engine: ~5-30 ms per engine, once per `akua` invocation. With precompile cache: ~2-5 ms.
-- `akua dev` keeps engines warm for the session. Subsequent renders skip cold-start entirely.
+- `akuapkg dev` keeps engines warm for the session. Subsequent renders skip cold-start entirely.
 - Benchmarks at [docs/bench/](bench/) (forthcoming) show akua's embedded OPA within 5% of native `opa eval` for realistic policy workloads.
 
 ---
 
 ## For agents
 
-Agents get the full engine toolkit from one install with zero PATH management. When writing skills that invoke `akua test`, `akua fmt`, `akua bench`, they never need to check `which opa`. Skills remain portable across fresh sandboxes, CI runners, and developer laptops without setup instructions beyond `curl -fsSL https://cli.akua.dev/install | sh`.
+Agents get the full engine toolkit from one install with zero PATH management. When writing skills that invoke `akuapkg test`, `akuapkg fmt`, `akua bench`, they never need to check `which opa`. Skills remain portable across fresh sandboxes, CI runners, and developer laptops without setup instructions beyond `curl -fsSL https://cli.akua.dev/install | sh`.
 
 ---
 

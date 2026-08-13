@@ -36,7 +36,7 @@ tier-prod = { oci = "oci://policies.akua.dev/tier/production", version = "1.2.0"
 kyv-sec   = { oci = "oci://policies.akua.dev/kyverno/security", version = "2.0.0" }
 ```
 
-Both deps are signed OCI artifacts. The first is akua's reference `tier/production` Rego bundle; the second is a Kyverno bundle that akua converts to Rego at `akua add` time (stored under `.akua/policies/vendor/`). The `akua.lock` ledger records the resolved digest and cosign signature for each.
+Both deps are signed OCI artifacts. The first is akua's reference `tier/production` Rego bundle; the second is a Kyverno bundle that akua converts to Rego at `akuapkg add` time (stored under `.akua/policies/vendor/`). The `akua.lock` ledger records the resolved digest and cosign signature for each.
 
 No runtime lookups. Every import resolves at build time.
 
@@ -52,7 +52,7 @@ There is no `PolicySet` resource to declare. `akua policy check --tier=./policie
 
 ```sh
 # 1. Resolve deps + write akua.lock
-akua add
+akuapkg add
 
 # 2. Evaluate the tier against a passing fixture → verdict: allow
 akua policy check --tier=./policies --input=fixtures/good.yaml
@@ -61,7 +61,7 @@ akua policy check --tier=./policies --input=fixtures/good.yaml
 akua policy check --tier=./policies --input=fixtures/bad.yaml
 
 # 4. Run the test file
-akua test policies/
+akuapkg test policies/
 ```
 
 Exit codes from `akua policy check`:

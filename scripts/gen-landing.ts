@@ -33,7 +33,7 @@ const body = `
 <pre><code><span style="color: var(--accent); user-select: none;">&gt;</span> irm https://cli.akua.dev/install.ps1 | iex</code></pre>
 
 <h2>From source</h2>
-<pre><code><span style="color: var(--accent); user-select: none;">$</span> cargo install --git https://github.com/cnap-tech/akua akua-cli</code></pre>
+<pre><code><span style="color: var(--accent); user-select: none;">$</span> cargo install --git https://github.com/akua-dev/akua akuapkg-cli</code></pre>
 
 <h2>SDK</h2>
 <pre><code><span style="color: var(--accent); user-select: none;">$</span> npm install @akua-dev/sdk</code></pre>
@@ -47,8 +47,8 @@ const body = `
   <li><a href="/concepts/">Concepts</a></li>
   <li><a href="/examples/">Examples</a></li>
   <li><a href="/errors/">Errors</a></li>
-  <li><a href="https://github.com/cnap-tech/akua">GitHub</a></li>
-  <li><a href="https://github.com/cnap-tech/akua/releases">Releases</a></li>
+  <li><a href="https://github.com/akua-dev/akua">GitHub</a></li>
+  <li><a href="https://github.com/akua-dev/akua/releases">Releases</a></li>
 </ul>
 
 <p style="color: var(--muted); font-size: 13px; margin-top: 28px;">

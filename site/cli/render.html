@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>akua render — akua</title>
+<title>akuapkg render — akua</title>
 <meta name="description" content="**Run the Package's program.** Evaluate the KCL, invoke every source engine (Helm, kro, Kustomize), compose results, produce deploy-ready manifests." />
 <meta name="color-scheme" content="dark" />
 <link rel="icon" type="image/png" href="/assets/logo.png" />
 <link rel="apple-touch-icon" href="/assets/logo.png" />
-<meta property="og:title" content="akua render — akua" />
+<meta property="og:title" content="akuapkg render — akua" />
 <meta property="og:description" content="**Run the Package's program.** Evaluate the KCL, invoke every source engine (Helm, kro, Kustomize), compose results, produce deploy-ready manifests." />
 <meta property="og:url" content="https://cli.akua.dev/cli/render" />
 <meta property="og:image" content="https://akua.dev/assets/logo.png" />
@@ -292,23 +292,23 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <div class="layout">
 <aside class="sidebar">
 <p class="sidebar-title"><a href="/cli/">CLI reference</a></p>
-<h3>Shipped</h3><ul><li><a href="/cli/init">init</a></li><li><a href="/cli/add">add</a></li><li><a href="/cli/vendor">vendor</a></li><li><a href="/cli/lint">lint</a></li><li><a href="/cli/render" class="active">render</a></li><li><a href="/cli/diff">diff</a></li><li><a href="/cli/inspect">inspect</a></li><li><a href="/cli/export">export</a></li><li><a href="/cli/dev">dev</a></li><li><a href="/cli/whoami">whoami</a></li><li><a href="/cli/fmt">fmt</a></li><li><a href="/cli/check">check</a></li><li><a href="/cli/repl">repl</a></li><li><a href="/cli/version">version</a></li><li><a href="/cli/lint-cli">lint-cli</a></li></ul>
+<h3>Shipped</h3><ul><li><a href="/cli/init">init</a></li><li><a href="/cli/add">add</a></li><li><a href="/cli/vendor">vendor</a></li><li><a href="/cli/lint">lint</a></li><li><a href="/cli/render" class="active">render</a></li><li><a href="/cli/diff">diff</a></li><li><a href="/cli/inspect">inspect</a></li><li><a href="/cli/export">export</a></li><li><a href="/cli/api">api</a></li><li><a href="/cli/dev">dev</a></li><li><a href="/cli/whoami">whoami</a></li><li><a href="/cli/fmt">fmt</a></li><li><a href="/cli/check">check</a></li><li><a href="/cli/repl">repl</a></li><li><a href="/cli/version">version</a></li><li><a href="/cli/lint-cli">lint-cli</a></li></ul>
 <h3>Planned</h3><ul><li><a href="/cli/attest">attest</a></li><li><a href="/cli/publish">publish</a></li><li><a href="/cli/pull">pull</a></li><li><a href="/cli/deploy">deploy</a></li><li><a href="/cli/rollout">rollout</a></li><li><a href="/cli/secret">secret</a></li><li><a href="/cli/policy">policy</a></li><li><a href="/cli/audit">audit</a></li><li><a href="/cli/query">query</a></li><li><a href="/cli/infra">infra</a></li><li><a href="/cli/login">login</a></li><li><a href="/cli/logout">logout</a></li><li><a href="/cli/test">test</a></li><li><a href="/cli/bench">bench</a></li><li><a href="/cli/trace">trace</a></li><li><a href="/cli/cov">cov</a></li><li><a href="/cli/eval">eval</a></li><li><a href="/cli/help">help</a></li><li><a href="/cli/telemetry">telemetry</a></li></ul>
 </aside>
 <main>
 
 <header>
-  <p class="crumbs"><a href="/">akua</a> / <a href="/cli/">cli</a> / render</p>
-  <h1>akua render</h1>
+  <p class="crumbs"><a href="/">akuapkg</a> / <a href="/cli/">cli</a> / render</p>
+  <h1>akuapkg render</h1>
 </header>
 <p class="section-tag">Shipped</p>
 <p><strong>Run the Package's program.</strong> Evaluate the KCL, invoke every source engine (Helm, kro, Kustomize), compose results, produce deploy-ready manifests.</p>
-<pre><code>akua render [path] [flags]</code></pre>
-<p><strong>Discovery.</strong> With no <code>path</code>, renders every user-authored document in the workspace whose schema declares render semantics — typically the workspace's App-shaped documents that reference a Package and carry inputs. With a <code>path</code>, renders only that file. Users author their own App / Environment / etc. schemas (akua does not specify them; see <a href="https://github.com/cnap-tech/akua/blob/main/docs/package-format.md">package-format.md</a>); <code>render</code> processes whichever documents the workspace declares as renderable.</p>
-<blockquote><strong>Not the same as <code>akua export</code>.</strong> <code>render</code> executes the full pipeline against customer inputs and writes manifests a reconciler applies to a cluster. <code>export</code> converts a canonical artifact (schema, user-authored KCL document, policy bundle) into a format view (JSON Schema, YAML, OpenAPI, Rego bundle). Render needs inputs; export usually doesn't. Render invokes engines; export is format translation. See <a href="/cli/export"><code>akua export</code></a> below.</blockquote>
+<pre><code>akuapkg render [path] [flags]</code></pre>
+<p><strong>Discovery.</strong> With no <code>path</code>, renders every user-authored document in the workspace whose schema declares render semantics — typically the workspace's App-shaped documents that reference a Package and carry inputs. With a <code>path</code>, renders only that file. Users author their own App / Environment / etc. schemas (akua does not specify them; see <a href="https://github.com/akua-dev/akua/blob/main/docs/package-format.md">package-format.md</a>); <code>render</code> processes whichever documents the workspace declares as renderable.</p>
+<blockquote><strong>Not the same as <code>akuapkg export</code>.</strong> <code>render</code> executes the full pipeline against customer inputs and writes manifests a reconciler applies to a cluster. <code>export</code> converts a canonical artifact (schema, user-authored KCL document, policy bundle) into a format view (JSON Schema, YAML, OpenAPI, Rego bundle). Render needs inputs; export usually doesn't. Render invokes engines; export is format translation. See <a href="/cli/export"><code>akuapkg export</code></a> below.</blockquote>
 <h3 id="flags">Flags</h3>
 <table><thead><tr><th>flag</th><th>description</th></tr></thead><tbody><tr><td><code>--package=&lt;path&gt;</code></td><td>path to the <code>package.k</code> file (default <code>./package.k</code>)</td></tr><tr><td><code>--inputs=&lt;file&gt;</code></td><td>inputs file (JSON or YAML). When omitted, probes <code>./inputs.yaml</code> then <code>./inputs.example.yaml</code> next to the package; falls back to schema defaults if neither exists</td></tr><tr><td><code>--out=&lt;dir&gt;</code></td><td>write to directory (default: <code>./deploy/</code>)</td></tr><tr><td><code>--stdout</code></td><td>print rendered manifests as multi-doc YAML to stdout instead of writing files</td></tr><tr><td><code>--dry-run</code></td><td>render but don't write files</td></tr></tbody></table>
-<blockquote><strong>Engines.</strong> Helm and Akua-package composition reach the user via alias-method calls — <code>webapp.template(webapp.TemplateOpts{values = webapp.Values{...}})</code>, <code>upstream.render(upstream.Input{...})</code> — synthesized per dep from <code>akua.toml</code>. Kustomize stays engine-direct (<code>kustomize.build({path = &quot;./overlays&quot;})</code>) because its input is a within-Package directory, not a typed dep. All backends ship as embedded WASM modules; akua never shells out to <code>helm</code> or <code>kustomize</code> binaries — every engine runs inside the wasmtime sandbox alongside the render worker. See <a href="https://github.com/cnap-tech/akua/blob/main/docs/security-model.md"><code>docs/security-model.md</code></a> and <a href="https://github.com/cnap-tech/akua/blob/main/docs/embedded-engines.md"><code>docs/embedded-engines.md</code></a>.  <strong>One render output.</strong> akua writes raw YAML manifests, one file per resource. Distribution shapes like Helm charts or OCI bundles are future <code>akua publish --as &lt;format&gt;</code> concerns — they wrap rendered manifests at distribution time, not as a Package-declared output.</blockquote>
+<blockquote><strong>Engines.</strong> Helm and Akua-package composition reach the user via alias-method calls — <code>webapp.template(webapp.TemplateOpts{values = webapp.Values{...}})</code>, <code>upstream.render(upstream.Input{...})</code> — synthesized per dep from <code>akua.toml</code>. Kustomize stays engine-direct (<code>kustomize.build({path = &quot;./overlays&quot;})</code>) because its input is a within-Package directory, not a typed dep. All backends ship as embedded WASM modules; akua never shells out to <code>helm</code> or <code>kustomize</code> binaries — every engine runs inside the wasmtime sandbox alongside the render worker. See <a href="https://github.com/akua-dev/akua/blob/main/docs/security-model.md"><code>docs/security-model.md</code></a> and <a href="https://github.com/akua-dev/akua/blob/main/docs/embedded-engines.md"><code>docs/embedded-engines.md</code></a>.  <strong>One render output.</strong> akua writes raw YAML manifests, one file per resource. Distribution shapes like Helm charts or OCI bundles are future <code>akuapkg publish --as &lt;format&gt;</code> concerns — they wrap rendered manifests at distribution time, not as a Package-declared output.</blockquote>
 <h3 id="exit-codes">Exit codes</h3>
 <p>0 success, 1 user error, 2 system error. (Phase B adds 3 for policy deny.)</p>
 <h3 id="json-output">JSON output</h3>
@@ -319,11 +319,11 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
   &quot;hash&quot;: &quot;sha256:…&quot;,
   &quot;files&quot;: [&quot;000-configmap-hello.yaml&quot;]
 }</code></pre>
-<p><code>format</code> is always <code>&quot;raw-manifests&quot;</code> today. <code>target</code> is the resolved output directory. <code>hash</code> is <code>sha256:&lt;hex&gt;</code> of the concatenated <code>&lt;filename&gt;\n&lt;yaml&gt;</code> blocks — stable across runs when inputs + lockfile + akua version match.</p>
+<p><code>format</code> is always <code>&quot;raw-manifests&quot;</code> today. <code>target</code> is the resolved output directory. <code>hash</code> is <code>sha256:&lt;hex&gt;</code> of the concatenated <code>&lt;filename&gt;\n&lt;yaml&gt;</code> blocks — stable across runs when inputs + lockfile + akuapkg version match.</p>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/cnap-tech/akua">github.com/cnap-tech/akua</a> ·
+  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
   Apache-2.0
 </footer>
 </main>

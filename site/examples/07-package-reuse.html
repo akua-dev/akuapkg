@@ -302,7 +302,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
   <p class="tagline">One akua Package composing another. The reuser pins the base Package by OCI digest in `akua.toml`, imports its `Input` schema into its own schema (as a nested field), and renders the base's...</p>
 </header>
 <p>One akua Package composing another. The reuser pins the base Package by OCI digest in <code>akua.toml</code>, imports its <code>Input</code> schema into its own schema (as a nested field), and renders the base's resources inline alongside its own additions.</p>
-<p>This is <strong>what cross-package composition looks like when the full spec lands</strong> — the shape this axis is settling into. Masterplan §18 and <a href="https://github.com/cnap-tech/akua/blob/main/docs/design-notes.md">design-notes.md §6</a> still list this as an open question for the final API surface. Use this example as the north-star shape; expect minor signature tweaks as the spec locks in.</p>
+<p>This is <strong>what cross-package composition looks like when the full spec lands</strong> — the shape this axis is settling into. Masterplan §18 and <a href="https://github.com/akua-dev/akua/blob/main/docs/design-notes.md">design-notes.md §6</a> still list this as an open question for the final API surface. Use this example as the north-star shape; expect minor signature tweaks as the spec locks in.</p>
 <h2 id="the-pattern">The pattern</h2>
 <pre><code>┌──────────────────────────────────────────────────────────────┐
 │ platform-base                                                 │  (separate repo, OCI-published)
@@ -360,19 +360,19 @@ _dashboard = {
 # Aggregate.
 resources = [*_base, _dashboard]</code></pre>
 <p>Three things fall out of this shape:</p>
-<ol><li><strong>Type safety.</strong> The base's <code>Input</code> is a nested schema; misspelling a field fails at compile time with a line + column pointer. No &quot;I forgot the base needs <code>hostname</code>&quot; at render time.</li><li><strong>Pinned by digest.</strong> <code>akua.toml</code> + <code>akua.lock</code> pin the base to a specific OCI digest. Base publishes v1.1 → you don't pick it up until you <code>akua add</code> explicitly. No silent drift.</li><li><strong>Signed provenance.</strong> <code>akua verify</code> on the consumer walks the attestation chain: the consumer's SLSA predicate includes the base's digest, which carries its own SLSA predicate, which carries the base's sources. Auditable back to the original chart authors.</li></ol>
+<ol><li><strong>Type safety.</strong> The base's <code>Input</code> is a nested schema; misspelling a field fails at compile time with a line + column pointer. No &quot;I forgot the base needs <code>hostname</code>&quot; at render time.</li><li><strong>Pinned by digest.</strong> <code>akua.toml</code> + <code>akua.lock</code> pin the base to a specific OCI digest. Base publishes v1.1 → you don't pick it up until you <code>akuapkg add</code> explicitly. No silent drift.</li><li><strong>Signed provenance.</strong> <code>akuapkg verify</code> on the consumer walks the attestation chain: the consumer's SLSA predicate includes the base's digest, which carries its own SLSA predicate, which carries the base's sources. Auditable back to the original chart authors.</li></ol>
 <h2 id="running-it">Running it</h2>
-<pre><code class="lang-sh">akua add                                 # resolves deps → writes akua.lock
-akua render --inputs inputs.yaml         # composes base + local additions
-akua inspect oci://pkg.acme.corp/platform-base:1.0   # peek at what we're pinning</code></pre>
+<pre><code class="lang-sh">akuapkg add                                 # resolves deps → writes akua.lock
+akuapkg render --inputs inputs.yaml         # composes base + local additions
+akuapkg inspect oci://pkg.acme.corp/platform-base:1.0   # peek at what we're pinning</code></pre>
 <h2 id="when-to-reuse-vs-fork">When to reuse vs fork</h2>
 <p><strong>Reuse</strong> when the base captures a genuine shared convention: your org's production-ready webapp shape, a standard observability stack, a licensed vendor package you subscribe to.</p>
 <p><strong>Fork</strong> when you need base-level invariants that don't exist yet. Forking means copying the base's <code>Package.k</code> into your workspace and editing it. You lose the upgrade path; you own the full surface.</p>
 <p><strong>Don't</strong> reuse to avoid learning KCL. If the base's author didn't anticipate your override, reuse leads to a pile of <code>postRenderer</code> hacks that are harder to maintain than a fork.</p>
 <h2 id="open-question-addendum">Open-question addendum</h2>
-<p>This axis is specced to the shape shown above but the exact signature of <code>pkg.render(Package, inputs)</code> vs alternatives (<code>base.render(input.base)</code>, auto-unwrapping imports, etc.) may iterate before the spec locks in. See <a href="https://github.com/cnap-tech/cortex/blob/docs/cnap-masterplan/workspaces/robin/akua-masterplan.md">masterplan §18 open question 6</a> and <a href="https://github.com/cnap-tech/akua/blob/main/docs/design-notes.md">design-notes.md §6</a>. Consumers of this example: don't hard-code the exact callable name in skills or training material yet.</p>
+<p>This axis is specced to the shape shown above but the exact signature of <code>pkg.render(Package, inputs)</code> vs alternatives (<code>base.render(input.base)</code>, auto-unwrapping imports, etc.) may iterate before the spec locks in. See <a href="https://github.com/cnap-tech/cortex/blob/docs/cnap-masterplan/workspaces/robin/akua-masterplan.md">masterplan §18 open question 6</a> and <a href="https://github.com/akua-dev/akua/blob/main/docs/design-notes.md">design-notes.md §6</a>. Consumers of this example: don't hard-code the exact callable name in skills or training material yet.</p>
 <h2 id="see-also">See also</h2>
-<ul><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/package-format.md">package-format.md §2 Imports</a> — where package-vs-chart imports are described</li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/lockfile-format.md">lockfile-format.md</a> — how OCI-pinned Packages flow through <code>akua.toml</code></li><li><a href="/examples/06-multi-engine">06-multi-engine/</a> — Helm / Kustomize / kro — the other engine sources; <code>pkg</code> is the fourth</li><li><a href="/examples/02-webapp-postgres">02-webapp-postgres/</a> — the shape of the base Package before it was reused here</li></ul>
+<ul><li><a href="https://github.com/akua-dev/akua/blob/main/docs/package-format.md">package-format.md §2 Imports</a> — where package-vs-chart imports are described</li><li><a href="https://github.com/akua-dev/akua/blob/main/docs/lockfile-format.md">lockfile-format.md</a> — how OCI-pinned Packages flow through <code>akua.toml</code></li><li><a href="/examples/06-multi-engine">06-multi-engine/</a> — Helm / Kustomize / kro — the other engine sources; <code>pkg</code> is the fourth</li><li><a href="/examples/02-webapp-postgres">02-webapp-postgres/</a> — the shape of the base Package before it was reused here</li></ul>
 <h2>package.k</h2><pre><code class="lang-kcl"># Example 07 — package reuse
 #
 # Composes a base Package (pinned by OCI digest in akua.toml) and adds local
@@ -380,8 +380,8 @@ akua inspect oci://pkg.acme.corp/platform-base:1.0   # peek at what we're pinnin
 # preserving end-to-end type safety.
 #
 # Render:
-#   akua add
-#   akua render --inputs inputs.yaml
+#   akuapkg add
+#   akuapkg render --inputs inputs.yaml
 
 import akua.ctx
 import akua.pkg                            # package-as-source engine callable
@@ -467,26 +467,26 @@ _extra_ingresses = [
 # owner references, not list position.
 resources = [*_base, _dashboard, *_extra_ingresses]
 
-# Metadata for `akua inspect` and audit surfaces.
+# Metadata for `akuapkg inspect` and audit surfaces.
 metadata = {
     name:        &quot;checkout-with-dashboard&quot;
     version:     &quot;0.1.0&quot;
     description: &quot;platform-base + experimental dashboard + multi-host routing&quot;
     publisher:   &quot;github.com/acme/checkout&quot;
 
-    # The walk that `akua verify` follows: this Package's attestation
+    # The walk that `akuapkg verify` follows: this Package's attestation
     # references the base's attestation, which references its source charts.
     extends: [&quot;oci://pkg.acme.corp/platform-base@sha256:c7e4b8a1...&quot;]
 }
 </code></pre>
 
 <p style="margin-top: 32px; color: var(--muted); font-size: 14px;">
-  Source: <a href="https://github.com/cnap-tech/akua/tree/main/examples/07-package-reuse">examples/07-package-reuse/</a>
+  Source: <a href="https://github.com/akua-dev/akua/tree/main/examples/07-package-reuse">examples/07-package-reuse/</a>
 </p>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/cnap-tech/akua">github.com/cnap-tech/akua</a> ·
+  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
   Apache-2.0
 </footer>
 </main>

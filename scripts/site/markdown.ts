@@ -9,8 +9,8 @@
 import { escape } from './layout.ts';
 
 /** Github-blob base for rewriting `../foo.md` links found in `docs/`. */
-const GITHUB_BLOB = 'https://github.com/cnap-tech/akua/blob/main';
-const GITHUB_TREE = 'https://github.com/cnap-tech/akua/tree/main';
+const GITHUB_BLOB = 'https://github.com/akua-dev/akua/blob/main';
+const GITHUB_TREE = 'https://github.com/akua-dev/akua/tree/main';
 
 /**
  * Rewrite source-tree links to URLs that resolve on the deployed
@@ -35,7 +35,7 @@ export interface LinkResolverOpts {
 	 *  `skills/new-package/`) to a site URL. Return null to fall back
 	 *  to the GitHub tree/blob URL. */
 	repoResolve?: (repoPath: string) => string | null;
-	/** Rewrite a bare in-page anchor (e.g. `#akua-render`) to a
+	/** Rewrite a bare in-page anchor (e.g. `#akuapkg-render`) to a
 	 *  full URL — used when the source markdown is one big doc that
 	 *  the renderer split into per-page files. Return null to leave
 	 *  the anchor untouched. */

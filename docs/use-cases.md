@@ -26,13 +26,13 @@ In a managed-SaaS model, operator and customer collapse into "the tenant," and t
 
     Package.k        ───┐
     (imports engines,  │
-     declares schema,  │      akua check         (syntax + types)
-     wires outputs)    │      akua lint          (Regal + kcl lint)
-                       ├──▶   akua test          (*_test.rego + test_*.k)
-    sources/           │      akua render --plan (dry run with sample inputs)
-    (helm / kcl /      │      akua fmt --check
+     declares schema,  │      akuapkg check         (syntax + types)
+     wires outputs)    │      akuapkg lint          (Regal + kcl lint)
+                       ├──▶   akuapkg test          (*_test.rego + test_*.k)
+    sources/           │      akuapkg render --plan (dry run with sample inputs)
+    (helm / kcl /      │      akuapkg fmt --check
      kustomize / ...)  │
-                       │      akua publish       ──────────────▶  signed + attested
+                       │      akuapkg publish       ──────────────▶  signed + attested
     akua.toml / .sum   ─┘      (cosign + SLSA v1)                   OCI artifact
 ```
 
@@ -53,7 +53,7 @@ One OCI digest, many deploys, per-tenant values resolved at deploy-time.
                                                      (releaseName + inputs differ)
 ```
 
-Consumers: ArgoCD Helm source, Flux `HelmRelease`, `helm install`. `akua render` executes on commit to produce per-tenant rendered manifests, committed to the deploy path (compiled GitOps); or the reconciler does the templating itself against the shared chart.
+Consumers: ArgoCD Helm source, Flux `HelmRelease`, `helm install`. `akuapkg render` executes on commit to produce per-tenant rendered manifests, committed to the deploy path (compiled GitOps); or the reconciler does the templating itself against the shared chart.
 
 When Model A works:
 - ✅ Late-bindable engines (Helm templates, RGD with deploy-time CEL).
@@ -66,10 +66,10 @@ When Model A breaks down:
 
 ### Model B — per-install chart, values baked in (escape hatch)
 
-One OCI digest per install. `akua render` runs the full pipeline with that tenant's inputs and pushes a sealed artifact.
+One OCI digest per install. `akuapkg render` runs the full pipeline with that tenant's inputs and pushes a sealed artifact.
 
 ```
-    Package + tenant inputs   ──▶   akua render + publish   ──▶   tenant-specific OCI digest
+    Package + tenant inputs   ──▶   akuapkg render + publish   ──▶   tenant-specific OCI digest
                                                                   (chart@sha256:xxx)
 ```
 
@@ -137,9 +137,9 @@ Same Package, same `akua` binary, no install UI.
 
 ```
 Developer:
-  akua dev                       # sub-second hot-reload against local cluster
-  akua render --inputs my.yaml   # produce raw manifests
-  akua publish --to oci://myregistry/mychart   (optional)
+  akuapkg dev                       # sub-second hot-reload against local cluster
+  akuapkg render --inputs my.yaml   # produce raw manifests
+  akuapkg publish --to oci://myregistry/mychart   (optional)
 
 Developer or ops:
   helm install mychart oci://myregistry/mychart --values my-inputs.yaml
@@ -148,7 +148,7 @@ Or via reconciler:
   kubectl apply -f argocd-application.yaml
 ```
 
-`akua` is a build tool here. No hosting platform, no install UI. The output is raw manifests any OCI-aware consumer works with; future `akua publish --as helm-chart` / `--as oci-bundle` will wrap the render into other distribution shapes at publish time.
+`akua` is a build tool here. No hosting platform, no install UI. The output is raw manifests any OCI-aware consumer works with; future `akuapkg publish --as helm-chart` / `--as oci-bundle` will wrap the render into other distribution shapes at publish time.
 
 ---
 

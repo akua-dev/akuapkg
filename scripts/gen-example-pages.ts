@@ -124,7 +124,7 @@ ${readmeHtml}
 ${packageKBlock}
 ${renderedBlock}
 <p style="margin-top: 32px; color: var(--muted); font-size: 14px;">
-  Source: <a href="https://github.com/cnap-tech/akua/tree/main/examples/${escape(example.slug)}">examples/${escape(example.slug)}/</a>
+  Source: <a href="https://github.com/akua-dev/akua/tree/main/examples/${escape(example.slug)}">examples/${escape(example.slug)}/</a>
 </p>
 `;
 

@@ -10,7 +10,7 @@ edition = "akua.dev/v1alpha1"
 # akua's reference production tier (signed OCI artifact).
 tier-prod = { oci = "oci://policies.akua.dev/tier/production", version = "1.2.0" }
 
-# A Kyverno bundle. akua's Kyverno→Rego converter runs at `akua add` time;
+# A Kyverno bundle. akua's Kyverno→Rego converter runs at `akuapkg add` time;
 # the compiled Rego lands under .akua/policies/vendor/ and imports into
 # our local policies as `data.akua.policies.kyverno.security`.
 kyv-sec   = { oci = "oci://policies.akua.dev/kyverno/security", version = "2.0.0" }

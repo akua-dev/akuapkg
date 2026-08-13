@@ -1,5 +1,5 @@
 # Renders a chart vendored into `.akua/vendor/upstream/` via
-# `akua vendor add upstream`. The dep declaration in `akua.toml`
+# `akuapkg vendor add upstream`. The dep declaration in `akua.toml`
 # stays canonical (`path = "./upstream-chart"`); the resolver
 # prefers the vendored copy when present, so render is offline-
 # safe once the vendor tree is committed alongside the Package.

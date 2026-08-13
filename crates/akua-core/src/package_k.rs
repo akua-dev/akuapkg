@@ -128,7 +128,7 @@ impl PackageK {
     /// typed resource list.
     ///
     /// **Private to akua-core.** Production render paths run inside
-    /// the wasmtime sandbox (see `akua_cli::verbs::render::render_in_worker`)
+    /// the wasmtime sandbox (see `akuapkg_cli::verbs::render::render_in_worker`)
     /// per CLAUDE.md's "Sandboxed by default. No shell-out, ever"
     /// invariant. This method stays crate-private for akua-core's
     /// own unit tests — it provides the same KCL + plugin-bridge
@@ -222,7 +222,7 @@ impl PackageK {
 /// Parse a rendered Package's top-level YAML (the `yaml_result` KCL
 /// produced, or an equivalent string the sandboxed render worker
 /// returns) into a typed [`RenderedPackage`]. Exposed so the
-/// wasmtime-hosted render path in `akua-cli` can share the same
+/// wasmtime-hosted render path in `akuapkg-cli` can share the same
 /// parse + validation rules as the native in-process path.
 pub fn parse_rendered_yaml(yaml: &str) -> Result<RenderedPackage, PackageKError> {
     parse_rendered(yaml)
@@ -501,7 +501,7 @@ pub fn eval_source_with_inputs(
 /// KCL's import resolver sees the `charts` ExternalPkg and resolves
 /// `import charts.<name>` to the files there. Plugin callouts from
 /// those imports still flow through the host-side plugin bridge
-/// (helm / kustomize handlers live on akua-cli's side, not in the
+/// (helm / kustomize handlers live on akuapkg-cli's side, not in the
 /// worker).
 ///
 /// `kcl_pkgs` is an alias→guest-path map of upstream KCL packages
@@ -679,7 +679,7 @@ fn eval_kcl(
     // can't do that — `std::env::temp_dir()` + `std::fs::write` are
     // unconditional panics. The host instead preopens its own
     // materialized stdlib into the worker's WasiCtx at `/akua-stdlib`
-    // (see `akua_cli::render_worker::invoke_inner`), and we hand
+    // (see `akuapkg_cli::render_worker::invoke_inner`), and we hand
     // KCL that guest-visible path. Identical import shape on both
     // sides: `import akua.helm` resolves either way.
     let mut external_pkgs: Vec<ExternalPkg> = Vec::new();

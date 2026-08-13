@@ -301,22 +301,22 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
   <h1>00-helm-hello</h1>
   <p class="tagline">The smallest Package that exercises akua's `helm.template` engine callable end-to-end.</p>
 </header>
-<blockquote><strong>Renders end-to-end</strong> via the embedded <code>helm-engine-wasm</code>. No <code>helm</code> binary on <code>$PATH</code> needed or consulted. All template rendering happens inside a wasmtime WASI sandbox. See <a href="https://github.com/cnap-tech/akua/blob/main/docs/security-model.md"><code>docs/security-model.md</code></a> + <a href="https://github.com/cnap-tech/akua/blob/main/docs/roadmap.md"><code>docs/roadmap.md</code></a> Phase 1.</blockquote>
+<blockquote><strong>Renders end-to-end</strong> via the embedded <code>helm-engine-wasm</code>. No <code>helm</code> binary on <code>$PATH</code> needed or consulted. All template rendering happens inside a wasmtime WASI sandbox. See <a href="https://github.com/akua-dev/akua/blob/main/docs/security-model.md"><code>docs/security-model.md</code></a> + <a href="https://github.com/akua-dev/akua/blob/main/docs/roadmap.md"><code>docs/roadmap.md</code></a> Phase 1.</blockquote>
 <p>The smallest Package that exercises akua's <code>helm.template</code> engine callable end-to-end.</p>
 <h2 id="whats-here">What's here</h2>
-<table><thead><tr><th>file</th><th>purpose</th></tr></thead><tbody><tr><td><code>package.k</code></td><td>KCL Package; imports <code>akua.helm</code>, calls <code>helm.template</code>, wires the result into <code>resources = …</code>.</td></tr><tr><td><code>akua.toml</code></td><td>Manifest — no external deps.</td></tr><tr><td><code>inputs.example.yaml</code></td><td>Auto-discovered by <code>akua render</code> when <code>--inputs</code> is omitted.</td></tr><tr><td><code>chart/</code></td><td>A tiny in-tree Helm chart (one <code>ConfigMap</code> template).</td></tr></tbody></table>
+<table><thead><tr><th>file</th><th>purpose</th></tr></thead><tbody><tr><td><code>package.k</code></td><td>KCL Package; imports <code>akua.helm</code>, calls <code>helm.template</code>, wires the result into <code>resources = …</code>.</td></tr><tr><td><code>akua.toml</code></td><td>Manifest — no external deps.</td></tr><tr><td><code>inputs.example.yaml</code></td><td>Auto-discovered by <code>akuapkg render</code> when <code>--inputs</code> is omitted.</td></tr><tr><td><code>chart/</code></td><td>A tiny in-tree Helm chart (one <code>ConfigMap</code> template).</td></tr></tbody></table>
 <h2 id="render">Render</h2>
-<p><code>package.k</code> passes <code>&quot;./chart&quot;</code> to <code>helm.template</code>; akua resolves that against the Package.k's directory (via the path-traversal-guarded <code>resolve_in_package</code>) and hands the chart tarball to the embedded WASM Helm engine. <code>akua render</code> works from any cwd — point <code>--package</code> at this directory:</p>
+<p><code>package.k</code> passes <code>&quot;./chart&quot;</code> to <code>helm.template</code>; akua resolves that against the Package.k's directory (via the path-traversal-guarded <code>resolve_in_package</code>) and hands the chart tarball to the embedded WASM Helm engine. <code>akuapkg render</code> works from any cwd — point <code>--package</code> at this directory:</p>
 <pre><code class="lang-sh"># Build the embedded helm engine once per machine:
 task build:helm-engine-wasm
 
-akua render --package examples/00-helm-hello/package.k --out ./rendered</code></pre>
+akuapkg render --package examples/00-helm-hello/package.k --out ./rendered</code></pre>
 <p>The rendered <code>ConfigMap</code> lands at <code>./rendered/000-configmap-hello-greeting.yaml</code> — already checked in alongside the example so you can eyeball the output without running anything.</p>
 <h2 id="whats-happening">What's happening</h2>
-<p><code>package.k</code> imports <code>akua.helm</code> — the bundled akua KCL stdlib, a thin typed wrapper over <code>kcl_plugin.helm</code> — and calls <code>helm.template(helm.Template { ... })</code>. Under the hood, akua's plugin dispatcher routes the call to a Rust handler that tars the chart directory, hands it to a <strong>Go program compiled to wasm32-wasip1</strong> hosted via wasmtime (see <a href="https://github.com/cnap-tech/akua/tree/main/crates/helm-engine-wasm"><code>crates/helm-engine-wasm/</code></a>), parses the multi-document YAML output back into resources, and splats them into <code>resources</code>.</p>
+<p><code>package.k</code> imports <code>akua.helm</code> — the bundled akua KCL stdlib, a thin typed wrapper over <code>kcl_plugin.helm</code> — and calls <code>helm.template(helm.Template { ... })</code>. Under the hood, akua's plugin dispatcher routes the call to a Rust handler that tars the chart directory, hands it to a <strong>Go program compiled to wasm32-wasip1</strong> hosted via wasmtime (see <a href="https://github.com/akua-dev/akua/tree/main/crates/helm-engine-wasm"><code>crates/helm-engine-wasm/</code></a>), parses the multi-document YAML output back into resources, and splats them into <code>resources</code>.</p>
 <p>No <code>helm</code> binary touched. No subprocess. No <code>$PATH</code>. The entire render path lives inside a WASI sandbox. Per CLAUDE.md: &quot;No shell-out, ever.&quot;</p>
 <h2 id="spec">Spec</h2>
-<p>See <a href="https://github.com/cnap-tech/akua/blob/main/docs/package-format.md#5-outputs--what-akua-emits"><code>docs/package-format.md §5</code></a> for the <code>outputs</code> shape and <a href="https://github.com/cnap-tech/akua/blob/main/docs/cli.md#akua-render"><code>docs/cli.md</code> <code>akua render</code></a>.</p>
+<p>See <a href="https://github.com/akua-dev/akua/blob/main/docs/package-format.md#5-outputs--what-akua-emits"><code>docs/package-format.md §5</code></a> for the <code>outputs</code> shape and <a href="https://github.com/akua-dev/akua/blob/main/docs/cli.md#akua-render"><code>docs/cli.md</code> <code>akuapkg render</code></a>.</p>
 <h2>package.k</h2><pre><code class="lang-kcl"># Minimal Package that exercises the `helm.template` plugin callable.
 #
 # Renders the adjacent `./chart/` (a tiny ConfigMap template) through
@@ -326,11 +326,11 @@ akua render --package examples/00-helm-hello/package.k --out ./rendered</code></
 #
 # Render:
 #
-#   akua render --out ./rendered
+#   akuapkg render --out ./rendered
 #
 # `./chart` is a raw-string path resolved under the Package dir — the
 # original simplest-possible shape. Example 01 shows the typed
-# `import charts.&lt;name&gt;` form that Phase 2a landed; `akua render
+# `import charts.&lt;name&gt;` form that Phase 2a landed; `akuapkg render
 # --strict` only accepts that form.
 #
 # Inputs flow through KCL's `option()` mechanism; `inputs.example.yaml`
@@ -377,12 +377,12 @@ metadata:
   namespace: default
 </code></pre>
 <p style="margin-top: 32px; color: var(--muted); font-size: 14px;">
-  Source: <a href="https://github.com/cnap-tech/akua/tree/main/examples/00-helm-hello">examples/00-helm-hello/</a>
+  Source: <a href="https://github.com/akua-dev/akua/tree/main/examples/00-helm-hello">examples/00-helm-hello/</a>
 </p>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/cnap-tech/akua">github.com/cnap-tech/akua</a> ·
+  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
   Apache-2.0
 </footer>
 </main>

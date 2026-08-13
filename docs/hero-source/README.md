@@ -73,7 +73,7 @@ or `gifsicle --lossy=80`), it's a one-line change to the Taskfile.
    3. Nine → one. Tri-color invariant stripe lands.
    4. Live CLI — the embedded `hero-clip.mp4` plays inside a terminal
       frame. Longest scene, 30 s of the 58 s runtime.
-   5. Compiled GitOps: KCL Package → akua render → signed OCI →
+   5. Compiled GitOps: KCL Package → akuapkg render → signed OCI →
       PR diff → admission re-verify.
    6. Agent-first: detected agents + `--json` / typed exit codes /
       9 skills shipped.

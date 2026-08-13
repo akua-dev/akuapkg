@@ -4,7 +4,7 @@
 //! unknown bundle stays for browsers + pure-KCL fast path.
 //!
 //! Scope: thin pass-through bindings. Every function delegates to the
-//! matching `akua_cli::verbs::*::run` entry, capturing the `--json`
+//! matching `akuapkg_cli::verbs::*::run` entry, capturing the `--json`
 //! envelope to stdout and parsing it back into a `serde_json::Value`
 //! for the JS caller. Zero envelope divergence from the CLI: same
 //! bytes, different transport.
@@ -15,12 +15,12 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::Path;
 
-use akua_cli::contract::{emit_output, Context};
-use akua_cli::verbs;
 use akua_core::cli_contract::{ExitCode, StructuredError};
 use akua_core::oci_puller::OciPullError;
 use akua_core::oci_transport::TransportError;
 use akua_core::vendor as core_vendor;
+use akuapkg_cli::contract::{emit_output, Context};
+use akuapkg_cli::verbs;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 

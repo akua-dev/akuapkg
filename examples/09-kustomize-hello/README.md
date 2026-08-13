@@ -23,7 +23,7 @@ callable end-to-end.
 
 ```sh
 task build:kustomize-engine-wasm          # once per machine
-akua render --package examples/09-kustomize-hello/package.k --out ./rendered
+akuapkg render --package examples/09-kustomize-hello/package.k --out ./rendered
 ```
 
 The rendered `ConfigMap` lands at
@@ -34,4 +34,4 @@ example so you can eyeball the output without running anything.
 ## Spec
 
 See [`docs/package-format.md`](../../docs/package-format.md) for the
-Package shape and [`docs/cli.md` `akua render`](../../docs/cli.md#akua-render).
+Package shape and [`docs/cli.md` `akuapkg render`](../../docs/cli.md#akua-render).

@@ -63,7 +63,7 @@ The package currently exports the `Akua` class, SDK error classes, validation he
 | Method | Returns | Notes |
 |---|---|---|
 | `version()` | `VersionOutput` | SDK and native version information. |
-| `whoami()` | `WhoamiOutput` | Mirrors `akua whoami`. |
+| `whoami()` | `WhoamiOutput` | Mirrors `akuapkg whoami`. |
 | `render(opts)` | `RenderSummary` | Executes an on-disk Package and writes rendered YAML files to `out`. |
 | `renderSource(opts)` | `string` | Executes Package source or a Package file and returns raw rendered YAML. |
 | `export(opts)` | `Record<string, unknown>` | Returns the Package `Input` schema as JSON Schema or OpenAPI. |

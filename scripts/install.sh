@@ -1,10 +1,10 @@
 #!/bin/sh
 # shellcheck shell=dash
 #
-# akua install script — `curl -fsSL https://cli.akua.dev/install | sh`
+# Akuapkg install script.
 #
-# Downloads a prebuilt `akua` binary from GitHub Releases into
-# $AKUA_INSTALL/bin (defaulting to $HOME/.akua/bin), and prints the
+# Downloads a prebuilt `akuapkg` binary from GitHub Releases into
+# $AKUAPKG_INSTALL/bin (defaulting to $HOME/.akuapkg/bin), and prints the
 # `export PATH=…` line to paste into your shell config.
 #
 # We deliberately don't edit ~/.bashrc / ~/.zshrc / ~/.config/fish / etc
@@ -15,11 +15,11 @@
 #   $1   version tag (e.g. `v0.1.0`); defaults to latest via GitHub redirect.
 #
 # Optional env:
-#   AKUA_INSTALL       install root (default: $HOME/.akua)
-#   AKUA_DOWNLOAD_BASE download host (default: github.com, for CDN mirrors)
+#   AKUAPKG_INSTALL       install root (default: $HOME/.akuapkg)
+#   AKUAPKG_DOWNLOAD_BASE download host (default: github.com, for CDN mirrors)
 #
 # Keep this script simple and easily auditable. If something gets
-# hairy, it probably belongs in `akua` itself, not here.
+# hairy, it probably belongs in `akuapkg` itself, not here.
 
 set -eu
 
@@ -37,34 +37,34 @@ main() {
     local resolved_version
     resolved_version="$(resolve_version "$version")"
 
-    local base="${AKUA_DOWNLOAD_BASE:-https://github.com}"
-    local asset="akua-${resolved_version}-${triple}.tar.gz"
-    local url="${base}/cnap-tech/akua/releases/download/akua-${resolved_version}/${asset}"
+    local base="${AKUAPKG_DOWNLOAD_BASE:-https://github.com}"
+    local asset="akuapkg-${resolved_version}-${triple}.tar.gz"
+    local url="${base}/akua-dev/akua/releases/download/${resolved_version}/${asset}"
 
-    local install_root="${AKUA_INSTALL:-$HOME/.akua}"
+    local install_root="${AKUAPKG_INSTALL:-$HOME/.akuapkg}"
     local bin_dir="${install_root}/bin"
 
-    info "downloading akua ${resolved_version} (${triple})"
+    info "downloading akuapkg ${resolved_version} (${triple})"
     info "  from  ${url}"
-    info "  to    ${bin_dir}/akua"
+    info "  to    ${bin_dir}/akuapkg"
 
     mkdir -p "$bin_dir" || error "cannot create ${bin_dir}"
     local tmpdir
-    tmpdir="$(mktemp -d 2>/dev/null || mktemp -d -t 'akua')"
+    tmpdir="$(mktemp -d 2>/dev/null || mktemp -d -t 'akuapkg')"
     trap 'rm -rf "$tmpdir"' EXIT
 
-    curl -fsSL "$url" -o "$tmpdir/akua.tar.gz" \
+    curl -fsSL "$url" -o "$tmpdir/akuapkg.tar.gz" \
         || error "download failed from ${url}"
 
-    tar -xzf "$tmpdir/akua.tar.gz" -C "$tmpdir" \
+    tar -xzf "$tmpdir/akuapkg.tar.gz" -C "$tmpdir" \
         || error "extract failed (corrupt archive?)"
 
-    [ -f "$tmpdir/akua" ] || error "archive did not contain the akua binary"
+    [ -f "$tmpdir/akuapkg" ] || error "archive did not contain the akuapkg binary"
 
-    mv "$tmpdir/akua" "$bin_dir/akua"
-    chmod +x "$bin_dir/akua"
+    mv "$tmpdir/akuapkg" "$bin_dir/akuapkg"
+    chmod +x "$bin_dir/akuapkg"
 
-    success "installed akua ${resolved_version} to ${bin_dir}/akua"
+    success "installed akuapkg ${resolved_version} to ${bin_dir}/akuapkg"
     printf '\n'
 
     if ! echo ":$PATH:" | grep -q ":${bin_dir}:"; then
@@ -72,7 +72,7 @@ main() {
         printf '\n    export PATH="%s:$PATH"\n\n' "$bin_dir"
     fi
 
-    info "verify:  ${bin_dir}/akua --version"
+    info "verify:  ${bin_dir}/akuapkg --version"
 }
 
 # ---------------------------------------------------------------------------
@@ -90,7 +90,7 @@ detect_triple() {
             # bail rather than give them a broken glibc binary that fails
             # at runtime with a confusing dynamic-linker error.
             if [ -f /etc/alpine-release ]; then
-                error "Alpine/musl not yet supported. Build from source:\n\n    cargo install --git https://github.com/cnap-tech/akua akua-cli\n"
+                error "Alpine/musl not yet supported. Build from source:\n\n    cargo install --git https://github.com/akua-dev/akua akuapkg-cli\n"
             fi
             case "$machine" in
                 x86_64|amd64)  triple="x86_64-unknown-linux-gnu" ;;
@@ -112,7 +112,7 @@ detect_triple() {
             esac
             ;;
         MINGW*|MSYS*|CYGWIN*)
-            error "for Windows use:\n\n    powershell -c \"irm https://akua.cnap.tech/install.ps1 | iex\"\n"
+            error "for Windows use the GitHub Release archive.\n"
             ;;
         *)
             error "unsupported OS: $sysname"
@@ -128,8 +128,8 @@ detect_triple() {
 resolve_version() {
     local input="$1"
     if [ -n "$input" ]; then
-        # Accept `v0.1.0`, `0.1.0`, or `akua-v0.1.0` — normalise to `v0.1.0`.
-        echo "$input" | sed -e 's|^akua-||' -e 's|^v\{0,1\}|v|'
+        # Accept `v0.1.0`, `0.1.0`, or `akuapkg-v0.1.0` — normalise to `v0.1.0`.
+        echo "$input" | sed -e 's|^akuapkg-||' -e 's|^v\{0,1\}|v|'
         return
     fi
     # `releases/latest/download/...` redirects per-asset; to reconstruct
@@ -137,9 +137,9 @@ resolve_version() {
     # redirect on `/releases/latest` itself.
     local location
     location="$(curl -fsSLI -o /dev/null -w '%{url_effective}\n' \
-        https://github.com/cnap-tech/akua/releases/latest)"
-    # URL ends with .../tag/akua-vX.Y.Z
-    echo "$location" | sed -e 's|.*/tag/akua-||'
+        https://github.com/akua-dev/akua/releases/latest)"
+    # URL ends with .../tag/vX.Y.Z.
+    echo "$location" | sed -e 's|.*/tag/||'
 }
 
 # ---------------------------------------------------------------------------

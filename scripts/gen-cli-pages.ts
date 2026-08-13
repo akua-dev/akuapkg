@@ -2,7 +2,7 @@
 //! Split `docs/cli.md` into one HTML page per verb at `/cli/<verb>` plus
 //! an index at `/cli/`.
 //!
-//! Each verb section in `cli.md` starts with `## \`akua <verb>\` <status>`
+//! Each verb section in `cli.md` starts with `## \`akuapkg <verb>\` <status>`
 //! (status is ✅ shipped or 🚧 planned) and runs until the next `## ` or
 //! the end of the file. The status emoji is preserved inline in the page
 //! header, and the index lists shipped verbs separately from planned ones.
@@ -32,7 +32,7 @@ function parseVerbs(md: string): { intro: string; verbs: Verb[] } {
 	let current: { name: string; status: Verb['status']; lines: string[] } | null = null;
 
 	for (const line of lines) {
-		const header = line.match(/^##\s+`akua\s+(\S+)`\s*(✅|🚧)?/);
+		const header = line.match(/^##\s+`akuapkg\s+(\S+)`\s*(✅|🚧)?/);
 		if (header) {
 			if (current) {
 				verbs.push(finishVerb(current));
@@ -96,25 +96,25 @@ function renderVerbPage(verb: Verb, allVerbs: Set<string>, sidebar: SidebarSpec)
 	const status = verb.status === 'shipped' ? 'Shipped' : 'Planned';
 	const linkOpts: LinkResolverOpts = {
 		sourceMd: 'docs/cli.md',
-		// `cli.md` cross-references like `#akua-render` were anchors
+		// `cli.md` cross-references like `#akuapkg-render` were anchors
 		// inside the monolithic doc; on the per-verb-page layout each
 		// verb is its own page, so they need to retarget.
 		anchorResolve: (anchor) => {
-			const m = anchor.match(/^akua-(\S+?)(?:-.*)?$/);
+			const m = anchor.match(/^akuapkg-(\S+?)(?:-.*)?$/);
 			if (m && allVerbs.has(m[1])) return `/cli/${m[1]}`;
 			return null;
 		},
 	};
 	const inner = `
 <header>
-  <p class="crumbs"><a href="/">akua</a> / <a href="/cli/">cli</a> / ${escape(verb.name)}</p>
-  <h1>akua ${escape(verb.name)}</h1>
+  <p class="crumbs"><a href="/">akuapkg</a> / <a href="/cli/">cli</a> / ${escape(verb.name)}</p>
+  <h1>akuapkg ${escape(verb.name)}</h1>
 </header>
 <p class="section-tag">${status}</p>
 ${renderMarkdown(verb.body, linkOpts)}
 `;
 	return pageShell({
-		title: `akua ${verb.name}`,
+		title: `akuapkg ${verb.name}`,
 		description: verb.tagline,
 		body: inner,
 		currentSection: '/cli/',
@@ -133,7 +133,7 @@ function renderIndexPage(intro: string, verbs: Verb[], sidebar: SidebarSpec): st
 		const li = vs
 			.map(
 				(v) => `<li>
-  <a class="name" href="/cli/${escape(v.name)}">akua ${escape(v.name)}</a>
+				<a class="name" href="/cli/${escape(v.name)}">akuapkg ${escape(v.name)}</a>
   <div class="summary">${escape(v.tagline)}</div>
 </li>`,
 			)
@@ -143,7 +143,7 @@ function renderIndexPage(intro: string, verbs: Verb[], sidebar: SidebarSpec): st
 
 	const inner = `
 <header>
-  <p class="crumbs"><a href="/">akua</a> / cli</p>
+  <p class="crumbs"><a href="/">akuapkg</a> / cli</p>
   <h1>CLI reference</h1>
   <p class="tagline">Every <code>akua</code> verb. Shipped verbs are wired and tested; planned verbs have a stable surface but no backing implementation yet.</p>
 </header>

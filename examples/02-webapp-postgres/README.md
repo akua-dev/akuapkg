@@ -24,9 +24,9 @@ Two Helm charts composed into one Package. A webapp consumes a Postgres connecti
 ## Run
 
 ```sh
-akua add                                 # resolve cnpg + webapp charts
-akua render --inputs inputs.yaml         # render both into ./rendered/
-akua test                                # run test_package.k
+akuapkg add                                 # resolve cnpg + webapp charts
+akuapkg render --inputs inputs.yaml         # render both into ./rendered/
+akuapkg test                                # run test_package.k
 ```
 
 ## The cross-source convention pattern

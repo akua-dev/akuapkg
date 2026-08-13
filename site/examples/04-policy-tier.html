@@ -303,7 +303,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 </header>
 <p>A workspace policy gate. Shows the policy stack end-to-end:</p>
 <ul><li>Authoring a Rego policy on top of an imported signed tier</li><li>Bringing in Kyverno rules via compile-resolved import (not runtime string lookup)</li><li>Running <code>akua policy check</code> against passing + failing fixtures</li><li>A <code>*_test.rego</code> file showing the test shape</li></ul>
-<p>This is the smallest example that exercises every part of the policy architecture described in <a href="https://github.com/cnap-tech/akua/blob/main/docs/policy-format.md">policy-format.md</a>.</p>
+<p>This is the smallest example that exercises every part of the policy architecture described in <a href="https://github.com/akua-dev/akua/blob/main/docs/policy-format.md">policy-format.md</a>.</p>
 <p>akua does <strong>not</strong> ship a <code>PolicySet</code> kind. Composition happens as plain Rego file layout: local <code>.rego</code> files import tiers as compile-resolved <code>data.*</code> via <code>akua.toml</code>. The workspace's policy layout is the workspace's concern.</p>
 <h2 id="layout">Layout</h2>
 <pre><code>04-policy-tier/
@@ -321,7 +321,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <pre><code class="lang-toml">[dependencies]
 tier-prod = { oci = &quot;oci://policies.akua.dev/tier/production&quot;, version = &quot;1.2.0&quot; }
 kyv-sec   = { oci = &quot;oci://policies.akua.dev/kyverno/security&quot;, version = &quot;2.0.0&quot; }</code></pre>
-<p>Both deps are signed OCI artifacts. The first is akua's reference <code>tier/production</code> Rego bundle; the second is a Kyverno bundle that akua converts to Rego at <code>akua add</code> time (stored under <code>.akua/policies/vendor/</code>). The <code>akua.lock</code> ledger records the resolved digest and cosign signature for each.</p>
+<p>Both deps are signed OCI artifacts. The first is akua's reference <code>tier/production</code> Rego bundle; the second is a Kyverno bundle that akua converts to Rego at <code>akuapkg add</code> time (stored under <code>.akua/policies/vendor/</code>). The <code>akua.lock</code> ledger records the resolved digest and cosign signature for each.</p>
 <p>No runtime lookups. Every import resolves at build time.</p>
 <h3 id="2-local-rules--policiesproductionrego">2. Local rules — <code>policies/production.rego</code></h3>
 <p>Inherits rules from the two imports and adds a cross-resource aggregation rule specific to this workspace (per-env CPU budget, team-label requirement).</p>
@@ -329,7 +329,7 @@ kyv-sec   = { oci = &quot;oci://policies.akua.dev/kyverno/security&quot;, versio
 <p>There is no <code>PolicySet</code> resource to declare. <code>akua policy check --tier=./policies</code> evaluates the Rego package under <code>./policies/</code> with the imports resolved from <code>akua.toml</code>. If you want to compose multiple local policy packages, lay them out under <code>./policies/&lt;name&gt;/</code> — Rego's own <code>import</code> + rule-merging is the composition mechanism.</p>
 <h2 id="running-it">Running it</h2>
 <pre><code class="lang-sh"># 1. Resolve deps + write akua.lock
-akua add
+akuapkg add
 
 # 2. Evaluate the tier against a passing fixture → verdict: allow
 akua policy check --tier=./policies --input=fixtures/good.yaml
@@ -338,7 +338,7 @@ akua policy check --tier=./policies --input=fixtures/good.yaml
 akua policy check --tier=./policies --input=fixtures/bad.yaml
 
 # 4. Run the test file
-akua test policies/</code></pre>
+akuapkg test policies/</code></pre>
 <p>Exit codes from <code>akua policy check</code>:</p>
 <ul><li><code>0</code> — allow</li><li><code>3</code> — policy deny (the verdict was <code>deny</code>; rule violations printed to stdout as JSON when <code>--json</code> is passed)</li><li><code>5</code> — needs-approval (the verdict was <code>needs-approval</code>; human review required before the change proceeds)</li></ul>
 <h2 id="the-shape-of-a-deny-response">The shape of a deny response</h2>
@@ -357,16 +357,16 @@ akua test policies/</code></pre>
 }</code></pre>
 <p>Line + field precision. Agent-parseable. No stderr surprises.</p>
 <h2 id="see-also">See also</h2>
-<ul><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/policy-format.md">policy-format.md</a> — canonical Rego spec</li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/lockfile-format.md">lockfile-format.md</a> — how <code>akua.toml</code> + <code>akua.lock</code> work</li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/cli.md">cli.md <code>policy check</code></a> — verb reference</li></ul>
+<ul><li><a href="https://github.com/akua-dev/akua/blob/main/docs/policy-format.md">policy-format.md</a> — canonical Rego spec</li><li><a href="https://github.com/akua-dev/akua/blob/main/docs/lockfile-format.md">lockfile-format.md</a> — how <code>akua.toml</code> + <code>akua.lock</code> work</li><li><a href="https://github.com/akua-dev/akua/blob/main/docs/cli.md">cli.md <code>policy check</code></a> — verb reference</li></ul>
 
 
 <p style="margin-top: 32px; color: var(--muted); font-size: 14px;">
-  Source: <a href="https://github.com/cnap-tech/akua/tree/main/examples/04-policy-tier">examples/04-policy-tier/</a>
+  Source: <a href="https://github.com/akua-dev/akua/tree/main/examples/04-policy-tier">examples/04-policy-tier/</a>
 </p>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/cnap-tech/akua">github.com/cnap-tech/akua</a> ·
+  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
   Apache-2.0
 </footer>
 </main>

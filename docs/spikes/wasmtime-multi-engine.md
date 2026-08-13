@@ -11,7 +11,7 @@ The alternative: one `Engine`, one `Linker`, many `Store`s — the render worker
 ## Method
 
 1. Delegated a research pass against wasmtime's docs + source + test suite + GitHub discussions.
-2. Wrote a verification test (`crates/akua-cli/tests/sandbox_nested_wasmtime.rs`) exercising helm `render_dir` through the plugin bridge end-to-end.
+2. Wrote a verification test (`crates/akuapkg-cli/tests/sandbox_nested_wasmtime.rs`) exercising helm `render_dir` through the plugin bridge end-to-end.
 
 ## Findings
 
@@ -51,8 +51,8 @@ Without changes, the research-flagged failure mode fired:
 
 - New `engine_host_wasm::shared_config()` + `shared_engine()` (OnceLock singleton). One Config: `wasm_exceptions` + `epoch_interruption` (no fuel — would force every engine Store to `set_fuel` before every call).
 - `engine_host_wasm::Session::init` uses `shared_engine()` instead of constructing a fresh Engine.
-- `akua_cli::render_worker::RenderHost` holds `&'static Engine` borrow into `shared_engine()`.
-- `akua-cli`'s `build.rs` routes through `shared_config()` so the AOT `.cwasm` matches the runtime Config hash automatically.
+- `akuapkg_cli::render_worker::RenderHost` holds `&'static Engine` borrow into `shared_engine()`.
+- `akuapkg-cli`'s `build.rs` routes through `shared_config()` so the AOT `.cwasm` matches the runtime Config hash automatically.
 - Every engine-plugin Store opts out of the epoch ticker via `set_epoch_deadline(u64::MAX)` — the host-Rust caller above them owns whole-call timeouts.
 
 End-to-end verification test (`helm_template_through_plugin_bridge_across_engines`):
@@ -85,5 +85,5 @@ Today, sharing an Engine means all plugins trust the same Cranelift settings, th
 ## Artefacts
 
 - [crates/engine-host-wasm/src/lib.rs](../../crates/engine-host-wasm/src/lib.rs): `shared_config`, `shared_engine`, the `epoch_deadline = u64::MAX` fix.
-- [crates/akua-cli/src/render_worker.rs](../../crates/akua-cli/src/render_worker.rs): `RenderHost` + plugin bridge.
-- [crates/akua-cli/tests/sandbox_nested_wasmtime.rs](../../crates/akua-cli/tests/sandbox_nested_wasmtime.rs): the verification test. `#[ignore]` by default; run with `cargo test -p akua-cli --test sandbox_nested_wasmtime -- --include-ignored`.
+- [crates/akuapkg-cli/src/render_worker.rs](../../crates/akuapkg-cli/src/render_worker.rs): `RenderHost` + plugin bridge.
+- [crates/akuapkg-cli/tests/sandbox_nested_wasmtime.rs](../../crates/akuapkg-cli/tests/sandbox_nested_wasmtime.rs): the verification test. `#[ignore]` by default; run with `cargo test -p akuapkg-cli --test sandbox_nested_wasmtime -- --include-ignored`.

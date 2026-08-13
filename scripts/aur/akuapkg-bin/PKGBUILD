@@ -1,0 +1,44 @@
+# Maintainer: CNAP Tech <hello@cnap.tech>
+#
+# PKGBUILD for the akuapkg-bin AUR package — thin wrapper around the
+# prebuilt x86_64-unknown-linux-gnu tarball shipped from our GitHub
+# Release. No building from source on the user's machine; `makepkg`
+# just extracts + installs.
+#
+# Submit by (from a checkout of ssh://aur@aur.archlinux.org/akuapkg-bin.git):
+#   cp /path/to/PKGBUILD ./
+#   makepkg --printsrcinfo > .SRCINFO
+#   git add PKGBUILD .SRCINFO && git commit -m "akuapkg-bin <VERSION>"
+#   git push
+#
+# AUR version bumps are manual. Automation would require a dedicated
+# AUR-push lane and maintainer SSH key; the Akua core release does not
+# update external package-manager repositories.
+
+pkgname=akuapkg-bin
+_pkgname=akuapkg
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Cloud-native package build, transform, and preview toolkit"
+arch=('x86_64' 'aarch64')
+url="https://github.com/akua-dev/akua"
+license=('Apache-2.0')
+provides=('akuapkg')
+conflicts=('akuapkg')
+
+# Per-arch sources — each tag publishes both amd64 and arm64 tarballs.
+source_x86_64=("https://github.com/akua-dev/akua/releases/download/v${pkgver}/${_pkgname}-v${pkgver}-x86_64-unknown-linux-gnu.tar.gz")
+source_aarch64=("https://github.com/akua-dev/akua/releases/download/v${pkgver}/${_pkgname}-v${pkgver}-aarch64-unknown-linux-gnu.tar.gz")
+
+# SHA256 checksums — bump alongside pkgver. The release workflow
+# writes each tarball's sha256 next to it as `<file>.tar.gz.sha256`;
+# grab from there at bump time.
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
+
+package() {
+    install -Dm755 "${srcdir}/akuapkg" "${pkgdir}/usr/bin/akuapkg"
+    install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+    install -Dm644 "${srcdir}/README.md" "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+    install -Dm644 "${srcdir}/SECURITY.md" "${pkgdir}/usr/share/doc/${pkgname}/SECURITY.md"
+}

@@ -27,7 +27,7 @@ budget.
 ### Topology
 
 - The outer render runs inside `RenderHost::shared().invoke_with_deps`
-  (`crates/akua-cli/src/render_worker.rs`) which builds a fresh
+  (`crates/akuapkg-cli/src/render_worker.rs`) which builds a fresh
   `Store<HostState>`, instantiates the AOT-compiled worker, and pipes
   a JSON request through WASI stdin.
 - KCL plugin calls bridge back to the host via

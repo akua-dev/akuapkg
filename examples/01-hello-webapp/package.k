@@ -4,7 +4,7 @@
 # inputs, raw-manifest output.
 #
 # Render:
-#   akua render --inputs inputs.yaml      # render to ./rendered by default
+#   akuapkg render --inputs inputs.yaml      # render to ./rendered by default
 
 import akua.ctx
 import charts.nginx as nginx    # Phase 2a: resolved from akua.toml

@@ -114,11 +114,11 @@ Commit + PR. CI runs `akua policy check` on the PR against the rendered output; 
 
 ### 6. Monitor ongoing policy checks
 
-Once the tier is assigned, every `akua deploy` and `akua dev` session checks against it:
+Once the tier is assigned, every `akua deploy` and `akuapkg dev` session checks against it:
 
 ```sh
 akua deploy --to=argo               # policy check runs automatically
-akua dev --policy=tier/production   # live re-check in the dev loop
+akuapkg dev --policy=tier/production   # live re-check in the dev loop
 ```
 
 ## Compliance tiers (SOC2, HIPAA, FedRAMP)

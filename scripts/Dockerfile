@@ -1,4 +1,4 @@
-# Minimal akua container — just the static-ish CLI binary, no helm/kubectl.
+# Minimal Akuapkg container — just the static-ish CLI binary, no helm/kubectl.
 # Consumers layer their own tooling on top (kubectl, helm, argocd CLI, etc).
 # Multi-arch: amd64 + arm64. Build context contains per-arch subdirs
 # populated by cli-release.yml; `$TARGETARCH` picks the right one.
@@ -12,6 +12,6 @@ ARG TARGETARCH
 # The binary was stripped at build time (ci-release profile), so a
 # distroless runtime is enough. CC variant (not `static`) because
 # our rustls build dynamically links libc's unwinder on linux-gnu.
-COPY --chmod=0755 ${TARGETARCH}/akua /usr/local/bin/akua
+COPY --chmod=0755 ${TARGETARCH}/akuapkg /usr/local/bin/akuapkg
 
-ENTRYPOINT ["/usr/local/bin/akua"]
+ENTRYPOINT ["/usr/local/bin/akuapkg"]

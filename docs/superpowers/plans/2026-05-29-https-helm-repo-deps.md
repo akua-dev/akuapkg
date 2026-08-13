@@ -22,7 +22,7 @@
 | `crates/akua-core/src/chart_resolver.rs` | Per-source resolution → `ResolvedChart` + lockfile fields | Modify: `ResolvedSource::Helm`, `resolve_helm`, `VendorKind::Helm` |
 | `crates/akua-core/Cargo.toml` | deps + feature flag | Modify: add `semver`, `helm-fetch` feature |
 | `crates/akua-core/src/lib.rs` | module registration | Modify: `mod helm_repo_fetcher;` |
-| `crates/akua-cli/src/verbs/add.rs` | `akua add` helm form | Modify (Task 8) |
+| `crates/akuapkg-cli/src/verbs/add.rs` | `akuapkg add` helm form | Modify (Task 8) |
 | `crates/akua-napi/src/lib.rs`, `packages/sdk/src/mod.ts` | SDK surface | Modify (Task 8) |
 | `docs/lockfile-format.md`, `docs/package-format.md`, `docs/cli.md` | docs | Modify (Task 9) |
 
@@ -396,7 +396,7 @@ pub enum HelmRepoFetchError {
     Http { url: String, detail: String },
     #[error("digest mismatch for `{chart}`: expected {expected}, got {actual}")]
     DigestMismatch { chart: String, expected: String, actual: String },
-    #[error("offline and `{chart}` is not in the cache — run `akua add` online first")]
+    #[error("offline and `{chart}` is not in the cache — run `akuapkg add` online first")]
     OfflineCacheMiss { chart: String },
     #[error("io error at {path}: {source}")]
     Io { path: std::path::PathBuf, #[source] source: std::io::Error },
@@ -964,13 +964,13 @@ fn resolve_helm(
         let digest = expected.ok_or_else(|| ChartResolveError::UnsupportedSource {
             name: name.to_string(),
             kind: DependencySource::Helm,
-            reason: "offline mode needs a lockfile-pinned digest — run `akua add` first",
+            reason: "offline mode needs a lockfile-pinned digest — run `akuapkg add` first",
         })?;
         crate::helm_repo_fetcher::fetch_from_cache(&cache_root, digest).ok_or_else(|| {
             ChartResolveError::UnsupportedSource {
                 name: name.to_string(),
                 kind: DependencySource::Helm,
-                reason: "offline and chart not cached — run `akua add` online first",
+                reason: "offline and chart not cached — run `akuapkg add` online first",
             }
         })?
     } else {
@@ -1087,16 +1087,16 @@ git commit -m "test(lockfile): helm-repo source round-trip"
 
 ---
 
-## Task 10: CLI `akua add` + SDK surface
+## Task 10: CLI `akuapkg add` + SDK surface
 
 **Files:**
-- Modify: `crates/akua-cli/src/verbs/add.rs`
-- Modify: `crates/akua-cli/src/main.rs` (clap flags)
+- Modify: `crates/akuapkg-cli/src/verbs/add.rs`
+- Modify: `crates/akuapkg-cli/src/main.rs` (clap flags)
 - Modify: `crates/akua-napi/src/lib.rs`, `packages/sdk/src/mod.ts`
 
 - [ ] **Step 1: Inspect the existing `add` flag wiring**
 
-Read `crates/akua-cli/src/verbs/add.rs` and the `Add` clap struct in `main.rs`. Note how `--oci`/`--git`/`--path`/`--version`/`--tag`/`--rev` map onto a `Dependency`.
+Read `crates/akuapkg-cli/src/verbs/add.rs` and the `Add` clap struct in `main.rs`. Note how `--oci`/`--git`/`--path`/`--version`/`--tag`/`--rev` map onto a `Dependency`.
 
 - [ ] **Step 2: Write the failing CLI test**
 
@@ -1113,16 +1113,16 @@ Fill the body by copying the OCI add test and swapping the asserted fields to `r
 
 - [ ] **Step 3: Run, verify fails**
 
-Run: `cargo test -p akua-cli adds_helm_repo_dep`
+Run: `cargo test -p akuapkg-cli adds_helm_repo_dep`
 Expected: FAIL/compile error — no `--repo`/`--chart` flags.
 
 - [ ] **Step 4: Add `--repo` + `--chart` clap flags and map them**
 
-Add `repo: Option<String>` and `chart: Option<String>` to the `Add` args struct; in `add::run`, when `repo` is set, build a `Dependency { repo, chart, version, ..Default }` and run `akua lock` resolution to pin the digest (reuse the existing post-add lock path the OCI form uses).
+Add `repo: Option<String>` and `chart: Option<String>` to the `Add` args struct; in `add::run`, when `repo` is set, build a `Dependency { repo, chart, version, ..Default }` and run `akuapkg lock` resolution to pin the digest (reuse the existing post-add lock path the OCI form uses).
 
 - [ ] **Step 5: Run, verify pass**
 
-Run: `cargo test -p akua-cli adds_helm_repo_dep`
+Run: `cargo test -p akuapkg-cli adds_helm_repo_dep`
 Expected: PASS.
 
 - [ ] **Step 6: Mirror in napi + SDK**
@@ -1132,8 +1132,8 @@ Add `repo?`/`chart?` to the napi `add` shim and `Akua.add()` options in `package
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/akua-cli crates/akua-napi packages/sdk
-git commit -m "feat(add): akua add --repo --chart helm-repo form + SDK"
+git add crates/akuapkg-cli crates/akua-napi packages/sdk
+git commit -m "feat(add): akuapkg add --repo --chart helm-repo form + SDK"
 ```
 
 ---
@@ -1141,8 +1141,8 @@ git commit -m "feat(add): akua add --repo --chart helm-repo form + SDK"
 ## Task 11: Integration golden + end-to-end render
 
 **Files:**
-- Create: `crates/akua-cli/tests/fixtures/helm-repo/` (a fixture repo: `index.yaml` + a small `.tgz`)
-- Create: `crates/akua-cli/tests/examples_helm_repo.rs`
+- Create: `crates/akuapkg-cli/tests/fixtures/helm-repo/` (a fixture repo: `index.yaml` + a small `.tgz`)
+- Create: `crates/akuapkg-cli/tests/examples_helm_repo.rs`
 
 - [ ] **Step 1: Build a fixture helm repo**
 
@@ -1154,17 +1154,17 @@ A Package with `[dependencies.demo] repo/chart/version`, an `akua.lock` pinning 
 
 - [ ] **Step 3: Run**
 
-Run: `cargo test -p akua-cli --features helm-fetch,oci-fetch examples_helm_repo`
+Run: `cargo test -p akuapkg-cli --features helm-fetch,oci-fetch examples_helm_repo`
 Expected: PASS, deterministic.
 
 - [ ] **Step 4: Real-world smoke (manual, documented in the test file as a comment)**
 
-Build the binary (`task build:render-worker && task release:local`), point a throwaway Package at temporal's real repo (`repo = "https://go.temporal.io/helm-charts"`, `chart = "temporal"`, `version = ">=0.60,<0.63"`), `akua add` then `akua render`, confirm 55 manifests and a populated `akua.lock`. Delete the throwaway. (Not a CI test — network-dependent.)
+Build the binary (`task build:render-worker && task release:local`), point a throwaway Package at temporal's real repo (`repo = "https://go.temporal.io/helm-charts"`, `chart = "temporal"`, `version = ">=0.60,<0.63"`), `akuapkg add` then `akuapkg render`, confirm 55 manifests and a populated `akua.lock`. Delete the throwaway. (Not a CI test — network-dependent.)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/akua-cli/tests
+git add crates/akuapkg-cli/tests
 git commit -m "test(helm-repo): integration golden for repo-sourced chart render"
 ```
 
@@ -1177,7 +1177,7 @@ git commit -m "test(helm-repo): integration golden for repo-sourced chart render
 
 - [ ] **Step 1: Document the `repo`/`chart` source**
 
-In `docs/package-format.md` and `docs/cli.md`, add `repo` + `chart` to the dependency-source table with the temporal example. In `docs/lockfile-format.md`, document the `helm+<url>#<chart>` source ref + `sha256:` digest. Add an `akua add --repo` example to the `add` section.
+In `docs/package-format.md` and `docs/cli.md`, add `repo` + `chart` to the dependency-source table with the temporal example. In `docs/lockfile-format.md`, document the `helm+<url>#<chart>` source ref + `sha256:` digest. Add an `akuapkg add --repo` example to the `add` section.
 
 - [ ] **Step 2: CHANGELOG entry**
 
@@ -1215,7 +1215,7 @@ git commit -m "docs(helm-repo): document repo/chart dependency source"
 - Semver ranges → Task 5. ✓
 - Docs → Task 12. ✓
 
-**Placeholder scan:** Tasks 10–11 leave two test bodies described rather than fully written (the `akua add` test and the integration fixture) because they must mirror existing CLI test scaffolding whose exact helpers aren't quoted here; each step names the existing test to copy and the exact fields to assert. All `akua-core` code steps contain complete code.
+**Placeholder scan:** Tasks 10–11 leave two test bodies described rather than fully written (the `akuapkg add` test and the integration fixture) because they must mirror existing CLI test scaffolding whose exact helpers aren't quoted here; each step names the existing test to copy and the exact fields to assert. All `akua-core` code steps contain complete code.
 
 **Type consistency:** `Fetched{root_dir,digest,version}`, `FetchOpts{expected_digest,auth}`, `HelmRepoFetchError`, `ResolvedSource::Helm{repo,chart,version,digest}`, `DependencySpec::Helm{repo,chart,version}`, and `select_version → (String,String)` are used consistently across Tasks 4–9. Accessor/field names that must be confirmed against existing code are flagged inline (`BasicAuth` fields, `resolve_path` signature, `ResolverOptions.host_auth`, `ResolvedChart` accessor).
 

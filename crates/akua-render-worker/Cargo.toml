@@ -1,13 +1,13 @@
 [package]
 name = "akua-render-worker"
-description = "Sandboxed render path — `akua render` target compiled to `wasm32-wasip1` and hosted inside the akua-cli wasmtime."
+description = "Sandboxed render path — `akua render` target compiled to `wasm32-wasip1` and hosted inside the akuapkg-cli wasmtime."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
-# Binary target — akua-cli instantiates this as a wasmtime module and
+# Binary target — akuapkg-cli instantiates this as a wasmtime module and
 # invokes `_start`. Native builds compile + run the same path for
 # quick local iteration; wasip1 builds produce the shipping artifact.
 [[bin]]

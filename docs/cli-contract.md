@@ -13,8 +13,8 @@ This document specifies the universal invariants every `akua` subcommand must sa
 Every verb accepts `--json` and emits a single, parseable JSON document (or JSON-lines stream for long-running commands) to stdout. No exceptions.
 
 ```sh
-akua render --json
-akua diff a b --json
+akuapkg render --json
+akuapkg diff a b --json
 akua deploy status --handle=r-4f2 --json
 ```
 
@@ -81,11 +81,11 @@ If any of these are set, the invocation is considered to be running in an **agen
 
 | invocation                                      | result                        |
 | ----------------------------------------------- | ----------------------------- |
-| `akua render --json` in a human shell           | JSON — flag wins              |
-| `akua render --no-json` in an agent context     | text — explicit opt-out wins  |
-| `akua render --format=text` in an agent context | text — explicit override wins |
-| `akua render` in a human shell                  | text — default                |
-| `akua render` in an agent context               | JSON — auto-detected          |
+| `akuapkg render --json` in a human shell           | JSON — flag wins              |
+| `akuapkg render --no-json` in an agent context     | text — explicit opt-out wins  |
+| `akuapkg render --format=text` in an agent context | text — explicit override wins |
+| `akuapkg render` in a human shell                  | text — default                |
+| `akuapkg render` in an agent context               | JSON — auto-detected          |
 
 
 **No signal, by design.**
@@ -94,7 +94,7 @@ When detection activates, akua adapts behavior silently. No banner. No stderr an
 
 Detection is introspectable when needed:
 
-- `akua whoami --json` includes an `agent_context` field with the detected agent name and source env var.
+- `akuapkg whoami --json` includes an `agent_context` field with the detected agent name and source env var.
 - `--log-level=debug` emits a single `agent_context_detected` event in debug logs — useful for post-hoc diagnosis, silent in normal operation.
 
 Otherwise: invisible by default, discoverable on demand. That's the discipline.
@@ -141,7 +141,7 @@ Any other exit code is a bug. Agents branch on these codes.
 Every verb that modifies state accepts `--idempotency-key=<uuid>`. If the same key is seen twice on the same resource with the same intent, the second call is a no-op and returns the original result.
 
 - `akua deploy --idempotency-key=<k>` — safe to retry
-- `akua publish --idempotency-key=<k>` — duplicate publish returns the original digest
+- `akuapkg publish --idempotency-key=<k>` — duplicate publish returns the original digest
 - `akua secret rotate --idempotency-key=<k>` — rotating with the same key is idempotent
 
 Agents generate fresh UUIDs per logical operation and retry on network errors without risk.
@@ -171,7 +171,7 @@ Every verb that blocks on network or reconciliation accepts `--timeout=<duration
 - Timeouts exit with code 6.
 - Invalid duration strings (`5min`, `2 hours`, raw integers) fail at parse time with `code=E_INVALID_FLAG`. Accepted units: `ns`, `us` / `µs`, `ms`, `s`, `m`, `h`.
 
-`akua render` additionally honors `--max-depth=<N>` to cap the `pkg.render` composition chain (default 16). Hitting the cap fails with `E_RENDER_BUDGET_DEPTH`. Pair with `--timeout` for hardened CI / agent runs.
+`akuapkg render` additionally honors `--max-depth=<N>` to cap the `pkg.render` composition chain (default 16). Hitting the cap fails with `E_RENDER_BUDGET_DEPTH`. Pair with `--timeout` for hardened CI / agent runs.
 
 Async operations (`deploy`, `rollout`, long-running renders) return an opaque handle immediately; use `akua … wait --handle=<h>` to block.
 
@@ -215,7 +215,7 @@ Same data as `akua help --json` filtered to one verb. Useful for targeted intros
 
 - `akua login <registry>` authenticates to an OCI registry. Credentials are stored in the system credential store (Keychain on macOS, libsecret on Linux, Credential Manager on Windows).
 - No plaintext credentials in config files.
-- `akua whoami` returns the current identity, scopes, and registry logins.
+- `akuapkg whoami` returns the current identity, scopes, and registry logins.
 - Tokens can be scoped per-registry; agents receive per-task scoped tokens that expire automatically.
 
 ---
@@ -314,7 +314,7 @@ When `verdict=needs-approval`, the verb exits with code 5 and does not write; it
 
 Every PR adding a verb or flag is reviewed against this contract. The CI lint step includes:
 
-- `akua lint-cli` — checks every verb emits `--json`, has typed exit codes, accepts `--timeout`, passes `--describe --json` round-trip.
+- `akuapkg lint-cli` — checks every verb emits `--json`, has typed exit codes, accepts `--timeout`, passes `--describe --json` round-trip.
 - Contract violations block merge.
 - Contract amendments require RFC.
 

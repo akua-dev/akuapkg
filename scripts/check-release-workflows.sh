@@ -169,7 +169,7 @@ assert_before ".github/workflows/release.yml" \
 for workflow in .github/workflows/*.yml; do
 	assert_file_excludes "$workflow" "cnap-tech"
 done
-assert_file_contains ".github/workflows/release.yml" "ghcr.io/akua-dev/akua:\${tag}"
+assert_file_contains ".github/workflows/release.yml" "ghcr.io/akua-dev/akuapkg:\${tag}"
 assert_file_excludes_pattern ".github/workflows/release.yml" 'gh[[:space:]]+release[[:space:]]+upload'
 assert_file_excludes ".github/workflows/release.yml" "--clobber"
 assert_file_excludes ".github/workflows/release-publish.yml" "gh release download"

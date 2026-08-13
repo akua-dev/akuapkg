@@ -24,7 +24,7 @@ sub-package implementation.
 ## Render
 
 ```sh
-akua render --out ./rendered
+akuapkg render --out ./rendered
 ```
 
 The interesting part is the import boundary: root package inputs remain

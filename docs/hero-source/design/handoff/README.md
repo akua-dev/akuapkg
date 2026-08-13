@@ -65,7 +65,7 @@ scene. Supporting type stays ≥28px so it survives thumbnail rendering.
 
 --typed     #b794f4    violet — Scene 1 pip 1, Scene 5 KCL, Scene 6 word 1
 --signed    #5fd9a3    mint   — caret, OK ticks, Scene 5 OCI, Scene 6 word 2
---sandbox   #f0a85a    amber  — Scene 5 akua render, Scene 6 word 3
+--sandbox   #f0a85a    amber  — Scene 5 akuapkg render, Scene 6 word 3
 --friction  #e87a5c    coral  — the big "9" on Scene 2 (the old way)
 ```
 
@@ -131,8 +131,8 @@ designed around that:
 
 If you want a beat-by-beat caption overlay, hold one line per ~1.2s as
 each command finishes:
-- `$ akua add nginx@18.2.0` → "typed schema generated at fetch"
-- `$ akua lock` → "every dep pinned, every signature verified"
+- `$ akuapkg add nginx@18.2.0` → "typed schema generated at fetch"
+- `$ akuapkg lock` → "every dep pinned, every signature verified"
 - end → "no shell-out, no $PATH, no ambient filesystem"
 
 ### 05 — Compiled GitOps `~4.0s`
@@ -141,7 +141,7 @@ each command finishes:
 - Headline types in. The second clause `render at CI, apply at the cluster.`
   is muted ink — visually the sub-headline.
 - Five-stage flow builds L→R. Each step name uses the accent color of the
-  *thing it produces* (KCL=typed/violet, akua render=sandbox/amber,
+  *thing it produces* (KCL=typed/violet, akuapkg render=sandbox/amber,
   signed OCI=signed/mint, PR diff & cluster stay cream — they're outcomes
   of the prior stages, not new properties).
 - Each `→` arrow draws in between steps as the next step lands.
@@ -208,7 +208,7 @@ once you have the recording.
 ## Things to flag back
 
 - Scene 4 terminal lines are plausible-but-invented. Verify against
-  real `akua add / akua lock` output before final cut. Particularly:
+  real `akuapkg add / akuapkg lock` output before final cut. Particularly:
   - the `rekor#48291103` log index format
   - `nginx.Values · 148 fields` truncation
   - `sha256:c9a4…d3f1` hash truncation length

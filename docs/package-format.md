@@ -34,11 +34,11 @@ _app = helm.template(helm.Template { chart = webapp.Chart, values = ... })
 resources = _pg + _app
 ```
 
-That's it. `akua render` writes `resources` as raw YAML files under
+That's it. `akuapkg render` writes `resources` as raw YAML files under
 `--out`. Other distribution shapes (Helm charts, OCI bundles, kro RGDs)
 come from either (a) **transformation** functions invoked in the body
 that produce more K8s resources (`kro.rgd(...)`, `crossplane.composition(...)`),
-or (b) future `akua publish --as <format>` at distribution time. The
+or (b) future `akuapkg publish --as <format>` at distribution time. The
 Package itself never pre-commits to an emit format — `resources` is
 the single canonical thing it produces.
 
@@ -51,7 +51,7 @@ An import brings one of four things into scope:
 | import form | purpose | pinned by |
 |---|---|---|
 | `import akua.<engine>` | a source-engine callable (`helm`, `rgd`, `kustomize`, `oci`) | the akua CLI version |
-| `import charts.<name>` | a typed Helm chart dep previously added via `akua add` (synthetic wrapper that exposes the chart path + a pre-bound `template` callable) | `akua.toml` |
+| `import charts.<name>` | a typed Helm chart dep previously added via `akuapkg add` (synthetic wrapper that exposes the chart path + a pre-bound `template` callable) | `akua.toml` |
 | `import pkgs.<name>` | a typed Akua-package dep (synthetic stub re-exporting the upstream's schemas + a pre-bound `render` lambda — `pkgs.<name>.render(pkgs.<name>.Input{...})`) | `akua.toml` |
 | `import <name>` | an upstream KCL ecosystem package (e.g. `import k8s.api.apps.v1` against `oci://ghcr.io/kcl-lang/k8s`) | `akua.toml` |
 | `import <local/path>` | a local KCL module within this package | the filesystem |
@@ -67,10 +67,10 @@ Helm-chart deps and KCL-package deps both land in `[dependencies]`; akua tells t
 | Path | `{ path = "../shared" }` | workspace-local, dev-only |
 | Helm repo | `{ repo = "https://go.temporal.io/helm-charts", chart = "temporal", version = "0.62.0" }` | classic HTTPS Helm repository |
 
-Helm-repo deps resolve against the repo's `index.yaml` at `akua add` / lock time, content-pinned by `.tgz` sha256 in `akua.lock`, and rendered deterministically offline. Add one with:
+Helm-repo deps resolve against the repo's `index.yaml` at `akuapkg add` / lock time, content-pinned by `.tgz` sha256 in `akua.lock`, and rendered deterministically offline. Add one with:
 
 ```sh
-akua add temporal --repo https://go.temporal.io/helm-charts --chart temporal --version 0.62.0
+akuapkg add temporal --repo https://go.temporal.io/helm-charts --chart temporal --version 0.62.0
 ```
 
 **For Helm charts and Akua-package deps, use the alias method on the import** — the synthesized stub owns the engine call so the consumer just states the typed args:
@@ -118,7 +118,7 @@ Rules:
 - Fields use KCL's native type syntax: `str`, `int`, `float`, `bool`, `[T]`, `{str: T}`, unions (`"a" | "b" | "c"`), nested schemas.
 - Fields without defaults are required. Fields with defaults are optional.
 - Use KCL docstrings for field documentation — `akua` tooling surfaces them in autocomplete and generated docs.
-- `check:` blocks can express cross-field constraints; they run during `akua render`.
+- `check:` blocks can express cross-field constraints; they run during `akuapkg render`.
 - No runtime side effects (no env lookups, no filesystem, no network). KCL's sandbox enforces this.
 
 Example with all shapes:
@@ -162,7 +162,7 @@ schema HostInput:
 
 ### UI hints (optional) ✅
 
-When a Package is consumed through a UI (merchant install form, Package Studio, generated Swagger form), renderers benefit from hints about field ordering, labels, placeholders, grouping. akua reads UI hints from two sources, both projected into the JSON Schema / OpenAPI output of [`akua export`](cli.md#akua-export).
+When a Package is consumed through a UI (merchant install form, Package Studio, generated Swagger form), renderers benefit from hints about field ordering, labels, placeholders, grouping. akua reads UI hints from two sources, both projected into the JSON Schema / OpenAPI output of [`akuapkg export`](cli.md#akuapkg-export).
 
 **KCL docstrings** — the field's `"""…"""` docstring becomes the schema property's `description`:
 
@@ -194,7 +194,7 @@ schema Input:
     replicas: int = 3
 ```
 
-`@ui(...)` is an akua-specific authoring hint, not a registered KCL decorator — `akua render` strips it before handing the source to KCL's resolver, while `akua export` extracts it from the parsed AST.
+`@ui(...)` is an akua-specific authoring hint, not a registered KCL decorator — `akuapkg render` strips it before handing the source to KCL's resolver, while `akuapkg export` extracts it from the parsed AST.
 
 ### Exporting a view vs rendering ✅
 
@@ -202,19 +202,19 @@ The canonical Package is KCL. akua ships two different verbs producing different
 
 | verb | purpose | needs inputs? | output |
 |---|---|---|---|
-| `akua export` | convert the Package's `Input` schema to a standard interchange format | no | JSON Schema 2020-12 or OpenAPI 3.1 |
-| `akua render` | execute the Package's full pipeline and produce deploy-ready Kubernetes manifests | yes | rendered YAML the reconciler applies |
+| `akuapkg export` | convert the Package's `Input` schema to a standard interchange format | no | JSON Schema 2020-12 or OpenAPI 3.1 |
+| `akuapkg render` | execute the Package's full pipeline and produce deploy-ready Kubernetes manifests | yes | rendered YAML the reconciler applies |
 
-For install UIs, API docs, rjsf / JSONForms, admission webhook schemas, and client SDK generators — `akua export` skips engine invocation and customer inputs:
+For install UIs, API docs, rjsf / JSONForms, admission webhook schemas, and client SDK generators — `akuapkg export` skips engine invocation and customer inputs:
 
 ```sh
-akua export --package package.k > inputs.schema.json              # JSON Schema 2020-12
-akua export --package package.k --format=openapi > package.openapi.json
+akuapkg export --package package.k > inputs.schema.json              # JSON Schema 2020-12
+akuapkg export --package package.k --format=openapi > package.openapi.json
 ```
 
-For actual deployment rendering — use `akua render` with customer inputs (covered in §9).
+For actual deployment rendering — use `akuapkg render` with customer inputs (covered in §9).
 
-`akua export` output is pure, spec-compliant JSON Schema 2020-12 / OpenAPI 3.1. Docstrings become `description`; `@ui(...)` decorators become `x-ui` metadata. Consumers that speak these standards — including every JSON Schema tool in the ecosystem — work unchanged.
+`akuapkg export` output is pure, spec-compliant JSON Schema 2020-12 / OpenAPI 3.1. Docstrings become `description`; `@ui(...)` decorators become `x-ui` metadata. Consumers that speak these standards — including every JSON Schema tool in the ecosystem — work unchanged.
 
 **No `x-user-input` or `x-input` markers.** Previous versions of akua layered custom extensions on JSON Schema to mark user-configurable fields and embed transforms. With KCL as the authoring substrate, both are redundant: the `Input` schema IS the customer-configurable contract by definition, and transforms live as KCL code in the package body. The eventual exported JSON Schema is standards-pure; UI renderers in the broader ecosystem don't need to learn akua-specific vocabulary.
 
@@ -285,7 +285,7 @@ KCL `check:` blocks evaluate at render time against each resource; failures surf
 
 ## 5. The render output
 
-`akua render --out ./deploy` writes every entry in `resources` as its
+`akuapkg render --out ./deploy` writes every entry in `resources` as its
 own YAML file in `./deploy/`. Filenames are deterministic
 (`<NNN>-<kind>-<name>.yaml`), ordered by resource-list position.
 
@@ -304,9 +304,9 @@ want a different shape use one of:
   `crossplane.composition(...)`, `kyverno.policy(...)` all fit this
   mould: they produce CRDs + composite resources that go into
   `resources` alongside everything else, and ship as plain YAML.
-- **Future distribution verbs** — `akua publish --as helm-chart`
+- **Future distribution verbs** — `akuapkg publish --as helm-chart`
   wraps rendered manifests into a Helm chart at distribution time;
-  `akua publish --as oci-bundle` signs and packages them. These are
+  `akuapkg publish --as oci-bundle` signs and packages them. These are
   distribution concerns, not render concerns — the Package's `resources`
   are the input, not a pre-declared output list.
 
@@ -332,7 +332,7 @@ metadata = {
     # Machine-readable keyword list for catalog discovery
     keywords: ["postgres", "webapp", "payments"]
 
-    # Minimum akua version required to render this package
+    # Minimum akuapkg version required to render this package
     requires: {
         akua:    ">=0.2.0"
         engines: { helm: ">=4.0", kcl: ">=0.12" }
@@ -360,7 +360,7 @@ Violation of any of these is a compile error with a clear message.
 
 ## 8. Rendering model
 
-`akua render`:
+`akuapkg render`:
 
 1. Parses `package.k` and type-checks the program.
 2. Loads `input` from inputs file (YAML or KCL). Validates against the `Input` schema.
@@ -405,7 +405,7 @@ See [examples/01-hello-webapp](../examples/01-hello-webapp/) for the fully runna
 
 ## 10. Testing Packages
 
-Packages ship with tests. The test runner is built into `akua test`; no separate framework required.
+Packages ship with tests. The test runner is built into `akuapkg test`; no separate framework required.
 
 ### Test file conventions
 
@@ -464,17 +464,17 @@ tests/
 ```
 
 ```sh
-akua test --golden              # regenerate goldens if they drifted intentionally
-akua test --golden=verify       # fail CI if goldens don't match (default in CI)
+akuapkg test --golden              # regenerate goldens if they drifted intentionally
+akuapkg test --golden=verify       # fail CI if goldens don't match (default in CI)
 ```
 
 ### Running
 
 ```sh
-akua test                       # runs everything, including Rego tests
-akua test --watch               # re-runs on file change (ideal for TDD)
-akua test --coverage            # report per-schema / per-source coverage
-akua test --filter=default      # only tests matching 'default'
+akuapkg test                       # runs everything, including Rego tests
+akuapkg test --watch               # re-runs on file change (ideal for TDD)
+akuapkg test --coverage            # report per-schema / per-source coverage
+akuapkg test --filter=default      # only tests matching 'default'
 ```
 
 Tests run via the embedded KCL engine (see [embedded-engines.md](embedded-engines.md)) — fast, sandboxed, deterministic.
@@ -492,7 +492,7 @@ Packages without tests ship with a lint warning; platform teams can enforce a po
 
 ## 11. Relationship to other docs
 
-- **[cli.md — `akua init` / `akua add` / `akua render` / `akua export` / `akua test` / `akua publish`](cli.md)** — the verbs that operate on packages. `render` runs the program; `export` converts the canonical form to a view.
+- **[cli.md — `akuapkg init` / `akuapkg add` / `akuapkg render` / `akuapkg export` / `akuapkg test` / `akuapkg publish`](cli.md)** — the verbs that operate on packages. `render` runs the program; `export` converts the canonical form to a view.
 - **[lockfile-format.md](lockfile-format.md)** — how `akua.toml` + `akua.lock` pin imports
 - **[policy-format.md](policy-format.md)** — how Rego policies evaluate against rendered resources (separate concern from `check:` blocks)
 - **[embedded-engines.md](embedded-engines.md)** — which engines run your tests

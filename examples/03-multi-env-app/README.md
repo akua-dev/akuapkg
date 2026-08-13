@@ -54,20 +54,20 @@ Same output. Pure KCL. No special akua flags, no akua-owned schema to obey.
 ## Render
 
 ```sh
-akua add                            # resolve deps → writes akua.lock
-akua render                         # renders every App document it finds
-akua render --filter=env=production # narrow to one env using a general filter
+akuapkg add                            # resolve deps → writes akua.lock
+akuapkg render                         # renders every App document it finds
+akuapkg render --filter=env=production # narrow to one env using a general filter
 ```
 
-There is no `--env` or `--all-envs` flag. `akua render` processes every document of a KCL-declared shape in the workspace. Filtering is a general-purpose concern expressed via `--filter` over any field, not an env-specific primitive.
+There is no `--env` or `--all-envs` flag. `akuapkg render` processes every document of a KCL-declared shape in the workspace. Filtering is a general-purpose concern expressed via `--filter` over any field, not an env-specific primitive.
 
 ## Deriving YAML views
 
 Reconcilers consume YAML. The `.k` files are authoritative; the YAML view is derived on demand:
 
 ```sh
-akua export apps/checkout/production.k --format=yaml > apps/checkout/production.yaml
-akua export environments/production.k  --format=yaml > environments/production.yaml
+akuapkg export apps/checkout/production.k --format=yaml > apps/checkout/production.yaml
+akuapkg export environments/production.k  --format=yaml > environments/production.yaml
 ```
 
 Check these YAML files in or don't — they regenerate deterministically. The **rule**: never hand-edit the YAML — edit the `.k` and re-export.
@@ -75,7 +75,7 @@ Check these YAML files in or don't — they regenerate deterministically. The **
 ## Flow for a change
 
 1. Edit `apps/checkout/production.k` (e.g. bump `replicas` from 5 to 7).
-2. CI runs `akua check && akua lint && akua test && akua render`.
+2. CI runs `akuapkg check && akuapkg lint && akuapkg test && akuapkg render`.
 3. `akua policy check --tier=tier/production` against the rendered manifests — returns `allow` / `deny` / `needs-approval`.
 4. If `needs-approval`: the review surface notifies approvers; human approves.
 5. PR merges; deploy repo gets updated YAML; Argo/Flux reconciles.
