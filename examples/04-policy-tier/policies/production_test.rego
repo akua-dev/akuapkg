@@ -1,6 +1,6 @@
 # production_test.rego — tests for the local rules in production.rego.
 #
-# Run with:  akua test policies/
+# Run with:  akuapkg test policies/
 #
 # File naming convention per cli.md: `*_test.rego`. Rules named `test_*` are
 # discovered and executed by the embedded OPA test runner.

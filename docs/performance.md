@@ -7,7 +7,7 @@
 
 Render-path benchmarks. Useful for:
 
-- Sanity-checking that akua's pipeline is fast enough for the signature experience (`akua dev` sub-100ms edit-to-render loops).
+- Sanity-checking that akua's pipeline is fast enough for the signature experience (`akuapkg dev` sub-100ms edit-to-render loops).
 - Understanding the cost of each engine callable (`helm.template`, `kustomize.build`, `pkg.render`) so Package authors can reason about their render budget.
 - Validating that the WASI WebAssembly target (for shipping-a-renderer / ArgoCD plugin use cases) is within an acceptable latency multiplier vs native.
 
@@ -80,7 +80,7 @@ Native only (WASI plugins are stubbed — benchmarking stubs is meaningless).
 
 ---
 
-## 3. End-to-end `akua render` CLI latency (embedded WASM engines)
+## 3. End-to-end `akuapkg render` CLI latency (embedded WASM engines)
 
 What it measures: full user-visible time — binary startup + arg parse + Package load + KCL eval + any plugin work + WASM engine instantiation + render. Measured via [`hyperfine`](https://github.com/sharkdp/hyperfine) with 3 warmup runs and ≥10 timed runs, `--dry-run` so filesystem writes don't vary the sample.
 
@@ -116,7 +116,7 @@ exactly once.
 
 Next wins along this axis (not shipped):
 
-- **Persistent Engine across invocations in `akua dev` / `akua serve`** — single long-lived process. Today each `akua render` is a fresh process and pays the init once. A long-lived process pays it once total.
+- **Persistent Engine across invocations in `akuapkg dev` / `akua serve`** — single long-lived process. Today each `akuapkg render` is a fresh process and pays the init once. A long-lived process pays it once total.
 
 ### 5.2 Pooling allocator
 
@@ -130,7 +130,7 @@ Wasmtime's `Module::serialize` on a post-`_initialize` instance would let us ski
 
 ## Implications for the signature experience
 
-`akua dev` (the masterplan-§12 hot-reload loop) wants sub-100ms edit-to-re-render. Current budget vs today's measured numbers:
+`akuapkg dev` (the masterplan-§12 hot-reload loop) wants sub-100ms edit-to-re-render. Current budget vs today's measured numbers:
 
 | Package complexity | End-to-end render | Under 100ms budget? |
 |---|---:|:---:|
@@ -146,7 +146,7 @@ render_work) instead of N × (init + render_work).
 
 Combined effect of Phase 1b (forked helm: 75 MB → 20 MB wasm, faster
 deserialize) + §5.1 session reuse cut the single-helm case from
-~120 ms to **~57 ms** — inside the 100 ms budget. `akua dev`
+~120 ms to **~57 ms** — inside the 100 ms budget. `akuapkg dev`
 persistent-process will drive it lower still.
 
 ---
@@ -157,6 +157,6 @@ The harnesses live under `/tmp` in the dev environment; they're intentionally no
 
 1. **Pure KCL benchmark** — 50 lines of Rust that calls `kcl_lang::API::exec_program` in a loop. Build `--release` natively and for `--target wasm32-wasip1`. Run the wasm binary under a minimal `wasmtime` Rust host that stubs the plugin import.
 2. **Plugin dispatch benchmark** — same harness, adds `akua-core` as a dep, calls `install_builtin_plugins()` before the loop.
-3. **End-to-end CLI benchmark** — `task build:helm-engine-wasm && task build:kustomize-engine-wasm && cargo build --release -p akua-cli`, then `hyperfine --warmup 3 --min-runs 10 'target/release/akua render --package ... --dry-run'`.
+3. **End-to-end CLI benchmark** — `task build:helm-engine-wasm && task build:kustomize-engine-wasm && cargo build --release -p akuapkg-cli`, then `hyperfine --warmup 3 --min-runs 10 'target/release/akuapkg render --package ... --dry-run'`.
 
 If the benchmarks need to go into CI, the harnesses move into `crates/akua-bench/` with criterion and get versioned. Out of scope until we have a performance regression story.

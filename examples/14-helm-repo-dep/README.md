@@ -4,7 +4,7 @@
 > `akua.lock` by chart version and tarball digest.
 
 This example covers `repo` dependencies: charts published through an
-`index.yaml` rather than OCI or a local path. `akua add` resolves the
+`index.yaml` rather than OCI or a local path. `akuapkg add` resolves the
 repository index, pins the selected chart archive digest in `akua.lock`,
 and registers the chart as `charts.podinfo` for KCL rendering. Render
 uses Akua's embedded Helm engine; no Helm binary or shell-out is needed.
@@ -21,7 +21,7 @@ uses Akua's embedded Helm engine; no Helm binary or shell-out is needed.
 ## Render
 
 ```sh
-akua render --out ./rendered
+akuapkg render --out ./rendered
 ```
 
 Classic Helm repositories are useful when an upstream chart has not

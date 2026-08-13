@@ -26,6 +26,6 @@ assert _full.tls == False,  "tls override should take effect"
 
 # check: block enforces the invariant (we can't construct Input {replicas=0}).
 # The failing construction is commented out to keep the test file itself
-# compilable; akua test runs a companion negative-test runner for check:
+# compilable; akuapkg test runs a companion negative-test runner for check:
 # violations.
 # _invalid = pkg.Input { appName = "a", hostname = "h", replicas = 0 }

@@ -6,7 +6,7 @@ edition = "akua.dev/v1alpha1"
 [dependencies]
 # A path dep that points at a sibling chart in this workspace.
 #
-# `akua vendor add upstream` copies the resolved tree into
+# `akuapkg vendor add upstream` copies the resolved tree into
 # `.akua/vendor/upstream/` and pins its digest in `akua.lock`.
 # The resolver then prefers the vendored copy, so subsequent
 # renders work without re-reading the original source.

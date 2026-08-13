@@ -48,7 +48,7 @@ This is not a mitigation bolted onto `helm template` — it is a structural cons
 
 ArgoCD, by default, fetches Helm charts by tag at sync time. Tags are mutable: a supply chain attacker who controls the chart registry can replace `v1.2.3` with malicious content after your ArgoCD config points to it.
 
-akua uses a content-addressed lockfile (`akua.lock`) that pins every chart dependency to a SHA-256 digest at `akua publish` time:
+akua uses a content-addressed lockfile (`akua.lock`) that pins every chart dependency to a SHA-256 digest at `akuapkg publish` time:
 
 ```toml
 # akua.lock (committed to git)
@@ -62,15 +62,15 @@ At render time, akua verifies the digest before invoking the Helm engine. If the
 
 ### 3. Cosign signatures + SLSA v1 attestations
 
-Every `akua publish` emits:
+Every `akuapkg publish` emits:
 
 - A **cosign signature** over the package OCI digest (keyless via Sigstore, or key-based).
 - A **SLSA v1 Build predicate** recording builder identity, source commit, and the set of input digests.
 
-On `akua pull`, the `akua.lock` digest is always verified before bytes touch disk. Cosign signature + SLSA attestation verification additionally engages — fail-closed — when the consuming workspace configures a `[signing] cosign_public_key`:
+On `akuapkg pull`, the `akua.lock` digest is always verified before bytes touch disk. Cosign signature + SLSA attestation verification additionally engages — fail-closed — when the consuming workspace configures a `[signing] cosign_public_key`:
 
 ```sh
-akua pull oci://registry.example.com/my-app:1.0.0
+akuapkg pull oci://registry.example.com/my-app:1.0.0
 # → always: verifies the pulled blob against the akua.lock pinned digest
 # → with [signing] cosign_public_key configured:
 #     verifies the cosign signature + SLSA predicate digest chain,
@@ -84,7 +84,7 @@ This gives you a cryptographic chain from source commit to deployed manifests. A
 
 The ArgoCD repo-server fetches chart dependencies at render time. This opens SSRF attack surfaces: a chart can declare a `repository:` pointing at an internal service, and the fetch happens with repo-server's network privileges.
 
-akua separates **resolution** (happens at `akua publish` time, produces `akua.lock`) from **rendering** (happens offline, using only the already-fetched + digest-verified content). The Helm WASM engine receives charts as in-memory bytes with no ability to initiate network calls. There is no SSRF surface during rendering.
+akua separates **resolution** (happens at `akuapkg publish` time, produces `akua.lock`) from **rendering** (happens offline, using only the already-fetched + digest-verified content). The Helm WASM engine receives charts as in-memory bytes with no ability to initiate network calls. There is no SSRF surface during rendering.
 
 ---
 

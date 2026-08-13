@@ -1,7 +1,7 @@
-# akua install script for Windows — `irm https://cli.akua.dev/install.ps1 | iex`
+# Akuapkg install script for Windows.
 #
-# Downloads a prebuilt akua.exe from GitHub Releases into
-# $env:AKUA_INSTALL\bin (default: $env:USERPROFILE\.akua\bin) and prints
+# Downloads a prebuilt akuapkg.exe from GitHub Releases into
+# $env:AKUAPKG_INSTALL\bin (default: $env:USERPROFILE\.akuapkg\bin) and prints
 # the PATH line to paste.
 #
 # We don't mutate the user's PATH or Registry — printing the env var
@@ -28,7 +28,7 @@ $triple = switch ($arch) {
     'x86_64' { 'x86_64-pc-windows-msvc' }
     # aarch64-pc-windows-msvc builds aren't shipped yet. Users on ARM64
     # Windows get a clear error rather than a silently-broken binary.
-    'ARM64' { Die "ARM64 Windows not yet supported. File an issue at https://github.com/cnap-tech/akua/issues" }
+    'ARM64' { Die "ARM64 Windows not yet supported. File an issue at https://github.com/akua-dev/akua/issues" }
     default { Die "unsupported Windows arch: $arch" }
 }
 
@@ -37,12 +37,12 @@ $triple = switch ($arch) {
 # ---------------------------------------------------------------------------
 
 # First positional arg: optional version. `v0.1.0`, `0.1.0`, or
-# `akua-v0.1.0` all accepted.
+# `akuapkg-v0.1.0` all accepted.
 $requestedVersion = $args[0]
 
 function Resolve-Version($v) {
     if ($v) {
-        $v = $v -replace '^akua-',''
+        $v = $v -replace '^akuapkg-',''
         if ($v -notmatch '^v') { $v = "v$v" }
         return $v
     }
@@ -50,15 +50,15 @@ function Resolve-Version($v) {
     # -MaximumRedirection 0 means: stop at the first redirect and read
     # its Location header, rather than actually following it.
     $resp = try {
-        Invoke-WebRequest -Uri 'https://github.com/cnap-tech/akua/releases/latest' `
+        Invoke-WebRequest -Uri 'https://github.com/akua-dev/akua/releases/latest' `
             -MaximumRedirection 0 -ErrorAction SilentlyContinue
     } catch {
         $_.Exception.Response
     }
     $loc = $resp.Headers.Location
     if (-not $loc) { Die "could not resolve latest version from GitHub" }
-    # URL ends with .../tag/akua-vX.Y.Z
-    ($loc -split '/tag/akua-')[-1]
+    # URL ends with .../tag/vX.Y.Z
+    ($loc -split '/tag/')[-1]
 }
 
 $version = Resolve-Version $requestedVersion
@@ -67,38 +67,38 @@ $version = Resolve-Version $requestedVersion
 # Download + install
 # ---------------------------------------------------------------------------
 
-$base = if ($env:AKUA_DOWNLOAD_BASE) { $env:AKUA_DOWNLOAD_BASE } else { 'https://github.com' }
-$asset = "akua-$version-$triple.zip"
-$url = "$base/cnap-tech/akua/releases/download/akua-$version/$asset"
+$base = if ($env:AKUAPKG_DOWNLOAD_BASE) { $env:AKUAPKG_DOWNLOAD_BASE } else { 'https://github.com' }
+$asset = "akuapkg-$version-$triple.zip"
+$url = "$base/akua-dev/akua/releases/download/$version/$asset"
 
-$installRoot = if ($env:AKUA_INSTALL) { $env:AKUA_INSTALL } else { Join-Path $env:USERPROFILE '.akua' }
+$installRoot = if ($env:AKUAPKG_INSTALL) { $env:AKUAPKG_INSTALL } else { Join-Path $env:USERPROFILE '.akuapkg' }
 $binDir = Join-Path $installRoot 'bin'
 
-Info "downloading akua $version ($triple)"
+Info "downloading akuapkg $version ($triple)"
 Info "  from  $url"
-Info "  to    $binDir\akua.exe"
+Info "  to    $binDir\akuapkg.exe"
 
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
-$tmp = Join-Path $env:TEMP ("akua-install-" + [guid]::NewGuid())
+$tmp = Join-Path $env:TEMP ("akuapkg-install-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 
 try {
-    $zipPath = Join-Path $tmp 'akua.zip'
+    $zipPath = Join-Path $tmp 'akuapkg.zip'
     Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing `
         -ErrorAction Stop
 
     Expand-Archive -Path $zipPath -DestinationPath $tmp -Force
 
-    $exeSrc = Join-Path $tmp 'akua.exe'
+    $exeSrc = Join-Path $tmp 'akuapkg.exe'
     if (-not (Test-Path $exeSrc)) {
-        Die "archive did not contain akua.exe"
+        Die "archive did not contain akuapkg.exe"
     }
-    Move-Item -Path $exeSrc -Destination (Join-Path $binDir 'akua.exe') -Force
+    Move-Item -Path $exeSrc -Destination (Join-Path $binDir 'akuapkg.exe') -Force
 } finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }
 
-Success "installed akua $version to $binDir\akua.exe"
+Success "installed akuapkg $version to $binDir\akuapkg.exe"
 Write-Host ""
 
 # PATH check — case-insensitive, split on `;`.
@@ -111,4 +111,4 @@ if ($pathParts -notcontains $binDir) {
     Write-Host ""
 }
 
-Info "verify:  $binDir\akua.exe --version"
+Info "verify:  $binDir\akuapkg.exe --version"

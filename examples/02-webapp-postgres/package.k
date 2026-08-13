@@ -11,7 +11,7 @@
 #   - optional postRenderer for cross-cutting mutation (team label)
 #
 # Render:
-#   akua render --inputs inputs.yaml --out ./rendered
+#   akuapkg render --inputs inputs.yaml --out ./rendered
 
 import akua.ctx
 import charts.cnpg    as cnpg

@@ -7,11 +7,11 @@
 #
 # Render:
 #
-#   akua render --out ./rendered
+#   akuapkg render --out ./rendered
 #
 # `./chart` is a raw-string path resolved under the Package dir — the
 # original simplest-possible shape. Example 01 shows the typed
-# `import charts.<name>` form that Phase 2a landed; `akua render
+# `import charts.<name>` form that Phase 2a landed; `akuapkg render
 # --strict` only accepts that form.
 #
 # Inputs flow through KCL's `option()` mechanism; `inputs.example.yaml`

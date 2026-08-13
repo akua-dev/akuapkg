@@ -24,7 +24,7 @@ akua is a pre-alpha project; the pivot is a **surgical rewrite, not a greenfield
 
 | Component | What changes |
 |---|---|
-| `crates/akua-cli/src/main.rs` | 30-verb surface replacing current ~10 verbs; honors [`cli-contract.md`](./cli-contract.md) universally |
+| `crates/akuapkg-cli/src/main.rs` | 30-verb surface replacing current ~10 verbs; honors [`cli-contract.md`](./cli-contract.md) universally |
 | `crates/akua-core/src/schema.rs` | `x-user-input` / `x-install` vocabulary → `@ui` decorators on KCL schemas (see [`package-format.md`](./package-format.md)) |
 | `crates/akua-core/src/source.rs` | `package.yaml` + `engine:` field loader → `Package.k` KCL loader |
 | `crates/akua-core/src/engine/` | Engine trait kept; impls become **callables from KCL** (`helm.template()`, `kustomize.build()`, `rgd.instantiate()`) instead of `Engine::prepare()` invoked by umbrella assembler |
@@ -56,7 +56,7 @@ The rewrite is designed for agent-driven execution. Every phase decomposes into 
 
 ### Ground rules
 
-1. **One task = one PR.** No mega-PRs. Each task passes `akua check && akua lint && akua test && akua fmt --check` on its own.
+1. **One task = one PR.** No mega-PRs. Each task passes `akuapkg check && akuapkg lint && akuapkg test && akuapkg fmt --check` on its own.
 2. **Every task has a reference spec.** The agent's first action on any task is to read the linked spec section. No guessing shape.
 3. **Every task has a verification step.** A specific example, a specific assertion, a specific rendered-output comparison. No "looks good to me."
 4. **Agents follow CLAUDE.md invariants mechanically.** Violations are architectural bugs, not style issues.
@@ -75,7 +75,7 @@ New files: crates/<path>.rs (empty; follow spec)
 Acceptance:
 - Unit tests for <specific shape>
 - Integration test: `akua <verb> examples/<sample>` produces <expected-bytes>
-- `akua check && akua lint && akua test && akua fmt --check` passes
+- `akuapkg check && akuapkg lint && akuapkg test && akuapkg fmt --check` passes
 - CLAUDE.md invariants respected: no non-determinism, no YAML-as-truth, typed-code-canonical
 
 Do not:
@@ -99,9 +99,9 @@ Within each phase, tasks execute in a partially ordered DAG. Agents pick up any 
   (--json, --plan, typed exits,
    idempotency, agent detection)
 
-  [A.5] akua render (KCL-only)     ──┐
+  [A.5] akuapkg render (KCL-only)     ──┐
                                      ├─▶  [A.8] @akua-dev/sdk render parity
-  [A.6] akua publish + verify      ──┘
+  [A.6] akuapkg publish + verify      ──┘
 ```
 
 A.1, A.2, A.3 are independent — three agents can pick them up in parallel. A.4 depends on all three. A.5, A.6 branch from A.4. A.7, A.8 are the phase exit gate.
@@ -128,21 +128,21 @@ Each task below is sized for a single agent session (~1–3 hours of focused wor
 
 **A.3 — CLI contract primitives**
 - Spec: [`cli-contract.md`](./cli-contract.md) (§1 through §15)
-- Deliverable: `crates/akua-cli/src/contract/` — `--json` / `--plan` / typed exit codes (0/1/2/3/4/5/6) / `--timeout` / `--idempotency-key` as a reusable argument-group + response-shaping layer. Agent context auto-detection per §1.5. Structured errors on stderr.
-- Tests: every exit code reachable via a stub verb; `akua whoami --json` returns agent-context structure.
+- Deliverable: `crates/akuapkg-cli/src/contract/` — `--json` / `--plan` / typed exit codes (0/1/2/3/4/5/6) / `--timeout` / `--idempotency-key` as a reusable argument-group + response-shaping layer. Agent context auto-detection per §1.5. Structured errors on stderr.
+- Tests: every exit code reachable via a stub verb; `akuapkg whoami --json` returns agent-context structure.
 
 **A.4 — CLI skeleton wiring**
 - Deliverable: 30 verbs registered in clap with stubbed handlers returning `exit 2 system-error: not-implemented`. Each handler reads CLI contract primitives from A.3.
 - Tests: `akua help --json` returns the full verb tree; every verb accepts `--json` and `--plan`.
-- Carry-forward: `crates/akua-cli/src/main.rs` structure.
+- Carry-forward: `crates/akuapkg-cli/src/main.rs` structure.
 
-**A.5 — `akua render` (KCL-only)**
+**A.5 — `akuapkg render` (KCL-only)**
 - Spec: [`cli.md`](./cli.md) `render` section + [`package-format.md`](./package-format.md) output format
 - Deliverable: execute a `Package.k` with given inputs, produce `resources[]` per the KCL program's top-level binding. KCL-only (no Helm, no Kustomize yet).
 - Tests: `examples/01-hello-webapp` produces expected manifests; byte-identical across three runs.
 - Depends on: A.2, A.4.
 
-**A.6 — `akua publish` + `akua verify`**
+**A.6 — `akuapkg publish` + `akuapkg verify`**
 - Carry-forward: `crates/akua-core/src/publish.rs` + `attest.rs`.
 - Deliverable: wire existing OCI push + SLSA emission to the new verb surface. Consume `akua.lock` for reproducibility checks.
 - Tests: round-trip publish + verify against local OCI registry (zot).
@@ -154,7 +154,7 @@ Each task below is sized for a single agent session (~1–3 hours of focused wor
 
 **A.8 — `@akua-dev/sdk` render parity**
 - Spec: [`sdk.md`](./sdk.md)
-- Deliverable: `packages/sdk/src/render.ts` produces byte-identical output to `akua render` for the same inputs. Same for `publish` and `verify`.
+- Deliverable: `packages/sdk/src/render.ts` produces byte-identical output to `akuapkg render` for the same inputs. Same for `publish` and `verify`.
 - Tests: cross-consumer determinism test (CLI output hash == SDK output hash).
 - Depends on: A.5, A.6.
 
@@ -179,11 +179,11 @@ Each task below is sized for a single agent session (~1–3 hours of focused wor
 - Carry-forward: existing `cel-interpreter` integration.
 - KCL callable: `cel.eval(expr, ctx)`.
 
-**B.5 — `akua diff`**
+**B.5 — `akuapkg diff`**
 - Spec: [`cli.md`](./cli.md) `diff`.
 - Deliverable: structural diff between two rendered outputs; stable, readable, parseable with `--json`.
 
-**B.6 — `akua inspect`**
+**B.6 — `akuapkg inspect`**
 - Spec: [`cli.md`](./cli.md) `inspect`.
 - Deliverable: full-tree output (schema, deps, attestations, metadata) for any OCI-published artifact.
 
@@ -205,7 +205,7 @@ Each task below is sized for a single agent session (~1–3 hours of focused wor
 **C.3 — `akua policy check`**
 - Deliverable: verdict path returns `{allow | deny | needs-approval}` + structured reasons.
 
-**C.4 — `akua test` (Rego + KCL)**
+**C.4 — `akuapkg test` (Rego + KCL)**
 - Deliverable: run `*_test.rego` via embedded OPA test runner; run `test_*.k` via embedded KCL test harness.
 - Spec: [`cli.md`](./cli.md) `test`.
 
@@ -226,16 +226,16 @@ Each task below is sized for a single agent session (~1–3 hours of focused wor
 - Deliverable: `--to=argocd`, `--to=flux`, `--to=kro`, `--to=helm`, `--to=kubectl`, `--to=<custom>`. No non-K8s drivers.
 - Each driver: emit the reconciler's native consumable; apply or commit as appropriate.
 
-**D.2 — `akua dev` build graph**
+**D.2 — `akuapkg dev` build graph**
 - Deliverable: `crates/akua-dev/` — content-addressable build DAG, `notify-rs` watcher, change classifier, incremental rebuild.
 
-**D.3 — `akua dev` browser UI**
+**D.3 — `akuapkg dev` browser UI**
 - Deliverable: WebSocket-driven UI at `localhost:5173` showing pipeline stages, resource health, log tail, manifest diff. Terminal fallback via Ratatui.
 
-**D.4 — `akua dev` local target**
+**D.4 — `akuapkg dev` local target**
 - Deliverable: kind / k3d / minikube integration; server-side apply; persistence across restarts; `*.127.0.0.1.nip.io` default DNS.
 
-**D.5 — `akua repl`**
+**D.5 — `akuapkg repl`**
 - Deliverable: interactive Rego + KCL REPL. Command-history, tab-complete, `--json` out mode for agent consumption.
 
 **D.6 — `akua trace` + `akua cov`**
@@ -244,7 +244,7 @@ Each task below is sized for a single agent session (~1–3 hours of focused wor
 **D.7 — `akua query`**
 - Deliverable: Loki / Prom queries dispatched from the CLI against configured cluster endpoints. No federation in v1.
 
-**Phase D exit gate:** solo-developer journey completes on a fresh laptop in under 5 minutes; `akua dev` edit-to-applied loop under 500ms median.
+**Phase D exit gate:** solo-developer journey completes on a fresh laptop in under 5 minutes; `akuapkg dev` edit-to-applied loop under 500ms median.
 
 ### Phase E — Browser playground + Studio
 
@@ -269,7 +269,7 @@ The repository ships agent skills ([`skills/`](./skills/)) following the [Agent 
 2. Reads the phase-current task (see GitHub Issues with label `phase-A` / `phase-B` / ...).
 3. Opens the linked spec section.
 4. Writes code + tests matching the acceptance criteria.
-5. Runs `akua check && akua lint && akua test && akua fmt --check`.
+5. Runs `akuapkg check && akuapkg lint && akuapkg test && akuapkg fmt --check`.
 6. Opens a PR with the task title.
 
 If the agent is blocked on a design decision, it opens an issue with label `design-question` rather than guessing. The masterplan (internal) decides; the answer lands as a spec update; the agent picks up the task again.
@@ -284,9 +284,9 @@ Every phase's exit gate includes one of the existing examples in [`examples/`](.
 
 Additional cross-cutting checks:
 
-- **Determinism.** `akua render` on any example, run three times, produces byte-identical output. Run in CI.
+- **Determinism.** `akuapkg render` on any example, run three times, produces byte-identical output. Run in CI.
 - **CLI / SDK parity.** Every verb that produces output is called from both `akua <verb>` and `@akua-dev/sdk.<verb>()`; outputs must match byte-for-byte. Run in CI.
-- **Agent contract.** `akua whoami --json` exposes the agent context correctly under `CLAUDECODE=1` / `CURSOR_CLI=1` / `GEMINI_CLI=1` / `AGENT=foo`. CI matrix runs verbs under each.
+- **Agent contract.** `akuapkg whoami --json` exposes the agent context correctly under `CLAUDECODE=1` / `CURSOR_CLI=1` / `GEMINI_CLI=1` / `AGENT=foo`. CI matrix runs verbs under each.
 - **Policy gate.** The rewrite branch maintains a passing `akua policy check` against `tier/production`. Merges to main require green.
 
 ---

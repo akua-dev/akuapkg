@@ -45,7 +45,7 @@ The `auth` map is keyed by URL prefix (longest-prefix wins, same rule git's cred
 ### From the CLI
 
 ```sh
-akua vendor add upstream --auth github.com/myco/private=alice:$GH_TOKEN
+akuapkg vendor add upstream --auth github.com/myco/private=alice:$GH_TOKEN
 ```
 
 Repeat `--auth` for multiple hosts. For environments where flags are awkward (CI, scripts), pass `--auth-file <path>` pointing at a TOML file you explicitly named:
@@ -57,7 +57,7 @@ Repeat `--auth` for multiple hosts. For environments where flags are awkward (CI
 ```
 
 ```sh
-akua vendor add upstream --auth-file ./auth.toml
+akuapkg vendor add upstream --auth-file ./auth.toml
 ```
 
 ### Update your `akua.toml`
@@ -73,17 +73,17 @@ upstream = { git = "https://alice:ghp_xyz@github.com/myco/private", tag = "v1" }
 upstream = { git = "https://github.com/myco/private", tag = "v1" }
 ```
 
-Then re-run `akua vendor add upstream` with the credential supplied via flag / SDK parameter.
+Then re-run `akuapkg vendor add upstream` with the credential supplied via flag / SDK parameter.
 
 ## Why no `~/.netrc` / `~/.docker/config.json` fallback?
 
 Akua deliberately does not auto-load ambient credential files. Two reasons:
 
 - **Multi-tenant SDK consumers.** A server-side process embedding `@akua-dev/sdk` may handle requests from multiple tenants. Credentials that "happen to be on disk" can cross-contaminate between tenants. Explicit-only auth means each call carries exactly the credentials authorized for that call's principal.
-- **Sandbox parity.** `akua render` runs Packages in a wasmtime sandbox with strict capability scoping. Extending the same "no implicit input" stance to credentials is a coherent invariant — the SDK and CLI surface are the only places credentials enter the system.
+- **Sandbox parity.** `akuapkg render` runs Packages in a wasmtime sandbox with strict capability scoping. Extending the same "no implicit input" stance to credentials is a coherent invariant — the SDK and CLI surface are the only places credentials enter the system.
 
 ## Related
 
 - [docs/sdk.md → Credentials](../sdk.md#credentials---auth) — full SDK auth surface
-- [docs/cli.md → akua vendor → Auth flags](../cli.md#auth-flags-private-git-remotes) — CLI flag surface
+- [docs/cli.md → akuapkg vendor → Auth flags](../cli.md#auth-flags-private-git-remotes) — CLI flag surface
 - [docs/security-model.md](../security-model.md) — broader explicit-input stance

@@ -96,6 +96,20 @@ let cached: NapiAddon | undefined;
 let cachedError: Error | undefined;
 
 /**
+ * Configure the native addon before the first SDK call.
+ *
+ * This is for embedders that ship one known platform binding inside their
+ * executable. Normal SDK consumers should not call it: `loadNapi()` resolves
+ * `@akua-dev/native` and its platform package automatically.
+ */
+export function configureNapi(addon: NapiAddon): void {
+	if (cached || cachedError) {
+		throw new Error('The native addon has already been resolved; configure it before the first SDK call.');
+	}
+	cached = addon;
+}
+
+/**
  * Lazy-load and cache the napi addon for the host platform.
  * Resolution order matches what `@napi-rs/cli`'s generated stub does
  * (env override → co-located → scoped per-platform package), with a

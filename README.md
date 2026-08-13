@@ -51,7 +51,7 @@
 curl -fsSL https://cli.akua.dev/install | sh
 
 # render anywhere
-akua render --inputs inputs.yaml --out ./deploy
+akuapkg render --inputs inputs.yaml --out ./deploy
 ```
 
 ## Quick start
@@ -101,8 +101,8 @@ resources = [r | {
 ```
 
 ```sh
-akua render --inputs prod.yaml --out ./deploy   # sandboxed render → raw manifests
-akua publish .                                  # cosign-signed OCI artifact + SLSA attestation
+akuapkg render --inputs prod.yaml --out ./deploy   # sandboxed render → raw manifests
+akuapkg publish .                                  # cosign-signed OCI artifact + SLSA attestation
 ```
 
 For cross-Package composition (install one Akua package on top of another, with overlays / filters / extras), see [`examples/11-install-as-package/`](examples/11-install-as-package/). Twelve worked examples — Helm, Kustomize, multi-engine, package composition, KCL ecosystem, install-as-Package — each commit `rendered/` goldens byte-checked in CI.
@@ -112,8 +112,8 @@ For cross-Package composition (install one Akua package on top of another, with 
 - **Sandboxed by default.** Every render runs in a wasmtime WASI sandbox with memory / CPU / wall-clock caps. No shell-out, no `$PATH` lookup, no ambient filesystem. Untrusted Packages are safe to render on shared hosts. Adversarial test suite proves each invariant. See [`docs/security-model.md`](docs/security-model.md).
 - **Typed packages, not YAML templates.** KCL has real schemas, real types, real imports. Drift between the value the operator wrote and the value the chart consumed becomes a compile error, not a 3am incident.
 - **Embedded engines.** Helm v4 + Kustomize compiled to `wasm32-wasip1` and hosted inside akua. `helm.template(...)` works without a `helm` binary anywhere on your machine. See [`docs/embedded-engines.md`](docs/embedded-engines.md).
-- **Signed + attested.** `akua publish` emits cosign signatures and SLSA v1 attestations by default. On pull, the `akua.lock` digest is always verified; cosign + SLSA verification engages, fail-closed, when a `[signing] cosign_public_key` is configured. ECDSA P-256 keyed cosign today; keyless on the v0.3 roadmap.
-- **Deterministic.** Same inputs + same lockfile + same akua version → byte-identical output. No `now()`, no `random()`, no env reads in the render pipeline.
+- **Signed + attested.** `akuapkg publish` emits cosign signatures and SLSA v1 attestations by default. On pull, the `akua.lock` digest is always verified; cosign + SLSA verification engages, fail-closed, when a `[signing] cosign_public_key` is configured. ECDSA P-256 keyed cosign today; keyless on the v0.3 roadmap.
+- **Deterministic.** Same inputs + same lockfile + same akuapkg version → byte-identical output. No `now()`, no `random()`, no env reads in the render pipeline.
 - **Compose with the ecosystem.** kpm-published KCL packages (`oci://ghcr.io/kcl-lang/*`) drop straight into `[dependencies]` — `import k8s.api.apps.v1` resolves against the upstream schema bundle. See [`examples/10-kcl-ecosystem/`](examples/10-kcl-ecosystem/).
 - **Agent-first.** Auto-detects Claude Code, Cursor, Codex, Gemini CLI, Goose, Amp, OpenCode, Cline, and 25+ other agents. Every verb emits `--json`, uses typed exit codes, and ships skill manifests under [`skills/`](skills/) conforming to the [Agent Skills Specification](https://agentskills.io). See [`docs/agent-usage.md`](docs/agent-usage.md).
 
@@ -127,7 +127,7 @@ curl -fsSL https://cli.akua.dev/install | sh
 irm https://cli.akua.dev/install.ps1 | iex
 
 # From source
-cargo install --git https://github.com/akua-dev/akua akua-cli
+cargo install --git https://github.com/akua-dev/akua akuapkg-cli
 ```
 
 ```sh

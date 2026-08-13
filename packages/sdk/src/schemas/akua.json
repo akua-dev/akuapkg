@@ -36,7 +36,7 @@
       "type": "object"
     },
     "AgentSource": {
-      "description": "Which env var triggered agent detection. Recorded in `akua whoami`\noutput for introspection and in debug-level logs for post-hoc diagnosis.",
+      "description": "Which env var triggered agent detection. Recorded in `akuapkg whoami`\noutput for introspection and in debug-level logs for post-hoc diagnosis.",
       "oneOf": [
         {
           "const": "agent",
@@ -66,7 +66,7 @@
       ]
     },
     "CheckOutput": {
-      "description": "Output shape for `akua check --json`. The `status` field is\n`\"ok\"` iff every entry in `checks` has `ok == true`.",
+      "description": "Output shape for `akuapkg check --json`. The `status` field is\n`\"ok\"` iff every entry in `checks` has `ok == true`.",
       "properties": {
         "checks": {
           "items": {
@@ -769,7 +769,7 @@
       "type": "object"
     },
     "TreeOutput": {
-      "description": "Output shape for `akua tree --json`.",
+      "description": "Output shape for `akuapkg tree --json`.",
       "properties": {
         "dependencies": {
           "items": {
@@ -1054,7 +1054,7 @@
           "type": "object"
         },
         {
-          "description": "Path-dep on-disk content diverges from the digest `akua.lock`\npinned. Someone mutated the vendored chart without re-running\n`akua add` — either intentional (run add to refresh) or\naccidental (revert the edit).",
+          "description": "Path-dep on-disk content diverges from the digest `akua.lock`\npinned. Someone mutated the vendored chart without re-running\n`akuapkg add` — either intentional (run add to refresh) or\naccidental (revert the edit).",
           "properties": {
             "actual": {
               "type": "string"

@@ -21,7 +21,7 @@ Before consuming any package — first-party, community, or vendor — know what
 ### 1. Basic inspection
 
 ```sh
-akua inspect oci://pkg.example.com/webapp:3.2 --json
+akuapkg inspect oci://pkg.example.com/webapp:3.2 --json
 ```
 
 Returns:
@@ -37,7 +37,7 @@ Look at the `signer` field — it should match an identity you trust (a GitHub A
 ### 2. Show rendered output with sample inputs
 
 ```sh
-akua inspect oci://pkg.example.com/webapp:3.2 \
+akuapkg inspect oci://pkg.example.com/webapp:3.2 \
   --inputs '{"appName":"demo","hostname":"demo.example.com"}' \
   --show=manifests
 ```
@@ -47,7 +47,7 @@ Renders the package with your inputs and prints the resulting Kubernetes YAML. T
 ### 3. Verify signatures directly
 
 ```sh
-akua verify oci://pkg.example.com/webapp:3.2
+akuapkg verify oci://pkg.example.com/webapp:3.2
 ```
 
 Output includes:
@@ -70,14 +70,14 @@ The playground renders in the browser using WASM — zero install, zero cluster,
 ### 5. Diff against another version
 
 ```sh
-akua diff oci://pkg.example.com/webapp:3.1 oci://pkg.example.com/webapp:3.2 --json
+akuapkg diff oci://pkg.example.com/webapp:3.1 oci://pkg.example.com/webapp:3.2 --json
 ```
 
 Shows structural changes: schema fields added/removed/type-changed, source version bumps, policy-compatibility verdict. Non-zero exit if any structural change present.
 
 ## Expected output
 
-On `akua inspect --json`:
+On `akuapkg inspect --json`:
 
 ```json
 {
@@ -111,11 +111,11 @@ On `akua inspect --json`:
 ## Failure modes
 
 - **`E_SIG_VERIFY_FAILED`** — signature does not verify. Either the artifact is tampered with, or the verification key is wrong. Do not proceed.
-- **`E_FETCH_FAILED`** — cannot fetch the artifact. Check the OCI ref, check `akua whoami` for registry auth.
+- **`E_FETCH_FAILED`** — cannot fetch the artifact. Check the OCI ref, check `akuapkg whoami` for registry auth.
 - **`E_ATTESTATION_MISSING`** — no SLSA predicate attached. Rendered output is unverifiable against a build pipeline. May be acceptable for community packages but is a red flag for production dependencies.
 
 ## Reference
 
-- [cli.md — akua inspect](../../docs/cli.md#akua-inspect)
-- [cli.md — akua verify](../../docs/cli.md#akua-verify)
-- [cli.md — akua diff](../../docs/cli.md#akua-diff)
+- [cli.md — akuapkg inspect](../../docs/cli.md#akua-inspect)
+- [cli.md — akuapkg verify](../../docs/cli.md#akuapkg-verify)
+- [cli.md — akuapkg diff](../../docs/cli.md#akua-diff)

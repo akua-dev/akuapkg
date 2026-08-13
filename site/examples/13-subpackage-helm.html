@@ -306,7 +306,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <h2 id="whats-here">What's here</h2>
 <table><thead><tr><th>file</th><th>purpose</th></tr></thead><tbody><tr><td><code>package.k</code></td><td>Root package that delegates rendering to <code>pkgs.webserver</code>.</td></tr><tr><td><code>akua.toml</code></td><td>Declares <code>webserver = { path = &quot;./deps/webserver&quot; }</code>.</td></tr><tr><td><code>deps/webserver/</code></td><td>Sub-package with its own Helm chart dependency.</td></tr><tr><td><code>inputs.example.yaml</code></td><td>Namespace input passed from the root to the sub-package.</td></tr><tr><td><code>rendered/</code></td><td>Reference output committed for integration tests.</td></tr></tbody></table>
 <h2 id="render">Render</h2>
-<pre><code class="lang-sh">akua render --out ./rendered</code></pre>
+<pre><code class="lang-sh">akuapkg render --out ./rendered</code></pre>
 <p>The interesting part is the import boundary: root package inputs remain typed at the call site, and chart resolution stays local to the sub-package that declared the chart.</p>
 <h2>package.k</h2><pre><code class="lang-kcl">import akua.ctx
 import pkgs.webserver as ws
@@ -318,7 +318,7 @@ import pkgs.webserver as ws
 #
 # Render:
 #
-#   akua render --out ./rendered
+#   akuapkg render --out ./rendered
 schema Input:
     &quot;&quot;&quot;Public inputs for the subpackage-helm root Package.&quot;&quot;&quot;
     namespace: str = &quot;demo&quot;
@@ -357,12 +357,12 @@ spec:
         - containerPort: 80
 </code></pre>
 <p style="margin-top: 32px; color: var(--muted); font-size: 14px;">
-  Source: <a href="https://github.com/cnap-tech/akua/tree/main/examples/13-subpackage-helm">examples/13-subpackage-helm/</a>
+  Source: <a href="https://github.com/akua-dev/akua/tree/main/examples/13-subpackage-helm">examples/13-subpackage-helm/</a>
 </p>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/cnap-tech/akua">github.com/cnap-tech/akua</a> ·
+  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
   Apache-2.0
 </footer>
 </main>

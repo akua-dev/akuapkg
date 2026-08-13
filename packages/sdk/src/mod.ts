@@ -38,6 +38,8 @@ import { type SchemaName, validateAs } from './validate.ts';
 // separate `@akua-dev/sdk-wasm` package, not as a side-channel here.
 
 export * from './errors.ts';
+export { configureNapi } from './napi.ts';
+export type { NapiAddon } from './napi.ts';
 export { AkuaContractError, standardSchemaFor, validateAs } from './validate.ts';
 export type { SchemaName } from './validate.ts';
 export type {
@@ -365,7 +367,7 @@ export class Akua {
 		}
 
 		const napi = loadNapi();
-		// `napi.renderToYaml` mirrors `akua render --stdout` — emits
+		// `napi.renderToYaml` mirrors `akuapkg render --stdout` — emits
 		// raw multi-doc YAML directly. When the caller hands us raw
 		// source we materialize it into a scratch dir so KCL spans +
 		// chart-path resolution work the same as a path-mode render.
@@ -402,7 +404,7 @@ export class Akua {
 	}
 
 	/**
-	 * Insert a dependency into `akua.toml`. Mirrors `akua add --<source>`.
+	 * Insert a dependency into `akua.toml`. Mirrors `akuapkg add --<source>`.
 	 * Pass exactly one of `oci`, `git`, `path`, or `repo` (the latter
 	 * requires `chart` too). The manifest edit runs in-process via the
 	 * napi addon; the resolver best-effortly updates `akua.lock`.
@@ -429,7 +431,7 @@ export class Akua {
 
 	/**
 	 * Fast syntax / type / dep check over the workspace. Runs
-	 * in-process via the napi addon. Mirrors `akua check`.
+	 * in-process via the napi addon. Mirrors `akuapkg check`.
 	 */
 	async check(opts: CheckOptions = {}): Promise<CheckOutput> {
 		const napi = loadNapi();
@@ -441,7 +443,7 @@ export class Akua {
 
 	/**
 	 * Run the KCL linter against the Package. In-process via the
-	 * napi addon. Mirrors `akua lint`.
+	 * napi addon. Mirrors `akuapkg lint`.
 	 */
 	async lint(opts: LintOptions = {}): Promise<LintOutput> {
 		const napi = loadNapi();
@@ -481,7 +483,7 @@ export class Akua {
 	 * Format KCL sources. In-process via the napi addon.
 	 * With `check=true`, reports which files would change without
 	 * touching disk. Without `check`, the formatted text is written
-	 * back to the file (mirroring `akua fmt`'s in-place behavior).
+	 * back to the file (mirroring `akuapkg fmt`'s in-place behavior).
 	 *
 	 * `opts.stdout` is honored by reading the (now-formatted) file
 	 * and writing it to `process.stdout`. The file write happens
@@ -505,7 +507,7 @@ export class Akua {
 	 * Introspect a Package or a packed tarball — surfaces the option
 	 * set, dependency tree, signing metadata. Pass `{ package }` for
 	 * an on-disk Package or `{ tarball }` for a `.tar.gz` artifact
-	 * (e.g. from `akua pack`).
+	 * (e.g. from `akuapkg pack`).
 	 */
 	async inspect(opts: InspectOptions = {}): Promise<InspectOutput> {
 		if (opts.package && opts.tarball) {

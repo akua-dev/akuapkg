@@ -11,7 +11,7 @@ This is distinct from [`E_INVALID_FLAG`](./E_INVALID_FLAG.md): that code covers 
 ### `--auth` value missing the `=` separator
 
 ```sh
-akua vendor add upstream --auth github.com:alice:ghp_xyz   # no `=`
+akuapkg vendor add upstream --auth github.com:alice:ghp_xyz   # no `=`
 ```
 
 The expected shape is `<prefix>=<user>:<password>`. The split happens on the *first* `=` (so passwords containing `=` survive).
@@ -19,7 +19,7 @@ The expected shape is `<prefix>=<user>:<password>`. The split happens on the *fi
 ### `--auth` value missing the `:` separator inside credentials
 
 ```sh
-akua vendor add upstream --auth github.com=alice            # missing `:password`
+akuapkg vendor add upstream --auth github.com=alice            # missing `:password`
 ```
 
 The credential portion (right of the first `=`) splits on the *first* `:`.
@@ -27,8 +27,8 @@ The credential portion (right of the first `=`) splits on the *first* `:`.
 ### `--auth` value with an empty username or password
 
 ```sh
-akua vendor add upstream --auth github.com=:ghp_xyz         # empty username
-akua vendor add upstream --auth github.com=alice:           # empty password
+akuapkg vendor add upstream --auth github.com=:ghp_xyz         # empty username
+akuapkg vendor add upstream --auth github.com=alice:           # empty password
 ```
 
 Both halves of the credential must be non-empty.
@@ -59,7 +59,7 @@ The file is a single TOML document with a `[auth]` table. Each entry's value is 
 ### Inline flag
 
 ```sh
-akua vendor add upstream \
+akuapkg vendor add upstream \
   --auth github.com/myco=alice:$GH_TOKEN \
   --auth gitlab.example.com=ci-bot:$GL_TOKEN
 ```
@@ -76,7 +76,7 @@ Repeat `--auth` for multiple hosts. Each value is one prefix-keyed credential.
 ```
 
 ```sh
-akua vendor add upstream --auth-file ./auth.toml
+akuapkg vendor add upstream --auth-file ./auth.toml
 ```
 
 ### Combining file and flag
@@ -84,14 +84,14 @@ akua vendor add upstream --auth-file ./auth.toml
 Both are accepted on the same invocation. If a prefix appears in both, the flag value wins — same precedence as environment overrides over config files. This lets CI inject one-off overrides without rewriting the file:
 
 ```sh
-akua vendor add upstream \
+akuapkg vendor add upstream \
   --auth-file ./auth.toml \
   --auth github.com/myco=alice:$ROTATED_TOKEN   # overrides the file entry
 ```
 
 ## Why akua doesn't auto-load `~/.netrc` / `~/.docker/config.json`
 
-See [`E_MANIFEST_GIT_USERINFO`](./E_MANIFEST_GIT_USERINFO.md#why-no-netrc--dockerconfigjson-fallback) for the rationale. Short version: multi-tenant SDK consumers can't safely inherit ambient credentials, and the same explicit-input stance that keeps `akua render` deterministic applies to credentials.
+See [`E_MANIFEST_GIT_USERINFO`](./E_MANIFEST_GIT_USERINFO.md#why-no-netrc--dockerconfigjson-fallback) for the rationale. Short version: multi-tenant SDK consumers can't safely inherit ambient credentials, and the same explicit-input stance that keeps `akuapkg render` deterministic applies to credentials.
 
 ## Related
 

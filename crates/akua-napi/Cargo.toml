@@ -24,7 +24,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Reuse the CLI verb impls verbatim — every Akua.* method on the JS
-# side maps 1:1 to a CLI verb, so depending on `akua-cli`'s lib gives
+# side maps 1:1 to a CLI verb, so depending on `akuapkg-cli`'s lib gives
 # us identical envelopes + identical behavior, no logic at the napi
 # boundary.
 #
@@ -34,7 +34,7 @@ crate-type = ["cdylib"]
 # wasmtime JIT-compiles on first render (~5–10 s cold). Shrinks the
 # published per-platform npm package by 3x; warm renders amortize
 # the JIT cost across the process lifetime.
-akua-cli = { path = "../akua-cli", default-features = false, features = [
+akuapkg-cli = { path = "../akuapkg-cli", default-features = false, features = [
     "oci-fetch",
     "cosign-verify",
 ] }

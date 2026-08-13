@@ -22,12 +22,12 @@ const md = `
 $ curl -fsSL https://cli.akua.dev/install | sh
 \`\`\`
 
-Or grab a pinned binary from [Releases](https://github.com/cnap-tech/akua/releases). Windows: \`irm https://cli.akua.dev/install.ps1 | iex\`.
+Or grab a pinned binary from [Releases](https://github.com/akua-dev/akua/releases). Windows: \`irm https://cli.akua.dev/install.ps1 | iex\`.
 
 Verify the install:
 
 \`\`\`
-$ akua version
+$ akuapkg version
 akua 0.8.7
 \`\`\`
 
@@ -35,19 +35,19 @@ akua 0.8.7
 
 \`\`\`
 $ mkdir hello-akua && cd hello-akua
-$ akua init
+$ akuapkg init
 \`\`\`
 
 This drops three files in your workspace:
 
 - \`akua.toml\` — manifest. Declares the package metadata + dependencies.
 - \`package.k\` — your Package, written in [KCL](https://www.kcl-lang.io/). One file, three regions: imports, schemas, body.
-- \`inputs.example.yaml\` — example input values \`akua render\` reads when no \`--inputs\` is passed.
+- \`inputs.example.yaml\` — example input values \`akuapkg render\` reads when no \`--inputs\` is passed.
 
 ## 3. Render
 
 \`\`\`
-$ akua render
+$ akuapkg render
 \`\`\`
 
 By default, output goes to \`./rendered/\`. Each top-level Kubernetes resource your Package emits becomes its own YAML file, prefixed with a stable index so the layout is deterministic. Same inputs + same lockfile → byte-identical output, every time.
@@ -74,10 +74,10 @@ Branch on \`code\` from agent code; the \`docs\` URL is the human-friendly fallb
 
 ## 4. Add a dependency
 
-Composing with an upstream Helm chart? \`akua add\` updates \`akua.toml\` and \`akua.lock\` in one step:
+Composing with an upstream Helm chart? \`akuapkg add\` updates \`akua.toml\` and \`akua.lock\` in one step:
 
 \`\`\`
-$ akua add nginx --oci oci://ghcr.io/nginxinc/charts/nginx --version 1.0.0
+$ akuapkg add nginx --oci oci://ghcr.io/nginxinc/charts/nginx --version 1.0.0
 \`\`\`
 
 Then in \`package.k\`:
@@ -93,9 +93,9 @@ The resolver writes a \`charts/<alias>/\` mount so the engine plugin (helm.templ
 When you're ready to ship:
 
 \`\`\`
-$ akua verify         # akua.toml ↔ akua.lock integrity + cosign signatures
+$ akuapkg verify         # akua.toml ↔ akua.lock integrity + cosign signatures
 $ akua sign           # cosign-sign the artifact
-$ akua publish        # push the signed OCI artifact + SLSA attestation
+$ akuapkg publish        # push the signed OCI artifact + SLSA attestation
 \`\`\`
 
 By default \`publish\` refuses unless the lockfile is clean and a cosign key is configured. See [Concepts → Security model](/concepts/security-model) for the threat model and what \`strict_signing\` enforces.

@@ -1,6 +1,6 @@
-// Run the three structural gates `akua check` uses: parse the
+// Run the three structural gates `akuapkg check` uses: parse the
 // manifest, parse the lockfile (if present), lint the Package.k.
-// In-process via WASM; identical semantics to `akua check --json`.
+// In-process via WASM; identical semantics to `akuapkg check --json`.
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

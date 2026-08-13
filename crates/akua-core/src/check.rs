@@ -46,7 +46,7 @@ pub struct CheckResult {
 /// Run the three gates. Every source is `Option<&str>` because the
 /// CLI tolerates a workspace missing one or more: a fresh package
 /// may have no `akua.lock` yet; `akua check --package-only` won't
-/// pass a manifest. The akua-cli verb decides when to read each
+/// pass a manifest. The akuapkg-cli verb decides when to read each
 /// file and when to skip.
 ///
 /// `package_source` pairs a filename with a buffer; the filename

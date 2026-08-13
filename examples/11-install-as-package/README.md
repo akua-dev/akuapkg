@@ -11,7 +11,7 @@ call site, no path strings in user code.
 | file | purpose |
 |---|---|
 | `upstream/package.k` | Sibling Akua package — Deployment + Service + PodDisruptionBudget. Authored as a normal Package; nothing about it is install-aware. |
-| `akua.toml` | Dep alias `upstream = { path = "./upstream" }` for `akua tree` + lock-time validation. |
+| `akua.toml` | Dep alias `upstream = { path = "./upstream" }` for `akuapkg tree` + lock-time validation. |
 | `package.k` | The install: `upstream.render(...)`, overlay tenant label, drop PDB, append a ConfigMap. |
 | `inputs.example.yaml` | Per-install inputs (tenant, app, replicas). |
 | `rendered/` | Reference output (3 files: Deployment, Service, ConfigMap). |
@@ -19,7 +19,7 @@ call site, no path strings in user code.
 ## Render
 
 ```sh
-akua render --out ./rendered
+akuapkg render --out ./rendered
 ```
 
 ## The install pattern

@@ -6,9 +6,9 @@
 # pins its sha256 in akua.lock, and registers the unpacked chart as the
 # `charts.podinfo` KCL module. No Helm binary required; no shell-out.
 #
-# Render (requires `akua add` online first to populate the cache):
+# Render (requires `akuapkg add` online first to populate the cache):
 #
-#   akua render --out ./rendered
+#   akuapkg render --out ./rendered
 #
 # The dep source is `repo`/`chart`/`version` rather than `oci` or `path` —
 # the same resolver machinery, a different transport. Compare with example 01

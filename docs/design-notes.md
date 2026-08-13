@@ -19,9 +19,9 @@
 ### What akua is
 
 - **A single binary and SDK** covering the whole packaging + platform lifecycle: author, render, test, lint, format, sign, publish, verify, diff, inspect, deploy, query, audit. Thirty verbs. One mental model. The bun/deno pattern applied to cloud-native.
-- **Typed composition.** Packages authored in **KCL** with first-class schemas; policies authored in **Rego**. YAML is a derived view via `akua export`, never authoritative.
-- **Deterministic transformation.** Same inputs + same lockfile + same akua version → byte-identical output. No non-determinism inside the render pipeline.
-- **Signed + attested by default.** cosign signature + SLSA v1 predicate on every `akua publish`. On pull, the `akua.lock` digest is always verified (the universal gate); cosign + SLSA verification engages, fail-closed, when a `[signing] cosign_public_key` is configured.
+- **Typed composition.** Packages authored in **KCL** with first-class schemas; policies authored in **Rego**. YAML is a derived view via `akuapkg export`, never authoritative.
+- **Deterministic transformation.** Same inputs + same lockfile + same akuapkg version → byte-identical output. No non-determinism inside the render pipeline.
+- **Signed + attested by default.** cosign signature + SLSA v1 predicate on every `akuapkg publish`. On pull, the `akua.lock` digest is always verified (the universal gate); cosign + SLSA verification engages, fail-closed, when a `[signing] cosign_public_key` is configured.
 - **Agent-first.** The primary user is an AI agent operating in a Linux sandbox. Humans gate at policy checkpoints. See [`agent-usage.md`](./agent-usage.md).
 
 ### What akua is *not*
@@ -68,7 +68,7 @@ KCL, Helm, OPA, Regal, Kustomize, kro offline instantiator, CEL, Kyverno-to-Rego
 
 Two consequences: (a) `akua` works in any sandbox without pre-provisioning, (b) version drift between engines is impossible — we ship a tested set together.
 
-### 2.5 `akua render` ≠ `akua export`
+### 2.5 `akuapkg render` ≠ `akuapkg export`
 
 `render` executes the Package's program (invokes engines, produces deploy-ready manifests). `export` converts a canonical artifact to a format view (JSON Schema, OpenAPI, YAML, Rego bundle). Different verbs for different jobs. Conflating them is the most common interface mistake; the CLI contract keeps them separate.
 
@@ -90,13 +90,13 @@ Consequence: we inherit KCL's choices (including its not-quite-Python syntax) an
 
 Rego is awkward to learn but genuinely solves cross-resource reasoning and partial evaluation — jobs you cannot do cleanly in KCL. Kyverno is k8s-scoped; CEL can't express cross-resource rules; OPA with Rego is the mature choice.
 
-We make Rego palatable through tooling (Regal linter, opa test runner, `akua repl`) and compile-resolved imports so custom rules stay small.
+We make Rego palatable through tooling (Regal linter, opa test runner, `akuapkg repl`) and compile-resolved imports so custom rules stay small.
 
 ### 3.3 OCI registries, not a central catalog
 
 Centralized package curation is fragile (see Bitnami's deprecation and its fallout). First-party publishing is the durable pattern. We ship signing + distribution + diff + audit infrastructure so any maintainer can publish trustworthy packages themselves.
 
-Consequence: no shelf to browse on day one. Mitigation: browser-based audit at `akua.dev` for any public artifact; `akua init` templates for common starts.
+Consequence: no shelf to browse on day one. Mitigation: browser-based audit at `akua.dev` for any public artifact; `akuapkg init` templates for common starts.
 
 ### 3.4 Helm v4 still an engine
 

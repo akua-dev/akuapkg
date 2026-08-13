@@ -115,7 +115,7 @@ deny[msg] { tier.production.deny[msg] }
 
 ### 4.2 Kyverno bundles (converted to Rego at build time)
 
-Kyverno ships policies as Kubernetes CRDs with a native YAML DSL. akua's `akua add policy <kyverno-ref>` uses an embedded Kyverno→Rego converter to compile the bundle into Rego modules stored under `./.akua/policies/vendor/`.
+Kyverno ships policies as Kubernetes CRDs with a native YAML DSL. akua's `akuapkg add policy <kyverno-ref>` uses an embedded Kyverno→Rego converter to compile the bundle into Rego modules stored under `./.akua/policies/vendor/`.
 
 ```toml
 # akua.toml
@@ -128,11 +128,11 @@ import data.akua.policies.kyverno.security
 deny[msg] { kyverno.security.deny[msg] }   # Kyverno rules, now evaluated as Rego
 ```
 
-The conversion is one-way and happens at `akua add` time; the original Kyverno source is preserved for audit but not consumed at eval time. Reproducibility: same Kyverno version + same converter version → same Rego output.
+The conversion is one-way and happens at `akuapkg add` time; the original Kyverno source is preserved for audit but not consumed at eval time. Reproducibility: same Kyverno version + same converter version → same Rego output.
 
 ### 4.3 CEL expression libraries (compiled to Rego)
 
-CEL (Google's Common Expression Language) is simple enough to compile directly to Rego primitives. `akua add policy <cel-ref>` runs the CEL→Rego compiler; imported the same way:
+CEL (Google's Common Expression Language) is simple enough to compile directly to Rego primitives. `akuapkg add policy <cel-ref>` runs the CEL→Rego compiler; imported the same way:
 
 ```rego
 import data.akua.policies.cel.my_expressions
@@ -247,7 +247,7 @@ Policy evaluates at multiple points; each runs the same Rego against different i
 
 | point | input | failure mode |
 |---|---|---|
-| `akua render` / `akua dev` | rendered manifests + live context | lint error; render succeeds but marks the output as deny-policy |
+| `akuapkg render` / `akuapkg dev` | rendered manifests + live context | lint error; render succeeds but marks the output as deny-policy |
 | `akua deploy` / CI gate | rendered manifests + target environment | exit 3 (policy deny) or exit 5 (needs approval) |
 | in-cluster admission (optional) | admission webhook payload | reject apply |
 | audit sweep (scheduled) | current cluster state | produce an Incident record |
@@ -261,21 +261,21 @@ All four share the same Rego bundle. The host language guarantees uniform behavi
 ### New tier from scratch
 
 ```sh
-akua init policy my-org-production
+akuapkg init policy my-org-production
 # creates policies/my-org-production.rego with starter template
 ```
 
 ### Import an existing tier
 
 ```sh
-akua add policy oci://policies.akua.dev/tier/production --version 1.2.0
+akuapkg add policy oci://policies.akua.dev/tier/production --version 1.2.0
 # adds to akua.toml + akua.lock; makes 'data.akua.policies.tier.production' importable
 ```
 
 ### Import a Kyverno bundle
 
 ```sh
-akua add policy oci://policies.akua.dev/kyverno/security --version 2.0.0
+akuapkg add policy oci://policies.akua.dev/kyverno/security --version 2.0.0
 # fetches Kyverno YAML, converts to Rego, stores under .akua/policies/vendor/
 ```
 
@@ -289,7 +289,7 @@ akua policy check --tier my-org-production --target ./deploy/production
 ### Publish a tier
 
 ```sh
-akua publish --policy my-org-production --to oci://policies.acme.com/my-org-production --tag v1.0.0
+akuapkg publish --policy my-org-production --to oci://policies.acme.com/my-org-production --tag v1.0.0
 # pushes the Rego bundle signed + SLSA-attested
 ```
 
@@ -340,9 +340,9 @@ test_allow_with_team_label {
 Run:
 
 ```sh
-akua test                       # runs all Rego + KCL tests
-akua test --coverage            # includes per-rule coverage
-akua test --watch               # TDD mode
+akuapkg test                       # runs all Rego + KCL tests
+akuapkg test --coverage            # includes per-rule coverage
+akuapkg test --watch               # TDD mode
 ```
 
 Every test runs via the embedded OPA (see [embedded-engines.md](embedded-engines.md)). Output matches `opa test` structure; coverage format is compatible with standard OPA coverage tooling.
@@ -374,7 +374,7 @@ No separate test framework. No mocking. The package gets rendered, the policy ru
 ### Linting
 
 ```sh
-akua lint
+akuapkg lint
 ```
 
 Runs:
@@ -388,9 +388,9 @@ Output is structured per [cli.md](cli.md#akua-lint). Severity levels: warn, erro
 ### Formatting
 
 ```sh
-akua fmt                        # in-place
-akua fmt --check                # fail CI if formatting needed
-akua fmt --diff                 # preview changes without applying
+akuapkg fmt                        # in-place
+akuapkg fmt --check                # fail CI if formatting needed
+akuapkg fmt --diff                 # preview changes without applying
 ```
 
 Runs `opa fmt` (embedded) on `.rego` files and `kcl fmt` (embedded) on `.k` files. Both are idempotent.
@@ -427,7 +427,7 @@ Embedded OPA's coverage report, rolled up across Rego files + imported tier bund
 ### REPL
 
 ```sh
-akua repl
+akuapkg repl
 > :mode rego
 rego> data.akua.policies.production.deny with input as { resource: { kind: "Deployment" } }
 [...]
@@ -441,7 +441,7 @@ rego> :trace
 
 - **[package-format.md](package-format.md)** — how `check:` blocks in KCL complement Rego
 - **[lockfile-format.md](lockfile-format.md)** — how Rego imports are pinned
-- **[cli.md — `akua policy` / `akua test` / `akua trace` / `akua bench`](cli.md)** — the verbs that operate on policy
+- **[cli.md — `akua policy` / `akuapkg test` / `akua trace` / `akua bench`](cli.md)** — the verbs that operate on policy
 - **[embedded-engines.md](embedded-engines.md)** — OPA, Regal, Kyverno-to-Rego converter, CEL all embedded via wasmtime
 - **[skills/apply-policy-tier](../skills/apply-policy-tier/SKILL.md)** — agent workflow for subscribing to a tier
 - **[skills/test-and-lint](../skills/test-and-lint/SKILL.md)** — agent workflow for setting up tests + lint gates

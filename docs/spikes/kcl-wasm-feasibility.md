@@ -34,7 +34,7 @@ Produces a 145 MB wasip1 binary (unoptimized debug). Compile is clean.
 
 2. **`akua_core::stdlib::stdlib_root`** calls `std::env::temp_dir()` — also an unconditional panic on wasip1 (`sys/pal/wasip1/os.rs:119:5`, same error message as the kcl issue but a different call site). Fixed in-tree: skip the "akua" stdlib `ExternalPkg` on wasm32 (pure-KCL Packages work; stdlib-requiring Packages will land later when the plugin bridge forwards `akua.*` callouts from worker to host).
 
-**Go signal for Phase 4 — confirmed.** End-to-end test shipped: `render_pure_kcl_returns_yaml_end_to_end` evaluates `x = 42\ngreeting = "hello"\n` inside the per-render wasmtime sandbox and recovers the top-level YAML with correct values. Sandbox resources (fuel / epoch / 256 MiB memory) active throughout. Test runs on every `cargo test -p akua-cli` invocation.
+**Go signal for Phase 4 — confirmed.** End-to-end test shipped: `render_pure_kcl_returns_yaml_end_to_end` evaluates `x = 42\ngreeting = "hello"\n` inside the per-render wasmtime sandbox and recovers the top-level YAML with correct values. Sandbox resources (fuel / epoch / 256 MiB memory) active throughout. Test runs on every `cargo test -p akuapkg-cli` invocation.
 
 ### wasm32-unknown-unknown — yellow, two fixable issues
 

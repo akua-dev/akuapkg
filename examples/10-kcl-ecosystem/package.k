@@ -10,7 +10,7 @@
 #
 # Render:
 #
-#   akua render --package examples/10-kcl-ecosystem/package.k --out ./rendered
+#   akuapkg render --package examples/10-kcl-ecosystem/package.k --out ./rendered
 #
 # Bigger pitch: any package on ghcr.io/kcl-lang/* (or any kpm-published
 # OCI ref) plugs in the same way. akua handles the digest pin, signature

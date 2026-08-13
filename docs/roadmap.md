@@ -18,7 +18,7 @@ The roadmap is ordered by implementation phase, but releases cut across phases. 
 
 **Security invariant — v0.1.0 blocks until this holds end-to-end:**
 
-- Phase 4 shipped — every `akua render` invocation (CLI or SDK) runs inside a wasmtime WASI sandbox with memory / fuel / epoch caps + capability-model filesystem preopens. No native render fallback.
+- Phase 4 shipped — every `akuapkg render` invocation (CLI or SDK) runs inside a wasmtime WASI sandbox with memory / fuel / epoch caps + capability-model filesystem preopens. No native render fallback.
 - Phase 4B shipped — `@akua-dev/sdk` delivers the same render path via `wasm32-unknown-unknown` inside the host JS runtime's own sandbox. Identical guarantees for SDK consumers — same invariant, different sandbox.
 - Path-escape + symlink-escape rejected at the plugin boundary (shipped Phase 0 — guard existing tests).
 - No shell-out in any render path. No `--unsafe-host` flag. No feature gate that opens one (shipped Phase 0 — guard this at code review forever).
@@ -33,12 +33,12 @@ The roadmap is ordered by implementation phase, but releases cut across phases. 
 - Helm + Kustomize WASM engines
 - Typed `charts.*` deps over path / OCI / git with `replace` + lockfile digests
 - Cosign keyed verify + SLSA v1 attestation on publish
-- Full air-gap crypto loop: `akua pack` → `akua sign` → transfer → `akua verify --tarball` → `akua push --sig`
-- Operational verbs: `akua cache`, `akua auth`, `akua lock [--check]`, `akua update [--dep]`
+- Full air-gap crypto loop: `akuapkg pack` → `akua sign` → transfer → `akuapkg verify --tarball` → `akuapkg push --sig`
+- Operational verbs: `akuapkg cache`, `akuapkg auth`, `akuapkg lock [--check]`, `akuapkg update [--dep]`
 
 **Still to ship for v0.1.0 (ordered by blast radius if skipped):**
 
-1. **Phase 4** — wasmtime-hosted `akua render`. Security invariant for the CLI.
+1. **Phase 4** — wasmtime-hosted `akuapkg render`. Security invariant for the CLI.
 2. **Phase 4B** — `akua-wasm` bundle via JSR. Security invariant for the SDK + full verb coverage.
 3. Adversarial test suite targeting the sandbox (listed above).
 4. Docs sweep — see [v0.1.0 release punch list](#v010-release-punch-list). Explicitly: the "this doesn't yet hold" caveats in security-model.md go.
@@ -57,7 +57,7 @@ These are feature absences, not invariant violations. Users know exactly what th
 ### v0.2.0 — hosted multi-tenant
 
 - Phase 5 — `akua serve` (~2-3 weeks). Single process handles N concurrent renders with per-tenant isolation. v0.1.0 already delivers the per-render sandbox; v0.2.0 adds the concurrent-tenants HTTP surface on top.
-- `akua attest` + `akua verify --att` — offline DSSE/SLSA alongside the existing signature flow.
+- `akua attest` + `akuapkg verify --att` — offline DSSE/SLSA alongside the existing signature flow.
 
 ### v0.3.0 — supply-chain completeness
 
@@ -69,7 +69,7 @@ These are feature absences, not invariant violations. Users know exactly what th
 
 - Policy engine phase (design open — regorus vs OPA→WASM).
 - Phase 8 — Rego test runner (depends on policy engine).
-- Phase 8 — `akua repl` Rego half (depends on policy engine).
+- Phase 8 — `akuapkg repl` Rego half (depends on policy engine).
 - Phase 9 — `akua deploy`, `akua query`, `akua trace`, `akua policy` ("ship when there's demand").
 
 ---
@@ -140,7 +140,7 @@ Spec-to-code convergence. [docs/package-format.md §2](package-format.md) and [d
 - [x] `chart_resolver` module: local-path deps → canonicalized path + sha256 digest
 - [x] Per-render `charts` KCL external pkg generated from resolved deps (`charts/<name>.k` exposes `path` + `sha256` constants)
 - [x] `PackageK::render_with_charts` threads resolved chart paths as allowed absolute roots for the plugin path-escape guard — `helm.template(nginx.path, ...)` survives without an `--unsafe-host` escape hatch
-- [x] `akua render` CLI verb auto-loads sibling `akua.toml`, resolves charts, passes them through
+- [x] `akuapkg render` CLI verb auto-loads sibling `akua.toml`, resolves charts, passes them through
 - [x] `examples/01-hello-webapp` vendored nginx chart + rewritten Package renders end-to-end — verified via `examples_hello_webapp.rs` integration test
 
 ### Phase 2b slice A — replace directive + lockfile digests (SHIPPED — 2026-04-22)
@@ -149,8 +149,8 @@ Spec-to-code convergence. [docs/package-format.md §2](package-format.md) and [d
 - [x] `ResolvedSource` enum (`Path` / `Oci` / `OciReplaced` / `GitReplaced`) drives the lockfile writer
 - [x] `chart_resolver::merge_into_lock` upserts path-dep + replace entries, preserving prior cosign / attestation metadata
 - [x] `AkuaLock::save` / `find` / `upsert` writer API
-- [x] `akua add` best-effort updates the lockfile on every edit
-- [x] `akua verify` exempts `path+file://` sources from strict_signing
+- [x] `akuapkg add` best-effort updates the lockfile on every edit
+- [x] `akuapkg verify` exempts `path+file://` sources from strict_signing
 
 ### Phase 2b slice B — OCI pull + digest verify (SHIPPED — 2026-04-22)
 
@@ -158,20 +158,20 @@ Spec-to-code convergence. [docs/package-format.md §2](package-format.md) and [d
 - [x] Content-addressed cache at `$XDG_CACHE_HOME/akua/oci/sha256/<hex>` — second render reuses the unpacked tree
 - [x] Lockfile-pinned digest verify on pull — a drifted tag fails the render loudly with `LockDigestMismatch`
 - [x] `ResolverOptions { offline, cache_root, expected_digests }` gate — `resolve()` stays offline for tests; `resolve_with_options()` is the network path
-- [x] `akua render` + `akua add` pass lockfile digests as `expected_digests`
+- [x] `akuapkg render` + `akuapkg add` pass lockfile digests as `expected_digests`
 - [x] Integration test pulls `ghcr.io/stefanprodan/charts/podinfo:6.6.0`, caches, verifies digest-mismatch rejection
 
 ### Phase 2b slice C (SHIPPED — 2026-04-22)
 
-- [x] `akua render --strict`: raw-string plugin paths rejected. Forces every chart to go through `akua.toml` + `import charts.<name>`. Typed exit code `E_STRICT_UNTYPED_CHART`.
-- [x] `akua render --offline`: OCI / git deps must cache-hit. Air-gapped CI path.
-- [x] `akua verify` path-dep drift detection: re-hashes vendored charts on disk, emits `PathDigestDrift` / `PathMissing` violations when the tree diverged from `akua.lock` or was deleted.
+- [x] `akuapkg render --strict`: raw-string plugin paths rejected. Forces every chart to go through `akua.toml` + `import charts.<name>`. Typed exit code `E_STRICT_UNTYPED_CHART`.
+- [x] `akuapkg render --offline`: OCI / git deps must cache-hit. Air-gapped CI path.
+- [x] `akuapkg verify` path-dep drift detection: re-hashes vendored charts on disk, emits `PathDigestDrift` / `PathMissing` violations when the tree diverged from `akua.lock` or was deleted.
 - [x] Git deps via `gix` (pure Rust, no shell-out). Clones into `$XDG_CACHE_HOME/akua/git/repos/` + checkouts under `checkouts/<sha>/`. Content-addressed, lockfile-pinned by commit SHA.
 - [x] Private-repo OCI auth via `~/.config/akua/auth.toml` (akua-native TOML) and `~/.docker/config.json` (standard docker login format). Basic auth + bearer PATs supported; docker credential helpers intentionally not (shell-out).
 - [x] Generated `charts.<name>` module grows a `Values` schema (from `values.schema.json`) + a `TemplateOpts` wrapper + `template()` lambda pre-filled with `chart = path`. Authors call `nginx.template(nginx.TemplateOpts { values = {...} })` — the "chart: str | Chart" ergonomic win, via a callable on the module rather than a schema union.
-- [x] `akua remove` prunes matching lockfile entries; `akua tree` shows `[replace -> <path>]` markers for fork overrides.
+- [x] `akuapkg remove` prunes matching lockfile entries; `akuapkg tree` shows `[replace -> <path>]` markers for fork overrides.
 
-**Exit gate:** ✅ all three slices shipped. OCI chart end-to-end via `akua render` (cache hit on second call). Git chart via `gix` (no shell-out). Private-repo auth for both. `--strict` / `--offline` / path-dep drift for CI-grade guarantees. `charts.<name>.template(...)` gives Package authors an autocomplete-driven authoring surface.
+**Exit gate:** ✅ all three slices shipped. OCI chart end-to-end via `akuapkg render` (cache hit on second call). Git chart via `gix` (no shell-out). Private-repo auth for both. `--strict` / `--offline` / path-dep drift for CI-grade guarantees. `charts.<name>.template(...)` gives Package authors an autocomplete-driven authoring surface.
 
 ---
 
@@ -193,20 +193,20 @@ are no host-side preopens to grant.
 
 ---
 
-## Phase 4 — Wasmtime-hosted `akua render` (2-3 weeks) — **blocks v0.1.0**
+## Phase 4 — Wasmtime-hosted `akuapkg render` (2-3 weeks) — **blocks v0.1.0**
 
-Sandbox becomes the default execution path for akua itself. User-invoked `akua render` wraps a wasip1-compiled `akua-render-worker` inside wasmtime. Delivers CLAUDE.md's "sandboxed by default" invariant at the process level — **the precondition for cutting v0.1.0**. No release before this lands.
+Sandbox becomes the default execution path for akua itself. User-invoked `akuapkg render` wraps a wasip1-compiled `akua-render-worker` inside wasmtime. Delivers CLAUDE.md's "sandboxed by default" invariant at the process level — **the precondition for cutting v0.1.0**. No release before this lands.
 
 - [x] **Spike complete 2026-04-24** ([docs/spikes/kcl-wasm-feasibility.md](spikes/kcl-wasm-feasibility.md)) — compile + runtime both green on `wasm32-wasip1`. Two runtime panics resolved same day: `kcl-driver::get_pkg_list` via [cnap-tech/kcl@akua-wasm32](https://github.com/cnap-tech/kcl/tree/akua-wasm32) fork + upstream PR [kcl-lang/kcl#2086](https://github.com/kcl-lang/kcl/pull/2086), `stdlib::stdlib_root` via cfg-guard in akua-core.
 - [x] `akua-render-worker` binary targeting `wasm32-wasip1` — Ping + Render requests both handled. akua-core + engine-kcl compiled into the worker via the `[patch]` pin.
-- [x] Wasmtime host harness in `akua-cli`: per-render Store with `StoreLimits::memory_size(256 MiB)` + `epoch_interruption` + background epoch ticker. Single shared Engine for worker + engine plugins (helm, kustomize) per wasmtime's "one Engine, many Stores" pattern. Plugin bridge (`env::kcl_plugin_invoke_json_wasm`) ferries callouts across the Store boundary; plugin panics survive the wasip1 trap boundary via out-of-band capture on `HostState`.
+- [x] Wasmtime host harness in `akuapkg-cli`: per-render Store with `StoreLimits::memory_size(256 MiB)` + `epoch_interruption` + background epoch ticker. Single shared Engine for worker + engine plugins (helm, kustomize) per wasmtime's "one Engine, many Stores" pattern. Plugin bridge (`env::kcl_plugin_invoke_json_wasm`) ferries callouts across the Store boundary; plugin panics survive the wasip1 trap boundary via out-of-band capture on `HostState`.
 - [x] AOT-compile `.cwasm` at akua's build time; embed in akua binary (`include_bytes!` wrapping `$OUT_DIR/akua-render-worker.cwasm`, Config-hash-matched to runtime).
-- [x] `akua render`, `akua dev`, `akua repl` all dispatch through the worker — no native fallback. Plugin callouts (`helm.template`, `kustomize.build`) bridged to host handlers.
+- [x] `akuapkg render`, `akuapkg dev`, `akuapkg repl` all dispatch through the worker — no native fallback. Plugin callouts (`helm.template`, `kustomize.build`) bridged to host handlers.
 - [x] CVE-2026-34988 mitigation: pinned `wasmtime = "43"` across workspace (43.0.1 min).
 - [ ] Benchmark regression suite: sub-100ms render budget still met (documented target, untested in the current sweep)
 - [ ] `InstanceAllocationStrategy::pooling(...)` + `Config::consume_fuel(true)` — deferred. Today's Store limits (memory + epoch) cover the invariant; fuel + pooling are optimization knobs, not correctness knobs.
 
-**Exit gate:** every `akua render` runs inside wasmtime. Native code path no longer exists for render execution. **✅ Shipped 2026-04-24.**
+**Exit gate:** every `akuapkg render` runs inside wasmtime. Native code path no longer exists for render execution. **✅ Shipped 2026-04-24.**
 
 ---
 
@@ -253,17 +253,17 @@ HTTP front end for concurrent render requests. Per-request `Store` with preopens
 
 - [x] `cosign` module: ECDSA P-256 keyed verification of simple-signing payloads, digest correlation with the fetched manifest.
 - [x] `oci_fetcher::fetch_with_opts` pulls the `sha256-<hex>.sig` sidecar + payload blob when a public key is configured; surfaces `CosignVerify` / `CosignSignatureMissing` distinctly.
-- [x] `akua.toml [signing] cosign_public_key = "./keys/cosign.pub"` config. `ResolverOptions.cosign_public_key_pem` threads through to the fetcher. `akua render` loads the key off disk.
+- [x] `akua.toml [signing] cosign_public_key = "./keys/cosign.pub"` config. `ResolverOptions.cosign_public_key_pem` threads through to the fetcher. `akuapkg render` loads the key off disk.
 - [x] Typed CLI code `E_COSIGN_VERIFY` — agents branch on "bytes failed the supply-chain gate" separately from "couldn't resolve the chart."
 
 ### Phase 6 slice B — deferred — **targets v0.3.0**
 
 - [ ] Keyless verify via sigstore-rs (Fulcio cert chain + Rekor transparency log)
-- [x] SLSA v1 predicate generation on `akua publish` (shipped Phase 7 B)
-- [x] `akua verify` walks the attestation chain — Package → deps (direct only today; transitive deferred to Phase 7 C follow-up)
+- [x] SLSA v1 predicate generation on `akuapkg publish` (shipped Phase 7 B)
+- [x] `akuapkg verify` walks the attestation chain — Package → deps (direct only today; transitive deferred to Phase 7 C follow-up)
 - [ ] `akua.toml` `strictSigning: true` makes the signing block mandatory on every OCI dep
 
-**Exit gate (full phase):** A published Package with a `charts.*` dep round-trips through `akua publish` → `akua pull` → `akua render` → `akua verify`, all signatures validated. Slice A lands keyed verify; slice B closes the loop with keyless + SLSA once `akua publish` exists.
+**Exit gate (full phase):** A published Package with a `charts.*` dep round-trips through `akuapkg publish` → `akuapkg pull` → `akuapkg render` → `akuapkg verify`, all signatures validated. Slice A lands keyed verify; slice B closes the loop with keyless + SLSA once `akuapkg publish` exists.
 
 ---
 
@@ -273,12 +273,12 @@ HTTP front end for concurrent render requests. Per-request `Store` with preopens
 
 - [x] `oci_transport` module: shared HTTP + bearer-challenge auth. Fetcher + puller + pusher all funnel through it.
 - [x] `oci_pusher` module: monolithic upload of blob + config + manifest under akua-specific media types (`application/vnd.akua.package.content.v1.tar+gzip`).
-- [x] `akua publish --ref <oci://…> [--tag] [--no-sign]`: deterministic workspace tarball → OCI artifact. `package_tar::pack_workspace` excludes render outputs + hidden dirs + per-consumer `inputs.yaml`.
+- [x] `akuapkg publish --ref <oci://…> [--tag] [--no-sign]`: deterministic workspace tarball → OCI artifact. `package_tar::pack_workspace` excludes render outputs + hidden dirs + per-consumer `inputs.yaml`.
 - [x] `oci_puller` module: inverse of pusher, enforces akua media type + manifest-declared digest.
-- [x] `akua pull --ref <oci://…> --tag <v> --out <dir>`: fetches + `package_tar::unpack_to` into a target directory.
+- [x] `akuapkg pull --ref <oci://…> --tag <v> --out <dir>`: fetches + `package_tar::unpack_to` into a target directory.
 - [x] Cosign signing primitive: `cosign::build_simple_signing_payload` + `sign_keyed` (P-256 ECDSA), round-trip proven against the verify primitive Phase 6 A shipped.
 - [x] `oci_pusher::push_cosign_signature`: pushes the `.sig` sidecar at `sha256-<hex>.sig` with `dev.cosignproject.cosign/signature` annotation.
-- [x] `akua.toml [signing].cosign_private_key`: `akua publish` signs by default when set. `--no-sign` CLI override.
+- [x] `akua.toml [signing].cosign_private_key`: `akuapkg publish` signs by default when set. `--no-sign` CLI override.
 - [x] Typed exit codes `E_PUBLISH_FAILED` / `E_PULL_FAILED`.
 
 ### Phase 7 slice B — SLSA attestation (SHIPPED — 2026-04-22)
@@ -286,22 +286,22 @@ HTTP front end for concurrent render requests. Per-request `Store` with preopens
 - [x] `slsa` module: in-toto v1 statement + SLSA v1 provenance predicate builder. Materials pulled from `akua.lock`; `buildType = https://akua.dev/slsa/publish/v1`; builder id keyed to the akua release.
 - [x] `cosign::sign_dsse` / `verify_dsse`: DSSE v1 envelope sign + verify with PAE (Pre-Auth Encoding) binding `payloadType` into the signature so cross-envelope-type substitution is rejected.
 - [x] `oci_pusher::push_attestation`: pushes the DSSE envelope as a `.att` sidecar at `sha256-<hex>.att` with media type `application/vnd.dsse.envelope.v1+json`.
-- [x] `akua publish` auto-attests when signing is active; `--no-attest` disables independently of `--no-sign`. `PublishOutput.attestation_tag` surfaces the sidecar ref.
+- [x] `akuapkg publish` auto-attests when signing is active; `--no-attest` disables independently of `--no-sign`. `PublishOutput.attestation_tag` surfaces the sidecar ref.
 
 ### Phase 7 slice C (partial — SHIPPED 2026-04-22)
 
 - [x] `oci_puller::pull_attestation`: fetches the `.att` sidecar from a registry + returns the DSSE envelope bytes. 404 → Ok(None) so consumers can distinguish "publisher didn't attest" from transport errors.
-- [x] `akua verify` attestation chain walk: for every OCI dep in `akua.lock`, when a cosign public key is configured, pulls + verifies the sidecar, asserts the SLSA subject digest matches the lockfile-pinned digest. Three new typed violations: `AttestationMissing`, `AttestationInvalid`, `AttestationSubjectMismatch`.
+- [x] `akuapkg verify` attestation chain walk: for every OCI dep in `akua.lock`, when a cosign public key is configured, pulls + verifies the sidecar, asserts the SLSA subject digest matches the lockfile-pinned digest. Three new typed violations: `AttestationMissing`, `AttestationInvalid`, `AttestationSubjectMismatch`.
 
 ### Phase 7 slice C — encrypted keys (SHIPPED — 2026-04-22)
 
 - [x] `cosign::sign_keyed_with_passphrase` + `sign_dsse_with_passphrase`: encrypted PKCS#8 PEM (`-----BEGIN ENCRYPTED PRIVATE KEY-----`) supported. Unencrypted path unchanged.
-- [x] `akua publish` reads `$AKUA_COSIGN_PASSPHRASE`. No `--passphrase` CLI flag — argv leaks to `ps`.
+- [x] `akuapkg publish` reads `$AKUA_COSIGN_PASSPHRASE`. No `--passphrase` CLI flag — argv leaks to `ps`.
 - [x] Missing passphrase on encrypted key surfaces a clear error naming the env var.
 
 ### Phase 7 slice C — vendored deps (SHIPPED — 2026-04-22)
 
-- [x] `akua publish` resolves non-path deps + embeds each chart tree at `.akua/vendor/<name>/` in the tarball. Resolver failures print a loud stderr warning — no silent un-vendored publishes.
+- [x] `akuapkg publish` resolves non-path deps + embeds each chart tree at `.akua/vendor/<name>/` in the tarball. Resolver failures print a loud stderr warning — no silent un-vendored publishes.
 - [x] Resolver consults `<workspace>/.akua/vendor/<name>/` before attempting network fetch. Offline-after-pull renders now succeed for a published Package with OCI or git deps.
 - [x] End-to-end round-trip integration test: pack-with-vendor → unpack → offline resolve → assert nginx resolved from `.akua/vendor/` with matching digest.
 
@@ -310,20 +310,20 @@ HTTP front end for concurrent render requests. Per-request `Store` with preopens
 - [ ] Recursive attestation walk over transitive deps — a published Package's own deps must themselves be attested. Blocked on fixture Packages that attest their dep graph.
 - [ ] HSM / cosign-native key formats (PKCS#11 / cosign-cli key ref) — targets v0.3.0.
 
-**Exit gate (full phase):** Published Package round-trips `akua publish` → `akua pull` → `akua render` with cosign signatures validated at each hop. ✅ slice A covers the core round-trip; slice B adds SLSA + offline-render-from-published-digests on top.
+**Exit gate (full phase):** Published Package round-trips `akuapkg publish` → `akuapkg pull` → `akuapkg render` with cosign signatures validated at each hop. ✅ slice A covers the core round-trip; slice B adds SLSA + offline-render-from-published-digests on top.
 
 ---
 
-## Phase 8 — Author surface (`akua test`, `akua dev`, `akua repl`)
+## Phase 8 — Author surface (`akuapkg test`, `akuapkg dev`, `akuapkg repl`)
 
-Shipping incrementally alongside the core. `akua test` is live; the
+Shipping incrementally alongside the core. `akuapkg test` is live; the
 rest ship when demand justifies the surface.
 
-- [x] `akua test` — `test_*.k` / `*_test.k` runner. Files are evaluated via the same `PackageK` loader `akua render` uses; KCL `assert` + `check:` failures surface as per-file test failures. Structured JSON verdict + exit code 1 on any fail. (2026-04-22)
+- [x] `akuapkg test` — `test_*.k` / `*_test.k` runner. Files are evaluated via the same `PackageK` loader `akuapkg render` uses; KCL `assert` + `check:` failures surface as per-file test failures. Structured JSON verdict + exit code 1 on any fail. (2026-04-22)
 - [ ] Rego test runner (`*_test.rego`) — paired with the policy engine phase
-- [x] Golden-file snapshot support for render-output tests — `akua test --golden` dir-diffs every `package.k`×`inputs*.yaml` combo against `snapshots/<pkg>/<stem>/`; `--update-snapshots` regenerates. (2026-04-22)
-- [x] `akua dev` — file-watch hot-reload. `notify` + `notify-debouncer-mini`; `Rendered`/`RenderError` events stream to stdout (JSONL in agent mode). Watches per kept subdir non-recursively so `target/`/`node_modules/` monorepos don't exhaust `fs.inotify.max_user_watches`. Broken-pipe-aware. (2026-04-22) — apply-to-cluster deferred (needs kind driver).
-- [~] `akua repl` — KCL half shipped (2026-04-24): accumulates submitted lines into a growing `.k` source, re-evaluates via `eval_source`, prints top-level YAML. Meta commands `.load / .reset / .show / .help / .exit`. Plain-line I/O (users wanting history wrap via `rlwrap`). Rego half deferred until the policy engine phase is designed.
+- [x] Golden-file snapshot support for render-output tests — `akuapkg test --golden` dir-diffs every `package.k`×`inputs*.yaml` combo against `snapshots/<pkg>/<stem>/`; `--update-snapshots` regenerates. (2026-04-22)
+- [x] `akuapkg dev` — file-watch hot-reload. `notify` + `notify-debouncer-mini`; `Rendered`/`RenderError` events stream to stdout (JSONL in agent mode). Watches per kept subdir non-recursively so `target/`/`node_modules/` monorepos don't exhaust `fs.inotify.max_user_watches`. Broken-pipe-aware. (2026-04-22) — apply-to-cluster deferred (needs kind driver).
+- [~] `akuapkg repl` — KCL half shipped (2026-04-24): accumulates submitted lines into a growing `.k` source, re-evaluates via `eval_source`, prints top-level YAML. Meta commands `.load / .reset / .show / .help / .exit`. Plain-line I/O (users wanting history wrap via `rlwrap`). Rego half deferred until the policy engine phase is designed.
 
 ---
 
@@ -332,20 +332,20 @@ rest ship when demand justifies the surface.
 Glue that ships alongside the author loop but targets operators
 rather than authors. Small, composable, agent-friendly.
 
-- [x] `akua cache list | clear [--oci|--git|--helm] | path` — inventory + reclaim the content-addressed caches under `$XDG_CACHE_HOME/akua/{oci,git,helm}` that `akua add` + `akua render` populate. Discriminated JSON shape `{action: list|clear|path, …}`. Ephemeral CI runners and disk-pressure triage without `rm -rf` guessing. (2026-04-23)
-- [x] `akua auth list | add | remove` — manage `$XDG_CONFIG_HOME/akua/auth.toml` without hand-editing TOML. `add --username`/`--token` reads the secret from stdin (mirrors `docker login --password-stdin` — no secret on argv, no TTY dependency). `list` tags each entry with source ("akua" / "docker" / "both") and auth_kind, never echoing secrets. (2026-04-23)
-- [x] `akua pack` — local-file sibling of `akua publish`. Writes the same deterministic `.tar.gz` to disk instead of pushing. Unlocks air-gap transfers, offline signing, and bit-diff archival. Defaults to `<workspace>/dist/<name>-<version>.tar.gz` (walker-skipped subdir so re-packing is idempotent); `--no-vendor` skips embedding deps. Emits `layer_digest` matching the OCI layer digest the registry would assign. (2026-04-23)
-- [x] `akua push --tarball <path> --ref <oci://...> --tag <t>` — upload a pre-packed tarball. The push half of `akua publish`, decomposed so air-gap flows complete: pack here, transfer, push there. No signing / attestation (publish remains the all-in-one). (2026-04-24)
-- [x] `akua inspect --tarball <path>` — triage a packed `.tar.gz` in-memory without unpacking. Reports `{package_name, version, edition}` parsed from the embedded `akua.toml`, `layer_digest`, `{compressed,uncompressed}_size_bytes`, `file_count`, sorted `vendored_deps`. Completes the air-gap triad: pack → transfer → inspect → push. (2026-04-24)
-- [x] `akua lock [--check]` — regenerate `akua.lock` from `akua.toml` (cargo `generate-lockfile` analogue). `--check` diffs without writing and exits `E_LOCK_DRIFT` on staleness — pre-commit / CI gate to catch "author edited akua.toml but forgot to re-lock." Preserves signatures on unchanged entries via `merge_into_lock`; canonical TOML byte-compare for drift detection. (2026-04-24)
-- [x] `akua update [--dep <name>]` — intentionally bump the lock against whatever upstream now serves. Inverse stance to `akua lock`: where `lock` rejects OCI digest drift (security), `update` accepts it and records the new digest. `--dep` scopes the lockfile write to one entry (cargo `update -p foo` analogue). Output lists `{updated, unchanged, skipped}` so operators see exactly what moved. (2026-04-24)
-- [x] `akua sign` + `akua push --sig` — offline signing pair that completes the air-gap flow. `akua sign --tarball --ref --tag [--key]` computes `oci_pusher::compute_publish_digests()` locally (pure function, matches registry-side math post-push) and writes a `.akuasig` sidecar (JSON; carries `{oci_ref, tag, manifest_digest, simple_signing_payload, signature_b64, akua_version}`). `akua push --sig <path>` validates ref/tag/digest against the push target pre-upload, then pushes the `.sig` tag via the existing cosign push path. Sign + push hosts must pin the same akua binary (config blob embeds `env!("CARGO_PKG_VERSION")`). (2026-04-24)
-- [x] `akua verify --tarball <path> [--sig <path>] [--public-key <path>]` — offline verify against a `.akuasig`, no registry round-trip. Three checks: sidecar readable, local manifest_digest matches sidecar's, ECDSA signature verifies (skipped when no public key). Falls back to `akua.toml [signing].cosign_public_key`. Closes the air-gap loop: pack → sign → transfer → verify → push. Full chain smoke-tested end-to-end. (2026-04-24)
+- [x] `akuapkg cache list | clear [--oci|--git|--helm] | path` — inventory + reclaim the content-addressed caches under `$XDG_CACHE_HOME/akua/{oci,git,helm}` that `akuapkg add` + `akuapkg render` populate. Discriminated JSON shape `{action: list|clear|path, …}`. Ephemeral CI runners and disk-pressure triage without `rm -rf` guessing. (2026-04-23)
+- [x] `akuapkg auth list | add | remove` — manage `$XDG_CONFIG_HOME/akua/auth.toml` without hand-editing TOML. `add --username`/`--token` reads the secret from stdin (mirrors `docker login --password-stdin` — no secret on argv, no TTY dependency). `list` tags each entry with source ("akua" / "docker" / "both") and auth_kind, never echoing secrets. (2026-04-23)
+- [x] `akuapkg pack` — local-file sibling of `akuapkg publish`. Writes the same deterministic `.tar.gz` to disk instead of pushing. Unlocks air-gap transfers, offline signing, and bit-diff archival. Defaults to `<workspace>/dist/<name>-<version>.tar.gz` (walker-skipped subdir so re-packing is idempotent); `--no-vendor` skips embedding deps. Emits `layer_digest` matching the OCI layer digest the registry would assign. (2026-04-23)
+- [x] `akuapkg push --tarball <path> --ref <oci://...> --tag <t>` — upload a pre-packed tarball. The push half of `akuapkg publish`, decomposed so air-gap flows complete: pack here, transfer, push there. No signing / attestation (publish remains the all-in-one). (2026-04-24)
+- [x] `akuapkg inspect --tarball <path>` — triage a packed `.tar.gz` in-memory without unpacking. Reports `{package_name, version, edition}` parsed from the embedded `akua.toml`, `layer_digest`, `{compressed,uncompressed}_size_bytes`, `file_count`, sorted `vendored_deps`. Completes the air-gap triad: pack → transfer → inspect → push. (2026-04-24)
+- [x] `akuapkg lock [--check]` — regenerate `akua.lock` from `akua.toml` (cargo `generate-lockfile` analogue). `--check` diffs without writing and exits `E_LOCK_DRIFT` on staleness — pre-commit / CI gate to catch "author edited akua.toml but forgot to re-lock." Preserves signatures on unchanged entries via `merge_into_lock`; canonical TOML byte-compare for drift detection. (2026-04-24)
+- [x] `akuapkg update [--dep <name>]` — intentionally bump the lock against whatever upstream now serves. Inverse stance to `akuapkg lock`: where `lock` rejects OCI digest drift (security), `update` accepts it and records the new digest. `--dep` scopes the lockfile write to one entry (cargo `update -p foo` analogue). Output lists `{updated, unchanged, skipped}` so operators see exactly what moved. (2026-04-24)
+- [x] `akua sign` + `akuapkg push --sig` — offline signing pair that completes the air-gap flow. `akua sign --tarball --ref --tag [--key]` computes `oci_pusher::compute_publish_digests()` locally (pure function, matches registry-side math post-push) and writes a `.akuasig` sidecar (JSON; carries `{oci_ref, tag, manifest_digest, simple_signing_payload, signature_b64, akua_version}`). `akuapkg push --sig <path>` validates ref/tag/digest against the push target pre-upload, then pushes the `.sig` tag via the existing cosign push path. Sign + push hosts must pin the same akua binary (config blob embeds `env!("CARGO_PKG_VERSION")`). (2026-04-24)
+- [x] `akuapkg verify --tarball <path> [--sig <path>] [--public-key <path>]` — offline verify against a `.akuasig`, no registry round-trip. Three checks: sidecar readable, local manifest_digest matches sidecar's, ECDSA signature verifies (skipped when no public key). Falls back to `akua.toml [signing].cosign_public_key`. Closes the air-gap loop: pack → sign → transfer → verify → push. Full chain smoke-tested end-to-end. (2026-04-24)
 
 ### Planned
 
-- [ ] `akua attest` + `akua push --att` — offline attestation pair symmetric to `akua sign`. Signs an SLSA v1 DSSE envelope bound to the tarball's manifest digest; sidecar format `.akuaatt` mirrors `.akuasig`. Completes the air-gap crypto story alongside signing.
-- [ ] Extend `akua verify --tarball` with `--att <path>` — DSSE attestation verify. Lands with `akua attest`.
+- [ ] `akua attest` + `akuapkg push --att` — offline attestation pair symmetric to `akua sign`. Signs an SLSA v1 DSSE envelope bound to the tarball's manifest digest; sidecar format `.akuaatt` mirrors `.akuasig`. Completes the air-gap crypto story alongside signing.
+- [ ] Extend `akuapkg verify --tarball` with `--att <path>` — DSSE attestation verify. Lands with `akua attest`.
 
 ---
 
@@ -363,7 +363,7 @@ Concrete boxes to check before cutting the alpha tag. Everything under "core ver
 
 v0.1.0 doesn't cut until CLAUDE.md's promise holds end-to-end. No caveats in release notes say otherwise.
 
-- [x] Phase 4 shipped — every `akua render` / `akua dev` / `akua repl` runs inside wasmtime. No native render path exists.
+- [x] Phase 4 shipped — every `akuapkg render` / `akuapkg dev` / `akuapkg repl` runs inside wasmtime. No native render path exists.
 - [~] Phase 4B shipped — Node-side lands (`@akua-dev/sdk` loads `akua-wasm` lazily, first WASM-backed method green). Browser target + engine bundling outstanding.
 - [~] Fuel-exhaustion — fuel not wired for v0.1.0 (see Phase 4 notes above); epoch is the active CPU cap. Covered by `epoch_cap_traps_runaway_evaluation` in `tests/sandbox_adversarial.rs`.
 - [x] Adversarial test: memory-bomb allocation fails cleanly against the per-render `StoreLimitsBuilder::memory_size` cap. (`memory_cap_enforced_below_minimum_instance_size` + `memory_cap_traps_runtime_growth_past_limit`.)
@@ -379,11 +379,11 @@ v0.1.0 doesn't cut until CLAUDE.md's promise holds end-to-end. No caveats in rel
 ### Build + test
 
 - [ ] Release notes draft — what's in (feature absences only, never invariant caveats), what comes in v0.2.0 (hosted multi-tenant via `akua serve`)
-- [ ] `cargo test -p akua-core -p akua-cli` green on CI across Linux + macOS
+- [ ] `cargo test -p akua-core -p akuapkg-cli` green on CI across Linux + macOS
 - [ ] `akua --version` matches the tag
-- [ ] Every `examples/<name>/` renders through `akua render` without errors
-- [ ] Every `examples/<name>/` passes `akua check && akua lint && akua test`
-- [ ] One curated upstream Package published to a public OCI registry for `akua pull` smoke-testing
+- [ ] Every `examples/<name>/` renders through `akuapkg render` without errors
+- [ ] Every `examples/<name>/` passes `akuapkg check && akuapkg lint && akuapkg test`
+- [ ] One curated upstream Package published to a public OCI registry for `akuapkg pull` smoke-testing
 
 ### Docs sweep — sharpen + remove outdated claims
 
@@ -404,13 +404,13 @@ Many markdown files predate recent shipping and make claims that no longer match
 - [ ] **[docs/impl-plan.md](impl-plan.md)** — cross-check against roadmap.md; remove duplication, or collapse to a pointer if this file has drifted past usefulness.
 - [ ] **[docs/sdk.md](sdk.md)** — if the TypeScript SDK isn't shipped, mark as target-state or remove the reference from CLAUDE.md.
 - [ ] **`examples/*/README.md`** — every example's README describes what it actually does today. Remove "shell-out" references; point to Phase 1/3 WASM engines.
-- [ ] **Package author's README template** — `akua init` scaffolds a README that compiles on first `akua render`.
+- [ ] **Package author's README template** — `akuapkg init` scaffolds a README that compiles on first `akuapkg render`.
 
 ### Feature-docs for shipped surface
 
-- [ ] Air-gap flow end-to-end: `akua pack` → `akua sign` → transfer → `akua verify --tarball` → `akua push --sig`, runnable snippet with a freshly-generated key.
-- [ ] Publishing story: `akua publish` + `[signing]` config + what a consumer sees on `akua pull` + `akua verify`.
-- [ ] Operational verbs crib sheet: `akua cache`, `akua auth`, `akua lock [--check]`, `akua update`.
+- [ ] Air-gap flow end-to-end: `akuapkg pack` → `akua sign` → transfer → `akuapkg verify --tarball` → `akuapkg push --sig`, runnable snippet with a freshly-generated key.
+- [ ] Publishing story: `akuapkg publish` + `[signing]` config + what a consumer sees on `akuapkg pull` + `akuapkg verify`.
+- [ ] Operational verbs crib sheet: `akuapkg cache`, `akuapkg auth`, `akuapkg lock [--check]`, `akuapkg update`.
 
 ### @akua-dev/sdk — TypeScript SDK via WASM on JSR (blocks v0.1.0)
 

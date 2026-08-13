@@ -19,7 +19,7 @@ An akua Package is a typed, reusable definition authored in KCL. One Package is 
 ### 1. Scaffold
 
 ```sh
-akua init <package-name>
+akuapkg init <package-name>
 cd <package-name>
 ```
 
@@ -32,30 +32,30 @@ This creates:
 
 ### 2. Add source engines
 
-For each external source, use `akua add`. This generates a typed KCL subpackage under `./sources/` so you get autocomplete + validation on the source's native values.
+For each external source, use `akuapkg add`. This generates a typed KCL subpackage under `./sources/` so you get autocomplete + validation on the source's native values.
 
 Helm chart:
 
 ```sh
-akua add chart oci://ghcr.io/cloudnative-pg/charts/cluster --version 0.20.0
+akuapkg add chart oci://ghcr.io/cloudnative-pg/charts/cluster --version 0.20.0
 ```
 
 kro RGD:
 
 ```sh
-akua add rgd oci://pkg.example.com/glue-rgd:1.0
+akuapkg add rgd oci://pkg.example.com/glue-rgd:1.0
 ```
 
 Kustomize base:
 
 ```sh
-akua add kustomize ./local/overlay
+akuapkg add kustomize ./local/overlay
 ```
 
 Another KCL package:
 
 ```sh
-akua add kcl oci://ghcr.io/kcl-lang/k8s --version 1.31.2
+akuapkg add kcl oci://ghcr.io/kcl-lang/k8s --version 1.31.2
 ```
 
 ### 3. Edit the schema
@@ -103,17 +103,17 @@ Each call returns a list of typed Kubernetes resources. Concatenate them with `[
 
 ### 5. Render output
 
-`akua render --out ./deploy` writes every entry in `resources` as its own
+`akuapkg render --out ./deploy` writes every entry in `resources` as its own
 YAML file under `./deploy/`. No output-kind declaration — raw manifests
 is the single render shape. Ecosystem-specific shapes come either from
 in-body transformation functions (`kro.rgd(...)`, `crossplane.composition(...)`
 that produce K8s manifests joined into `resources`) or from future
-distribution verbs like `akua publish --as <format>`. See [docs/cli.md — akua render](../../docs/cli.md#akua-render).
+distribution verbs like `akuapkg publish --as <format>`. See [docs/cli.md — akuapkg render](../../docs/cli.md#akua-render).
 
 ### 6. Validate
 
 ```sh
-akua lint
+akuapkg lint
 ```
 
 Catches: schema errors, unresolved source references, policy violations (if `--policy` is set).
@@ -121,7 +121,7 @@ Catches: schema errors, unresolved source references, policy violations (if `--p
 ### 7. Render with sample inputs
 
 ```sh
-akua render --inputs inputs.example.yaml --out ./rendered
+akuapkg render --inputs inputs.example.yaml --out ./rendered
 ```
 
 Inspect `./rendered/` — this is the exact YAML that would deploy. Committable to git.
@@ -131,19 +131,19 @@ Inspect `./rendered/` — this is the exact YAML that would deploy. Committable 
 If you have a local Kubernetes available:
 
 ```sh
-akua dev
+akuapkg dev
 ```
 
 Opens `http://localhost:5173`, applies rendered manifests to a kind cluster, hot-reloads on every edit.
 
 ## Expected output
 
-After `akua render`, `./rendered/` contains well-formed Kubernetes YAML, one file per resource, sorted by `kind/name`. The output is byte-deterministic: the same inputs always produce identical bytes.
+After `akuapkg render`, `./rendered/` contains well-formed Kubernetes YAML, one file per resource, sorted by `kind/name`. The output is byte-deterministic: the same inputs always produce identical bytes.
 
 ## Failure modes
 
 - **`E_SCHEMA_INVALID`** — schema definition has invalid KCL. The error includes line and field; fix the schema.
-- **`E_SOURCE_UNRESOLVED`** — a source reference in `akua add` failed to fetch. Check the OCI ref; verify credentials with `akua whoami`.
+- **`E_SOURCE_UNRESOLVED`** — a source reference in `akuapkg add` failed to fetch. Check the OCI ref; verify credentials with `akuapkg whoami`.
 - **`E_POLICY_DENY`** (exit 3) — rendered manifests violate the configured policy tier. The error lists the failing rule and a suggested fix.
 - **`E_RENDER_FAILED`** — an engine function (helm.template, rgd.instantiate) raised an error. Usually a values-validation failure; check the source engine's own schema.
 

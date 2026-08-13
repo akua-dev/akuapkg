@@ -9,7 +9,7 @@ vars:
   HELM_ENGINE_WASM: crates/helm-engine-wasm/assets/helm-engine.wasm
   KUSTOMIZE_ENGINE_WASM: crates/kustomize-engine-wasm/assets/kustomize-engine.wasm
   # Produced by `task build:render-worker`. Embedded in the CLI at
-  # build time via akua-cli's build.rs — AOT-compiled to a .cwasm
+  # build time via akuapkg-cli's build.rs — AOT-compiled to a .cwasm
   # matching the runtime wasmtime Config hash so per-render
   # Module::deserialize is a memcpy, not a Cranelift pass.
   RENDER_WORKER_WASM: target/wasm32-wasip1/release/akua-render-worker.wasm
@@ -72,7 +72,7 @@ tasks:
       - cargo clippy --workspace --all-targets -- -D warnings
 
   # Rendering verbs (and clippy --all-targets, which compiles them) need
-  # the embedded wasmtime sandbox artifacts on disk: akua-cli's build.rs
+  # the embedded wasmtime sandbox artifacts on disk: akuapkg-cli's build.rs
   # precompiles them into the binary, and emits E_SANDBOX_UNAVAILABLE
   # when any is missing. Both lint + test depend on this.
   #
@@ -80,7 +80,7 @@ tasks:
   # toolchains (Rust→wasip1 + Go→wasip1 × 2) so concurrency is a
   # straightforward win.
   sandbox-artifacts:
-    desc: Build every embedded wasm needed by akua-cli's build.rs
+    desc: Build every embedded wasm needed by akuapkg-cli's build.rs
     deps:
       - build:render-worker
       - build:helm-engine-wasm
@@ -136,7 +136,7 @@ tasks:
       # `#[ignore]`-gated by default (live ghcr.io pull + wasmtime
       # epoch budget make it flaky in `cargo test --workspace`).
       # Pre-tag we WANT it to run.
-      - cargo test -p akua-cli --features cosign-verify,dev-watch
+      - cargo test -p akuapkg-cli --features cosign-verify,dev-watch
           --test examples_helm_hello
           --test examples_hello_webapp
           --test examples_pkg_compose
@@ -158,17 +158,17 @@ tasks:
   release:local:
     desc: Build the release binary locally
     cmds:
-      - cargo build --release -p akua-cli
-      - ls -lh target/release/akua
+      - cargo build --release -p akuapkg-cli
+      - ls -lh target/release/akuapkg
 
   release:target:
-    desc: Build akua for a specific Rust target (used by the release workflow)
+    desc: Build Akuapkg for a specific Rust target (used by the release workflow)
     vars:
       TARGET: '{{.TARGET | default "x86_64-unknown-linux-gnu"}}'
       CARGO: '{{.CARGO | default "cargo"}}'
     cmds:
-      - '{{.CARGO}} build --release -p akua-cli --target {{.TARGET}}'
-      - ls -lh target/{{.TARGET}}/release/akua
+      - '{{.CARGO}} build --release -p akuapkg-cli --target {{.TARGET}}'
+      - ls -lh target/{{.TARGET}}/release/akuapkg
 
   # ---- Embedded engines (wasip1; built by Go toolchain, hosted by wasmtime)
   # Each engine is a Go program compiled to `wasm32-wasip1` and embedded in
@@ -219,10 +219,10 @@ tasks:
   # ---- Render worker (Rust → wasip1; the Phase 4 sandbox) ------------------
 
   build:render-worker:
-    desc: Build akua-render-worker for wasm32-wasip1 (embedded in akua-cli)
+    desc: Build akua-render-worker for wasm32-wasip1 (embedded in akuapkg-cli)
     # akua-core is linked into the worker, so akua-core edits change
     # the produced wasm. Without it in `sources:`, task's caching
-    # reports "up to date" while akua-cli's build.rs flags the worker
+    # reports "up to date" while akuapkg-cli's build.rs flags the worker
     # as stale — the contributor goes in circles.
     sources:
       - crates/akua-render-worker/**/*.rs
@@ -243,7 +243,7 @@ tasks:
         --config 'profile.release.debug="line-tables-only"'
       - ls -lh {{.RENDER_WORKER_WASM}}
       # Record the content hash of the sources the .wasm was just built
-      # from. akua-cli's build.rs reads this on next consumer build —
+      # from. akuapkg-cli's build.rs reads this on next consumer build —
       # mismatch means host/worker drift (a release-quality bug).
       # Authoritative over mtime; not perturbed by `git checkout`.
       - >-
@@ -263,16 +263,16 @@ tasks:
       # output dir via `TS_RS_EXPORT_DIR` since the macro leaves
       # `export_to` empty. Run the lib tests for every crate that
       # declares a `contract_type!` — akua-core owns the shared
-      # primitives, akua-cli owns per-verb response shapes.
+      # primitives, akuapkg-cli owns per-verb response shapes.
       - |
         TS_RS_EXPORT_DIR="$(pwd)/{{.SDK_TYPES_DIR}}" \
           cargo test -p akua-core --features ts-export --lib export_bindings
       - |
         TS_RS_EXPORT_DIR="$(pwd)/{{.SDK_TYPES_DIR}}" \
-          cargo test -p akua-cli --features schema-export,ts-export --lib export_bindings
+          cargo test -p akuapkg-cli --features schema-export,ts-export --lib export_bindings
       # schemars bundle — single `akua.json` with every type in
       # `$defs`. Triggered by the dedicated emission test.
-      - cargo test -p akua-cli --features schema-export,ts-export --test export_sdk_bundle
+      - cargo test -p akuapkg-cli --features schema-export,ts-export --test export_sdk_bundle
 
   sdk:check:
     desc: Fail if generated SDK artifacts drift from the Rust source
@@ -319,7 +319,7 @@ tasks:
     desc: End-to-end — build akua, then run every SDK test with AKUA_E2E=1 (unlocks the gated e2e cases)
     deps: [sdk:install]
     cmds:
-      - cargo build -p akua-cli
+      - cargo build -p akuapkg-cli
       - cd packages/sdk && AKUA_E2E=1 bun test
 
   sdk:bench:
@@ -500,7 +500,7 @@ tasks:
       - command -v cargo-nextest >/dev/null 2>&1 || cargo install cargo-nextest --locked --version 0.9.86
       - cargo llvm-cov clean --workspace
       # Default features cover the cli + core + napi paths. Example
-      # golden tests live behind cosign-verify + dev-watch in akua-cli;
+      # golden tests live behind cosign-verify + dev-watch in akuapkg-cli;
       # run them in a second instrumented pass so their lines count.
       # Test failures don't abort report generation — coverage of a
       # partially-failing run is still informative, and the report
@@ -508,7 +508,7 @@ tasks:
       # --workspace` separately to fail-the-build on real test breakage.
       - cmd: cargo llvm-cov nextest --no-report --workspace --no-fail-fast
         ignore_error: true
-      - cmd: cargo llvm-cov nextest --no-report -p akua-cli --features cosign-verify,dev-watch --no-fail-fast
+      - cmd: cargo llvm-cov nextest --no-report -p akuapkg-cli --features cosign-verify,dev-watch --no-fail-fast
         ignore_error: true
       # Doc tests aren't covered by nextest; bring them in via libtest.
       # Small impact (~32 fence blocks across the workspace) but counted.

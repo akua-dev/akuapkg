@@ -122,7 +122,7 @@ describe('Akua.diff', () => {
 describe('Akua.verify', () => {
 	test('workspace with akua.toml + akua.lock returns a verdict envelope', async () => {
 		// Use an example workspace that already has a committed lockfile.
-		// A scratch workspace would 404 on akua.lock since `akua lock`
+		// A scratch workspace would 404 on akua.lock since `akuapkg lock`
 		// hasn't been run.
 		const ws = join(repoRoot, 'examples/01-hello-webapp');
 		const v = await akua.verify({ workspace: ws });

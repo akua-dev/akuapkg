@@ -29,19 +29,19 @@ minor bump in the SDK.
 
 ### Added
 
-- **Hosted API bridge in the single `akua` CLI** ([api.rs](crates/akua-cli/src/verbs/api.rs), [docs/cli.md](docs/cli.md)). `akua api` now calls the hosted Akua API with token auth, configurable base URL, workspace context, request field/body helpers, and Akua structured errors for auth, permission, rate-limit, transport, and timeout failures. `akua api spec` fetches the public OpenAPI document; elevated audiences return `E_UNSUPPORTED` until the server exposes authorized audience-specific specs.
+- **Hosted API bridge in the single `akua` CLI** ([api.rs](crates/akuapkg-cli/src/verbs/api.rs), [docs/cli.md](docs/cli.md)). `akuapkg api` now calls the hosted Akua API with token auth, configurable base URL, workspace context, request field/body helpers, and Akua structured errors for auth, permission, rate-limit, transport, and timeout failures. `akuapkg api spec` fetches the public OpenAPI document; elevated audiences return `E_UNSUPPORTED` until the server exposes authorized audience-specific specs.
 
 ### Fixed
 
 - **SDK launch docs and generated site now describe the shipped Node/Bun NAPI surface** ([docs/sdk.md](docs/sdk.md), [site/concepts/sdk.html](site/concepts/sdk.html)). The public SDK page no longer advertises stale browser support, shell-out dispatch, or future Akua Cloud namespaces as part of `@akua-dev/sdk`; it documents the current package as a native-addon-backed Package SDK with render/export/check/lint/verify and vendor drift guards.
-- **Large render/export regressions stay covered by launch-readiness tests** ([packages/sdk](packages/sdk), [crates/akua-cli](crates/akua-cli)). The SDK and CLI regression coverage now guards the large render-output path and export surface that previously drifted during launch hardening.
-- **Helm `values.schema.json` defaults that contradict generated KCL types are omitted** ([values_schema.rs](crates/akua-core/src/values_schema.rs), [helm_union_schema.rs](crates/akua-cli/tests/helm_union_schema.rs)). Chart schemas that declare unsafe defaults such as `null` for non-null fields, numeric defaults for strings, or mismatched array items no longer emit invalid KCL defaults that abort the render worker.
+- **Large render/export regressions stay covered by launch-readiness tests** ([packages/sdk](packages/sdk), [crates/akuapkg-cli](crates/akuapkg-cli)). The SDK and CLI regression coverage now guards the large render-output path and export surface that previously drifted during launch hardening.
+- **Helm `values.schema.json` defaults that contradict generated KCL types are omitted** ([values_schema.rs](crates/akua-core/src/values_schema.rs), [helm_union_schema.rs](crates/akuapkg-cli/tests/helm_union_schema.rs)). Chart schemas that declare unsafe defaults such as `null` for non-null fields, numeric defaults for strings, or mismatched array items no longer emit invalid KCL defaults that abort the render worker.
 
 ## [0.8.20] — 2026-06-09
 
 ### Fixed
 
-- **Render budget handling is stable across persistent nested engine sessions** ([engine-host-wasm](crates/engine-host-wasm/src/lib.rs), [render.rs](crates/akua-cli/src/verbs/render.rs)). Helm/Kustomize sessions now refresh their Wasmtime epoch deadline before each call, so a reused session no longer inherits a stale expired deadline after idle time. Worker interrupt traps are also classified as `E_RENDER_BUDGET_DEADLINE` and return the timeout exit code instead of surfacing as generic KCL evaluation failures.
+- **Render budget handling is stable across persistent nested engine sessions** ([engine-host-wasm](crates/engine-host-wasm/src/lib.rs), [render.rs](crates/akuapkg-cli/src/verbs/render.rs)). Helm/Kustomize sessions now refresh their Wasmtime epoch deadline before each call, so a reused session no longer inherits a stale expired deadline after idle time. Worker interrupt traps are also classified as `E_RENDER_BUDGET_DEADLINE` and return the timeout exit code instead of surfacing as generic KCL evaluation failures.
 
 ## [0.8.19] — 2026-06-01
 
@@ -53,7 +53,7 @@ minor bump in the SDK.
 
 ### Fixed
 
-- **`akua cache` now inventories and clears the helm chart cache** (`$XDG_CACHE_HOME/akua/helm`) added with the helm-repo dep source. Previously the helm cache grew unmanaged: `akua cache list` did not show it and `akua cache clear` did not reclaim it. `--helm` scope flag added to `akua cache clear`; `akua cache path` and `akua cache list` now report the helm root alongside oci and git. The default clear (no scope flag) wipes all three caches.
+- **`akuapkg cache` now inventories and clears the helm chart cache** (`$XDG_CACHE_HOME/akua/helm`) added with the helm-repo dep source. Previously the helm cache grew unmanaged: `akuapkg cache list` did not show it and `akuapkg cache clear` did not reclaim it. `--helm` scope flag added to `akuapkg cache clear`; `akuapkg cache path` and `akuapkg cache list` now report the helm root alongside oci and git. The default clear (no scope flag) wipes all three caches.
 
 ## [0.8.17] — 2026-05-29
 
@@ -70,7 +70,7 @@ integrity + DoS-resilience hardening). See
 
 ### Security
 
-- **Hardening from the 2026-05-29 security audit** ([docs/security-audit-2026-05-29.md](docs/security-audit-2026-05-29.md)). `akua publish` now strips `replace` directives from the signed manifest (consumers never inherit a publisher's replace); untrusted chart `values.schema.json` property names + descriptions are validated/escaped before KCL codegen (no injection); helm/kustomize engine Stores get a memory cap + finite epoch (chart-DoS ceiling); HTTP fetch bodies + gzip→tar extraction are size-capped (OOM / decompression-bomb); `BasicAuth` redacts its password in `Debug` and no longer derives `Serialize`; the git transport forces TLS verification (ignores ambient `GIT_SSL_NO_VERIFY`); plus several lower-severity fixes (UTF-8 panic on registry error bodies, helm `http://` scheme-downgrade rejection, helm `chart`-name + OCI userinfo validation, git tree-entry name guard, `vendor add` URL canonicalization). `--timeout` now bounds the render worker's epoch deadline (previously the worker always used the 6s default). No sandbox-escape was found; these are integrity + DoS-resilience hardening.
+- **Hardening from the 2026-05-29 security audit** ([docs/security-audit-2026-05-29.md](docs/security-audit-2026-05-29.md)). `akuapkg publish` now strips `replace` directives from the signed manifest (consumers never inherit a publisher's replace); untrusted chart `values.schema.json` property names + descriptions are validated/escaped before KCL codegen (no injection); helm/kustomize engine Stores get a memory cap + finite epoch (chart-DoS ceiling); HTTP fetch bodies + gzip→tar extraction are size-capped (OOM / decompression-bomb); `BasicAuth` redacts its password in `Debug` and no longer derives `Serialize`; the git transport forces TLS verification (ignores ambient `GIT_SSL_NO_VERIFY`); plus several lower-severity fixes (UTF-8 panic on registry error bodies, helm `http://` scheme-downgrade rejection, helm `chart`-name + OCI userinfo validation, git tree-entry name guard, `vendor add` URL canonicalization). `--timeout` now bounds the render worker's epoch deadline (previously the worker always used the 6s default). No sandbox-escape was found; these are integrity + DoS-resilience hardening.
 
 ### Changed
 
@@ -98,7 +98,7 @@ programmatically instead of relying on env-var propagation Bun doesn't do.
 
 ## [0.8.14] — 2026-05-29
 
-Real-world Helm rendering. This release makes akua render the charts
+Real-world Helm rendering. This release makes akuapkg render the charts
 people actually deploy — pulling from classic HTTPS Helm repositories,
 composing charts inside modular sub-packages, and surviving the schema
 shapes and output sizes of large upstream charts (temporal, argo-cd,
@@ -107,7 +107,7 @@ pipeline's version-stamping.
 
 ### Added
 
-- **HTTPS helm-repo dependency source** ([helm_repo_fetcher.rs](crates/akua-core/src/helm_repo_fetcher.rs)). `akua.toml` deps can now name a classic Helm repository — `repo` + `chart` + `version` (exact or semver range) — alongside `oci`/`git`/`path`. Resolved against the repo's `index.yaml` at add/lock time, content-pinned by `.tgz` sha256 in `akua.lock`, rendered deterministically from the cache offline. Private repos use the existing host-keyed `--auth`. The CLI gains `akua add --repo <url> --chart <name> --version <req>`; the SDK's `add()` mirrors it.
+- **HTTPS helm-repo dependency source** ([helm_repo_fetcher.rs](crates/akua-core/src/helm_repo_fetcher.rs)). `akua.toml` deps can now name a classic Helm repository — `repo` + `chart` + `version` (exact or semver range) — alongside `oci`/`git`/`path`. Resolved against the repo's `index.yaml` at add/lock time, content-pinned by `.tgz` sha256 in `akua.lock`, rendered deterministically from the cache offline. Private repos use the existing host-keyed `--auth`. The CLI gains `akuapkg add --repo <url> --chart <name> --version <req>`; the SDK's `add()` mirrors it.
 - **`examples/13-subpackage-helm`** — a modular sub-package that itself composes a Helm chart, exercising the cross-package context fix below.
 - **`examples/14-helm-repo-dep`** — a chart pulled from an HTTPS Helm repository (network-gated e2e test, run pre-release like `examples_kcl_ecosystem`).
 
@@ -117,7 +117,7 @@ pipeline's version-stamping.
 - **Helm `NOTES.txt` no longer breaks renders** ([helm.rs](crates/akua-core/src/helm.rs)). The engine returns `NOTES.txt` (top-level and per-subchart) among its files, but those are free-form prose, not manifests. akua parsed every file as YAML, so notes containing `kubectl …:` lines aborted the whole render with `could not find expected ':'`. `NOTES.txt` is now skipped before parsing.
 - **Union-typed chart values no longer crash the evaluator** ([values_schema.rs](crates/akua-core/src/values_schema.rs)). A `values.schema.json` field typed `["string","integer","null"]` was collapsed to its first member while its default was emitted verbatim (`port: str = 8080`), aborting the wasm KCL evaluator. akua now emits a real KCL union (`int | str`) and marks `null`-bearing unions optional. Unblocks charts like traefik.
 - **Hyphenated dependency names now import correctly** ([mod_file.rs](crates/akua-core/src/mod_file.rs)). A dep keyed `cnpg-operator` produced a `cnpg-operator.k` module that `import charts.cnpg_operator` couldn't see (`-` is not a KCL identifier). Dep names are sanitized to KCL identifiers at every materialization site, with collision detection and digit-leading handling.
-- **Large renders no longer fail with an opaque I/O error** ([render_worker.rs](crates/akua-cli/src/render_worker.rs)). The worker's stdout pipe was capped at 1 MiB, so a chart rendering >1 MiB (e.g. argo-cd, ~1.36 MB) died with `os error 29`. The cap is raised to the worker's memory ceiling (256 MiB) and overflow now surfaces as a typed `E_RENDER_OUTPUT_TOO_LARGE`.
+- **Large renders no longer fail with an opaque I/O error** ([render_worker.rs](crates/akuapkg-cli/src/render_worker.rs)). The worker's stdout pipe was capped at 1 MiB, so a chart rendering >1 MiB (e.g. argo-cd, ~1.36 MB) died with `os error 29`. The cap is raised to the worker's memory ceiling (256 MiB) and overflow now surfaces as a typed `E_RENDER_OUTPUT_TOO_LARGE`.
 - **Sub-package stubs no longer leak `charts.*` imports** ([pkg_stub.rs](crates/akua-core/src/pkg_stub.rs)). A sub-package's `import charts.<x>` was carried into the synthesized stub compiled in the root context, where `charts` isn't registered. Chart imports are stripped from stubs (the schemas are what the stub needs).
 - **Release binaries report their tag version** ([release.yml](.github/workflows/release.yml)). The pipeline derives the workspace version from the pushed git tag (`scripts/set-cargo-version.sh`) and asserts `akua -V` matches the tag in the build smoke-test. Previously `CARGO_PKG_VERSION` was pinned to the committed `Cargo.toml`, so 0.8.9–0.8.13 binaries (and their SLSA provenance / OCI annotations) all reported `0.8.8`.
 
@@ -141,8 +141,8 @@ rejected at parse time.
 
 ## [0.8.7] — 2026-05-07
 
-Workspace-vendor surfacing: the CLI now exposes `akua vendor add`,
-`akua vendor check`, and `akua vendor list`; the SDK mirrors those
+Workspace-vendor surfacing: the CLI now exposes `akuapkg vendor add`,
+`akuapkg vendor check`, and `akuapkg vendor list`; the SDK mirrors those
 entry points. `vendor add` writes the lockfile pin alongside
 materializing the tree, vendor-first resolver lookup is universal
 across all dep kinds, and lockfile metadata clears on digest change
@@ -154,11 +154,11 @@ GitHub Releases / Homebrew.
 
 ### Added
 
-- `akua vendor` with `add`, `check`, and `list` subcommands.
+- `akuapkg vendor` with `add`, `check`, and `list` subcommands.
 - `@akua-dev/sdk` vendor methods: `vendorAdd`, `vendorCheck`, and
   `vendorList`.
 - `vendor add` writes a `LockedPackage` pin into `akua.lock` alongside
-  materializing the tree, so `vendor check` and `akua verify` have a
+  materializing the tree, so `vendor check` and `akuapkg verify` have a
   stable digest to compare against — required for the offline-render
   contract once the canonical source is GC'd.
 - `examples/12-vendor-offline/` — end-to-end demonstration of the
@@ -248,7 +248,7 @@ pull / fetch paths.
 ### Fixed
 
 - **Render-worker freshness guard for release profiles.** `cargo
-  build -p akua-cli --profile {release,ci-release}` now hard-fails
+  build -p akuapkg-cli --profile {release,ci-release}` now hard-fails
   when the embedded `akua-render-worker.wasm` was built from
   different source content than the akua-core code that's about to
   embed it. Previously the build emitted a `cargo:warning=` and
@@ -260,7 +260,7 @@ pull / fetch paths.
   `crates/akua-render-worker/**` as `sources:`. Adds
   `crates/akua-core/**` to the dependency list so an akua-core edit
   re-triggers the worker build instead of leaving Taskfile reporting
-  "up to date" while the akua-cli build.rs flags drift.
+  "up to date" while the akuapkg-cli build.rs flags drift.
 - **`examples_kcl_ecosystem` integration test gated behind
   `#[ignore]`.** It pulls live from `oci://ghcr.io/kcl-lang/k8s` and
   occasionally trips the wasmtime epoch budget on cold caches. Now
@@ -276,12 +276,12 @@ pull / fetch paths.
   | `crates/akua-core/src/oci_puller.rs` |  9.2 % | 87 % |
   | `crates/akua-core/src/oci_fetcher.rs` | 14.9 % | 80 % |
   | `crates/engine-host-wasm/src/lib.rs` |   56 % | 76 % |
-  | `crates/akua-cli/src/verbs/publish.rs` |    0 % | 87 % |
-  | `crates/akua-cli/src/verbs/pull.rs` |    0 % | 85 % |
-  | `crates/akua-cli/src/verbs/dev.rs` |    0 % | 85 % |
-  | `crates/akua-cli/src/verbs/sign.rs` |   84 % | 87 % |
+  | `crates/akuapkg-cli/src/verbs/publish.rs` |    0 % | 87 % |
+  | `crates/akuapkg-cli/src/verbs/pull.rs` |    0 % | 85 % |
+  | `crates/akuapkg-cli/src/verbs/dev.rs` |    0 % | 85 % |
+  | `crates/akuapkg-cli/src/verbs/sign.rs` |   84 % | 87 % |
   | `crates/akua-core/src/helm.rs` |   49 % | 68 % |
-  | `crates/akua-cli/src/observability.rs` |   31 % | 50 % |
+  | `crates/akuapkg-cli/src/observability.rs` |   31 % | 50 % |
 
   ~80 new tests, all running through `cargo nextest` in seconds.
   Branch coverage on the load-bearing security invariants:
@@ -416,7 +416,7 @@ attempt actually executed the matrix end-to-end.
 
 - **Cross-compile cwasm architecture mismatch.** `macos-latest` runners
   are now aarch64 (M-series). When the matrix cross-compiled
-  `x86_64-apple-darwin`, `akua-cli/build.rs` precompiled the worker
+  `x86_64-apple-darwin`, `akuapkg-cli/build.rs` precompiled the worker
   cwasm on the aarch64 host and embedded it in the x86_64 binary;
   runtime `Module::deserialize` then trapped with `Module was
   compiled for architecture 'aarch64'`. Fixed by passing cargo's
@@ -445,7 +445,7 @@ attempt actually executed the matrix end-to-end.
 ## [0.8.2] — 2026-04-29
 
 Critical fix: every released CLI binary since 0.6.0 shipped without
-the wasmtime render-worker embedded — `akua render` against any
+the wasmtime render-worker embedded — `akuapkg render` against any
 package failed with `E_RENDER_KCL` "render sandbox unavailable —
 worker module wasn't compiled into this akua binary." The cli-release
 matrix runners never invoked `task build:render-worker`, so
@@ -461,7 +461,7 @@ no such artefact and no test ever exercised the produced binary.
 
 - **cli-release matrix builds the worker + engines pre-`cargo build`.**
   Two new steps before `Build akua CLI`: `task build:engines` and
-  `task build:render-worker`. Without these, `akua-cli/build.rs`
+  `task build:render-worker`. Without these, `akuapkg-cli/build.rs`
   has nothing to embed.
 - **Smoke test on the produced binary.** New step runs
   `<binary> init smoke && <binary> render` against the scaffolded
@@ -558,7 +558,7 @@ guard that closes the host-side dep-resolution attack surface.
   agent context; CI / agent / container invocations no longer honor
   publisher-supplied replaces. Strict `"1"`-only (matches the
   `AKUA_BRIDGE_TRACE` convention).
-- **`akua render --timeout=<duration>` / `--max-depth=<N>`** — wires
+- **`akuapkg render --timeout=<duration>` / `--max-depth=<N>`** — wires
   the existing `BudgetSnapshot` to the CLI surface. Go-duration parser
   (`30s`, `5m`, `250ms`); typo'd values surface as
   `E_INVALID_FLAG`. New `akua_core::duration_parse` crate-public.
@@ -636,12 +636,12 @@ example).
 - Render-worker rebuild trigger now watches `akua-render-worker/src`
   + `akua-core/src` and emits a `cargo:warning=` when the staged
   `.cwasm` is stale.
-- `akua init .` derives the package name from `basename($PWD)`
+- `akuapkg init .` derives the package name from `basename($PWD)`
   instead of writing `name = "."`.
 - `E_PATH_ESCAPE` errors now carry a `hint` field with both
   remediations (vendor under the Package or declare in
   `akua.toml`).
-- `akua render --debug` (under `--json`) emits `evalResult`
+- `akuapkg render --debug` (under `--json`) emits `evalResult`
   alongside the summary — the post-eval resources list before
   YAML normalization.
 
@@ -764,7 +764,7 @@ shape.
 
 - **P0** Tar extraction — reject symlink + hard-link entries in Rust
   `unpack_chart_tgz`. Prevents arbitrary file read via
-  `akua inspect` on a malicious chart whose entry points at
+  `akuapkg inspect` on a malicious chart whose entry points at
   `/etc/passwd`.
 - **P0** `engine-helmfile` removed from default cargo features.
   Helmfile's Go-template `exec` / `readFile` / `requiredEnv` functions
@@ -861,10 +861,10 @@ deterministically; 26 verbs implement the universal CLI contract.
 **Authoring + render**
 - KCL-typed Packages: `package.k` with `import` + `schema` +
   `resources` regions, published as signed OCI artifacts.
-- `akua render` — wasmtime-sandboxed evaluation. Engines (Helm v4,
+- `akuapkg render` — wasmtime-sandboxed evaluation. Engines (Helm v4,
   Kustomize) compiled to `wasm32-wasip1` and hosted inside akua's own
   wasmtime — no `$PATH`, no shell-out, no ambient filesystem.
-- `akua export` — emit the Package's `Input` schema as JSON Schema
+- `akuapkg export` — emit the Package's `Input` schema as JSON Schema
   2020-12 or OpenAPI 3.1. Field docstrings become `description`;
   `@ui(...)` decorators become `x-ui` extensions for form renderers
   (rjsf, JSONForms) and admission-webhook validators.
@@ -901,9 +901,9 @@ every verb supports `--json`, `--plan`, `--timeout`,
   Specification](https://agentskills.io).
 
 **Signing + attestation**
-- `akua publish` emits cosign signatures (ECDSA P-256 keyed) and
+- `akuapkg publish` emits cosign signatures (ECDSA P-256 keyed) and
   SLSA v1 predicates by default; consumers verify on pull. Air-gap
-  flow: `akua pack` → `akua sign` → `akua verify --tarball`.
+  flow: `akuapkg pack` → `akua sign` → `akuapkg verify --tarball`.
 
 **SDK**
 - `@akua/sdk` (`packages/sdk`) — in-process WASM via `akua-wasm`

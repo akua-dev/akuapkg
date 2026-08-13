@@ -1,12 +1,12 @@
 ---
 name: diff-gate
-description: Set up a CI gate that runs akua diff on package upgrades and blocks merges that break schema compatibility or violate policy. Use when configuring CI for a platform repo, preventing breaking Helm-chart upgrades, gating Renovate or Dependabot PRs, or enforcing structural-compatibility checks before deployment.
+description: Set up a CI gate that runs akuapkg diff on package upgrades and blocks merges that break schema compatibility or violate policy. Use when configuring CI for a platform repo, preventing breaking Helm-chart upgrades, gating Renovate or Dependabot PRs, or enforcing structural-compatibility checks before deployment.
 license: Apache-2.0
 ---
 
-# CI gate using `akua diff`
+# CI gate using `akuapkg diff`
 
-Dependency bumps (Renovate, Dependabot, or a human edit) can silently break production. `akua diff` returns a structural diff between two package versions and exits non-zero if schema fields change incompatibly. Wire it into CI to block bad merges.
+Dependency bumps (Renovate, Dependabot, or a human edit) can silently break production. `akuapkg diff` returns a structural diff between two package versions and exits non-zero if schema fields change incompatibly. Wire it into CI to block bad merges.
 
 ## When to use
 
@@ -15,7 +15,7 @@ Dependency bumps (Renovate, Dependabot, or a human edit) can silently break prod
 - As a policy requirement for production-tier deploys
 - Before adopting a new version of a third-party package
 
-## What `akua diff` compares
+## What `akuapkg diff` compares
 
 | category | blocks merge? | example |
 |---|---|---|
@@ -36,7 +36,7 @@ Non-zero exit on any "yes"; warnings surface as PR comments without blocking.
 Create `.github/workflows/akua-diff.yml`:
 
 ```yaml
-name: akua diff
+name: akuapkg diff
 
 on:
   pull_request:
@@ -63,8 +63,8 @@ jobs:
 
             if [ "$base_ref" != "$head_ref" ]; then
               echo "::group::Diff for ${app} ($base_ref → $head_ref)"
-              akua diff "$base_ref" "$head_ref" --json > diff.json || EXIT=$?
-              akua diff "$base_ref" "$head_ref"    # human-readable for logs
+              akuapkg diff "$base_ref" "$head_ref" --json > diff.json || EXIT=$?
+              akuapkg diff "$base_ref" "$head_ref"    # human-readable for logs
               echo "::endgroup::"
             fi
           done
@@ -103,7 +103,7 @@ Enable policy-tier checking in the same workflow:
 ```yaml
       - name: Policy check
         run: |
-          akua render --filter=spec.env=production --out ./rendered
+          akuapkg render --filter=spec.env=production --out ./rendered
           akua policy check --tier tier/production --target ./rendered --json > verdict.json
 
           verdict=$(jq -r '.verdict' verdict.json)
@@ -125,14 +125,14 @@ Exit code 3 (policy deny) is a distinct failure mode from exit 1 (schema breakin
 
 ## Renovate integration
 
-Renovate can be configured to run `akua diff` as a post-upgrade task:
+Renovate can be configured to run `akuapkg diff` as a post-upgrade task:
 
 ```json
 // renovate.json
 {
   "postUpgradeTasks": {
     "commands": [
-      "akua diff {{baseBranch}}@{{package}} HEAD@{{package}} --json > diff.json"
+      "akuapkg diff {{baseBranch}}@{{package}} HEAD@{{package}} --json > diff.json"
     ],
     "fileFilters": ["diff.json"]
   }
@@ -149,6 +149,6 @@ The diff attaches to the Renovate PR body automatically.
 
 ## Reference
 
-- [cli.md — akua diff](../../docs/cli.md#akua-diff)
+- [cli.md — akuapkg diff](../../docs/cli.md#akua-diff)
 - [cli.md — akua policy](../../docs/cli.md#akua-policy)
 - [cli-contract.md — typed exit codes](../../docs/cli-contract.md#2-exit-codes)

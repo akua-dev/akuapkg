@@ -18,7 +18,7 @@ call site that reads naturally to a coding agent or human reviewer.
 ## Decision
 
 Each Akua Package's `package.k` declares two akua-managed lines at
-the bottom (templated by `akua init`, validated by `akua lint`):
+the bottom (templated by `akuapkg init`, validated by `akuapkg lint`):
 
 ```kcl
 __id = "upstream"   # must equal [package].name in akua.toml
@@ -77,7 +77,7 @@ rather than reading it from the call.
 
 `pkg.render({ package = "upstream", inputs = ... })` keeps the engine-
 plugin shape (visible call) but reintroduces a stringly-typed package
-reference. KCL doesn't catch typos; only `akua check` does. Type-
+reference. KCL doesn't catch typos; only `akuapkg check` does. Type-
 safety lives in the build tool, not the language. Worse ergonomics
 than method-on-import for no architectural gain.
 
@@ -90,7 +90,7 @@ loads + renders the upstream package.
 
 The map is keyed by the upstream's canonical `[package].name` (from
 its `akua.toml`) — which is what `__id` captures in the lambda.
-`akua lint` enforces `__id == [package].name`. `akua check` enforces
+`akuapkg lint` enforces `__id == [package].name`. `akuapkg check` enforces
 that every dep referenced via `import + .render(...)` is declared in
 `[dependencies]`.
 
@@ -137,9 +137,9 @@ Staged across PRs to keep each reviewable:
 
 ### Stage 3: Author tooling
 
-- `akua init` template adds the two-line API surface at the bottom of
+- `akuapkg init` template adds the two-line API surface at the bottom of
   the new `package.k`.
-- `akua lint` rule:
+- `akuapkg lint` rule:
   - `__id` declared and equals `[package].name`
   - `render` lambda declared with the canonical signature
 
@@ -153,7 +153,7 @@ Staged across PRs to keep each reviewable:
 ### Stage 5: Documentation
 
 - `docs/package-format.md` documents the two-line API surface.
-- `docs/cli.md` updates the `akua init` template.
+- `docs/cli.md` updates the `akuapkg init` template.
 - This spike doc moves to "implemented".
 
 ## Hookable extension point
@@ -190,7 +190,7 @@ time, the hook is there.
 - **`pkg.renderById` exposed via `akua.pkg`**: the consumer's
   `package.k` doesn't need to know about it (the lambda lives in
   upstream). But the upstream needs `import akua.pkg` to call it.
-  Templated by `akua init`.
+  Templated by `akuapkg init`.
 - **Backwards compatibility**: pre-alpha; we're free to drop the old
   `pkg.render({path})` plugin in one breaking change. Changelog entry
   + migration note.

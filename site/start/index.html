@@ -297,20 +297,20 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
   <h1>Get started</h1>
   <p class="tagline">Install akua, render your first Package, and ship a signed artifact — in five minutes.</p>
 </header>
-<blockquote>Pre-alpha. The path below works end-to-end on macOS / Linux. If you hit a wall, the <a href="https://github.com/cnap-tech/akua/tree/main/errors">error code reference</a> and the verb's <a href="https://github.com/cnap-tech/akua/tree/main/cli">CLI page</a> are the next stops.</blockquote>
+<blockquote>Pre-alpha. The path below works end-to-end on macOS / Linux. If you hit a wall, the <a href="https://github.com/akua-dev/akua/tree/main/errors">error code reference</a> and the verb's <a href="https://github.com/akua-dev/akua/tree/main/cli">CLI page</a> are the next stops.</blockquote>
 <h2 id="1-install">1. Install</h2>
 <pre><code>$ curl -fsSL https://cli.akua.dev/install | sh</code></pre>
-<p>Or grab a pinned binary from <a href="https://github.com/cnap-tech/akua/releases">Releases</a>. Windows: <code>irm https://cli.akua.dev/install.ps1 | iex</code>.</p>
+<p>Or grab a pinned binary from <a href="https://github.com/akua-dev/akua/releases">Releases</a>. Windows: <code>irm https://cli.akua.dev/install.ps1 | iex</code>.</p>
 <p>Verify the install:</p>
-<pre><code>$ akua version
+<pre><code>$ akuapkg version
 akua 0.8.7</code></pre>
 <h2 id="2-initialize-a-workspace">2. Initialize a workspace</h2>
 <pre><code>$ mkdir hello-akua &amp;&amp; cd hello-akua
-$ akua init</code></pre>
+$ akuapkg init</code></pre>
 <p>This drops three files in your workspace:</p>
-<ul><li><code>akua.toml</code> — manifest. Declares the package metadata + dependencies.</li><li><code>package.k</code> — your Package, written in <a href="https://www.kcl-lang.io/">KCL</a>. One file, three regions: imports, schemas, body.</li><li><code>inputs.example.yaml</code> — example input values <code>akua render</code> reads when no <code>--inputs</code> is passed.</li></ul>
+<ul><li><code>akua.toml</code> — manifest. Declares the package metadata + dependencies.</li><li><code>package.k</code> — your Package, written in <a href="https://www.kcl-lang.io/">KCL</a>. One file, three regions: imports, schemas, body.</li><li><code>inputs.example.yaml</code> — example input values <code>akuapkg render</code> reads when no <code>--inputs</code> is passed.</li></ul>
 <h2 id="3-render">3. Render</h2>
-<pre><code>$ akua render</code></pre>
+<pre><code>$ akuapkg render</code></pre>
 <p>By default, output goes to <code>./rendered/</code>. Each top-level Kubernetes resource your Package emits becomes its own YAML file, prefixed with a stable index so the layout is deterministic. Same inputs + same lockfile → byte-identical output, every time.</p>
 <pre><code>rendered/
 ├── 000-deployment-app.yaml
@@ -325,23 +325,23 @@ $ akua init</code></pre>
 }</code></pre>
 <p>Branch on <code>code</code> from agent code; the <code>docs</code> URL is the human-friendly fallback.</p>
 <h2 id="4-add-a-dependency">4. Add a dependency</h2>
-<p>Composing with an upstream Helm chart? <code>akua add</code> updates <code>akua.toml</code> and <code>akua.lock</code> in one step:</p>
-<pre><code>$ akua add nginx --oci oci://ghcr.io/nginxinc/charts/nginx --version 1.0.0</code></pre>
+<p>Composing with an upstream Helm chart? <code>akuapkg add</code> updates <code>akua.toml</code> and <code>akua.lock</code> in one step:</p>
+<pre><code>$ akuapkg add nginx --oci oci://ghcr.io/nginxinc/charts/nginx --version 1.0.0</code></pre>
 <p>Then in <code>package.k</code>:</p>
 <pre><code class="lang-kcl">import charts.nginx as nginx</code></pre>
 <p>The resolver writes a <code>charts/&lt;alias&gt;/</code> mount so the engine plugin (helm.template, kustomize.build, …) gets a path it produced itself — no path strings in your KCL.</p>
 <h2 id="5-verify--sign--publish">5. Verify + sign + publish</h2>
 <p>When you're ready to ship:</p>
-<pre><code>$ akua verify         # akua.toml ↔ akua.lock integrity + cosign signatures
+<pre><code>$ akuapkg verify         # akua.toml ↔ akua.lock integrity + cosign signatures
 $ akua sign           # cosign-sign the artifact
-$ akua publish        # push the signed OCI artifact + SLSA attestation</code></pre>
-<p>By default <code>publish</code> refuses unless the lockfile is clean and a cosign key is configured. See <a href="https://github.com/cnap-tech/akua/blob/main/concepts/security-model">Concepts → Security model</a> for the threat model and what <code>strict_signing</code> enforces.</p>
+$ akuapkg publish        # push the signed OCI artifact + SLSA attestation</code></pre>
+<p>By default <code>publish</code> refuses unless the lockfile is clean and a cosign key is configured. See <a href="https://github.com/akua-dev/akua/blob/main/concepts/security-model">Concepts → Security model</a> for the threat model and what <code>strict_signing</code> enforces.</p>
 <h2 id="whats-next">What's next</h2>
-<ul><li>Walk through the runnable <a href="https://github.com/cnap-tech/akua/tree/main/examples">examples</a> — every one has <code>package.k</code>, <code>inputs</code>, and the rendered output side-by-side.</li><li>Read <a href="https://github.com/cnap-tech/akua/blob/main/concepts/package-format">Concepts → Package format</a> for the authoring shape.</li><li>Skim the <a href="https://github.com/cnap-tech/akua/tree/main/cli">CLI reference</a> to see every verb at a glance — twenty-seven shipped, more in flight.</li><li>The <a href="https://github.com/cnap-tech/akua/blob/main/concepts/sdk">SDK</a> wraps the same surface for TypeScript / Bun / Deno consumers.</li></ul>
+<ul><li>Walk through the runnable <a href="https://github.com/akua-dev/akua/tree/main/examples">examples</a> — every one has <code>package.k</code>, <code>inputs</code>, and the rendered output side-by-side.</li><li>Read <a href="https://github.com/akua-dev/akua/blob/main/concepts/package-format">Concepts → Package format</a> for the authoring shape.</li><li>Skim the <a href="https://github.com/akua-dev/akua/tree/main/cli">CLI reference</a> to see every verb at a glance — twenty-seven shipped, more in flight.</li><li>The <a href="https://github.com/akua-dev/akua/blob/main/concepts/sdk">SDK</a> wraps the same surface for TypeScript / Bun / Deno consumers.</li></ul>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/cnap-tech/akua">github.com/cnap-tech/akua</a> ·
+  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
   Apache-2.0
 </footer>
 </main>

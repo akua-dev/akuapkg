@@ -1,6 +1,6 @@
 # test_package.k — unit tests for the 02-webapp-postgres Package.
 #
-# Run with:  akua test
+# Run with:  akuapkg test
 #
 # File naming per cli.md: `test_*.k`. Top-level assertions run; failures
 # surface with line + field context.

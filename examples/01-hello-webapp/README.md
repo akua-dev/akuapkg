@@ -39,8 +39,8 @@ this one.
 ## Run
 
 ```sh
-akua add                                 # resolve deps → writes akua.lock
-akua render --inputs inputs.yaml         # render to ./deploy/
+akuapkg add                                 # resolve deps → writes akua.lock
+akuapkg render --inputs inputs.yaml         # render to ./deploy/
 ls deploy/                               # 000-deployment-hello.yaml, 001-service-hello.yaml
 ```
 
@@ -48,7 +48,7 @@ Under `--strict`, akua rejects raw-string chart paths — every chart
 must be declared in `akua.toml` and imported as `charts.<name>`:
 
 ```sh
-akua render --strict --inputs inputs.yaml
+akuapkg render --strict --inputs inputs.yaml
 ```
 
 ## Vendored chart vs OCI pull
@@ -63,7 +63,7 @@ nginx = { oci = "oci://registry-1.docker.io/bitnamicharts/nginx", version = "18.
 ```
 
 akua pulls the chart into `$XDG_CACHE_HOME/akua/oci/` on first
-`akua add` / `akua render`, verifying the blob digest against
+`akuapkg add` / `akuapkg render`, verifying the blob digest against
 `akua.lock` on subsequent renders. See Phase 2b in `docs/roadmap.md`.
 
 ## Local fork override

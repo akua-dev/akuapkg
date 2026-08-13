@@ -77,15 +77,15 @@ resources = [*_base, _dashboard]
 Three things fall out of this shape:
 
 1. **Type safety.** The base's `Input` is a nested schema; misspelling a field fails at compile time with a line + column pointer. No "I forgot the base needs `hostname`" at render time.
-2. **Pinned by digest.** `akua.toml` + `akua.lock` pin the base to a specific OCI digest. Base publishes v1.1 → you don't pick it up until you `akua add` explicitly. No silent drift.
-3. **Signed provenance.** `akua verify` on the consumer walks the attestation chain: the consumer's SLSA predicate includes the base's digest, which carries its own SLSA predicate, which carries the base's sources. Auditable back to the original chart authors.
+2. **Pinned by digest.** `akua.toml` + `akua.lock` pin the base to a specific OCI digest. Base publishes v1.1 → you don't pick it up until you `akuapkg add` explicitly. No silent drift.
+3. **Signed provenance.** `akuapkg verify` on the consumer walks the attestation chain: the consumer's SLSA predicate includes the base's digest, which carries its own SLSA predicate, which carries the base's sources. Auditable back to the original chart authors.
 
 ## Running it
 
 ```sh
-akua add                                 # resolves deps → writes akua.lock
-akua render --inputs inputs.yaml         # composes base + local additions
-akua inspect oci://pkg.acme.corp/platform-base:1.0   # peek at what we're pinning
+akuapkg add                                 # resolves deps → writes akua.lock
+akuapkg render --inputs inputs.yaml         # composes base + local additions
+akuapkg inspect oci://pkg.acme.corp/platform-base:1.0   # peek at what we're pinning
 ```
 
 ## When to reuse vs fork

@@ -62,8 +62,8 @@ controller sees the RGD and reconciles its instances.
 ## Render
 
 ```sh
-akua add                         # resolve deps
-akua render --inputs inputs.yaml --out ./deploy
+akuapkg add                         # resolve deps
+akuapkg render --inputs inputs.yaml --out ./deploy
 ```
 
 Result:

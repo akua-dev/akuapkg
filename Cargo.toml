@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
 	"crates/akua-core",
-	"crates/akua-cli",
+	"crates/akuapkg-cli",
 	"crates/akua-napi",
 	"crates/akua-render-worker",
 	"crates/engine-host-wasm",
@@ -15,7 +15,7 @@ members = [
 version = "0.8.20"
 edition = "2021"
 license = "Apache-2.0"
-repository = "https://github.com/cnap-tech/akua"
+repository = "https://github.com/akua-dev/akua"
 authors = ["CNAP Tech <hello@cnap.tech>"]
 
 [workspace.dependencies]

@@ -33,7 +33,7 @@ embed-engines = [
 # sources for `@akua-dev/sdk`. `schema-export` does the same for
 # schemars (JSON Schema bundle). Both are build-time only; zero
 # cost in production builds. Triggered by the emission test in
-# akua-cli (`cargo test -p akua-cli --features schema-export,ts-export`).
+# akuapkg-cli (`cargo test -p akuapkg-cli --features schema-export,ts-export`).
 ts-export = ["dep:ts-rs"]
 schema-export = ["dep:schemars"]
 # KCL engine — native Rust via kcl-lang/lib (git dep).

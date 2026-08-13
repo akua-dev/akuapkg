@@ -302,7 +302,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
   <p class="tagline">Package.k authoring shape — imports, schemas, body, and the `resources` output.</p>
 </header>
 <p>The canonical shape of an akua Package. A Package is a reusable definition authored in <strong>KCL</strong> and published as a signed OCI artifact. <code>Package.k</code> is the only shape akua itself specifies; higher-level workspace concepts (App / Environment / Cluster / PolicySet / etc.) are user-defined KCL schemas in the consumer's workspace, not akua-owned kinds.</p>
-<p>This document specifies what a <code>package.k</code> file may contain. Companion references: <a href="/concepts/lockfile-format">lockfile-format.md</a> for <code>akua.toml</code> / <code>akua.lock</code>, <a href="https://github.com/cnap-tech/akua/blob/main/docs/policy-format.md">policy-format.md</a> for Rego.</p>
+<p>This document specifies what a <code>package.k</code> file may contain. Companion references: <a href="/concepts/lockfile-format">lockfile-format.md</a> for <code>akua.toml</code> / <code>akua.lock</code>, <a href="https://github.com/akua-dev/akua/blob/main/docs/policy-format.md">policy-format.md</a> for Rego.</p>
 <hr />
 <h2 id="1-anatomy">1. Anatomy</h2>
 <p>Every Package is one KCL program with three typed regions:</p>
@@ -327,16 +327,16 @@ _pg  = helm.template(helm.Template { chart = cnpg.Chart,   values = ... })
 _app = helm.template(helm.Template { chart = webapp.Chart, values = ... })
 
 resources = _pg + _app</code></pre>
-<p>That's it. <code>akua render</code> writes <code>resources</code> as raw YAML files under <code>--out</code>. Other distribution shapes (Helm charts, OCI bundles, kro RGDs) come from either (a) <strong>transformation</strong> functions invoked in the body that produce more K8s resources (<code>kro.rgd(...)</code>, <code>crossplane.composition(...)</code>), or (b) future <code>akua publish --as &lt;format&gt;</code> at distribution time. The Package itself never pre-commits to an emit format — <code>resources</code> is the single canonical thing it produces.</p>
+<p>That's it. <code>akuapkg render</code> writes <code>resources</code> as raw YAML files under <code>--out</code>. Other distribution shapes (Helm charts, OCI bundles, kro RGDs) come from either (a) <strong>transformation</strong> functions invoked in the body that produce more K8s resources (<code>kro.rgd(...)</code>, <code>crossplane.composition(...)</code>), or (b) future <code>akuapkg publish --as &lt;format&gt;</code> at distribution time. The Package itself never pre-commits to an emit format — <code>resources</code> is the single canonical thing it produces.</p>
 <hr />
 <h2 id="2-imports">2. Imports</h2>
 <p>An import brings one of four things into scope:</p>
-<table><thead><tr><th>import form</th><th>purpose</th><th>pinned by</th></tr></thead><tbody><tr><td><code>import akua.&lt;engine&gt;</code></td><td>a source-engine callable (<code>helm</code>, <code>rgd</code>, <code>kustomize</code>, <code>oci</code>)</td><td>the akua CLI version</td></tr><tr><td><code>import charts.&lt;name&gt;</code></td><td>a typed Helm chart dep previously added via <code>akua add</code> (synthetic wrapper that exposes the chart path + a pre-bound <code>template</code> callable)</td><td><code>akua.toml</code></td></tr><tr><td><code>import pkgs.&lt;name&gt;</code></td><td>a typed Akua-package dep (synthetic stub re-exporting the upstream's schemas + a pre-bound <code>render</code> lambda — <code>pkgs.&lt;name&gt;.render(pkgs.&lt;name&gt;.Input{...})</code>)</td><td><code>akua.toml</code></td></tr><tr><td><code>import &lt;name&gt;</code></td><td>an upstream KCL ecosystem package (e.g. <code>import k8s.api.apps.v1</code> against <code>oci://ghcr.io/kcl-lang/k8s</code>)</td><td><code>akua.toml</code></td></tr><tr><td><code>import &lt;local/path&gt;</code></td><td>a local KCL module within this package</td><td>the filesystem</td></tr></tbody></table>
+<table><thead><tr><th>import form</th><th>purpose</th><th>pinned by</th></tr></thead><tbody><tr><td><code>import akua.&lt;engine&gt;</code></td><td>a source-engine callable (<code>helm</code>, <code>rgd</code>, <code>kustomize</code>, <code>oci</code>)</td><td>the akua CLI version</td></tr><tr><td><code>import charts.&lt;name&gt;</code></td><td>a typed Helm chart dep previously added via <code>akuapkg add</code> (synthetic wrapper that exposes the chart path + a pre-bound <code>template</code> callable)</td><td><code>akua.toml</code></td></tr><tr><td><code>import pkgs.&lt;name&gt;</code></td><td>a typed Akua-package dep (synthetic stub re-exporting the upstream's schemas + a pre-bound <code>render</code> lambda — <code>pkgs.&lt;name&gt;.render(pkgs.&lt;name&gt;.Input{...})</code>)</td><td><code>akua.toml</code></td></tr><tr><td><code>import &lt;name&gt;</code></td><td>an upstream KCL ecosystem package (e.g. <code>import k8s.api.apps.v1</code> against <code>oci://ghcr.io/kcl-lang/k8s</code>)</td><td><code>akua.toml</code></td></tr><tr><td><code>import &lt;local/path&gt;</code></td><td>a local KCL module within this package</td><td>the filesystem</td></tr></tbody></table>
 <p>Imports are resolved at build time against <code>akua.toml</code> (declared deps) and verified against <code>akua.lock</code> (digest + signature). Failed verification is a compile error. A missing pin is a compile error.</p>
 <p>Helm-chart deps and KCL-package deps both land in <code>[dependencies]</code>; akua tells them apart from the manifest media type + <code>org.kcllang.package.<em></code> annotations and routes them to the right consumer (Helm via the synthetic <code>charts.</em></code> wrapper, KCL packages as direct <code>ExternalPkg</code> entries inside the render sandbox). Four dependency source forms are supported:</p>
 <table><thead><tr><th>source</th><th><code>akua.toml</code> shape</th><th>use when</th></tr></thead><tbody><tr><td>OCI</td><td><code>{ oci = &quot;oci://ghcr.io/.../foo&quot;, version = &quot;1.2.3&quot; }</code></td><td>published signed artifact (most common)</td></tr><tr><td>Git</td><td><code>{ git = &quot;https://github.com/foo/bar&quot;, tag = &quot;v1.2.3&quot; }</code></td><td>non-OCI-distributed sources</td></tr><tr><td>Path</td><td><code>{ path = &quot;../shared&quot; }</code></td><td>workspace-local, dev-only</td></tr><tr><td>Helm repo</td><td><code>{ repo = &quot;https://go.temporal.io/helm-charts&quot;, chart = &quot;temporal&quot;, version = &quot;0.62.0&quot; }</code></td><td>classic HTTPS Helm repository</td></tr></tbody></table>
-<p>Helm-repo deps resolve against the repo's <code>index.yaml</code> at <code>akua add</code> / lock time, content-pinned by <code>.tgz</code> sha256 in <code>akua.lock</code>, and rendered deterministically offline. Add one with:</p>
-<pre><code class="lang-sh">akua add temporal --repo https://go.temporal.io/helm-charts --chart temporal --version 0.62.0</code></pre>
+<p>Helm-repo deps resolve against the repo's <code>index.yaml</code> at <code>akuapkg add</code> / lock time, content-pinned by <code>.tgz</code> sha256 in <code>akua.lock</code>, and rendered deterministically offline. Add one with:</p>
+<pre><code class="lang-sh">akuapkg add temporal --repo https://go.temporal.io/helm-charts --chart temporal --version 0.62.0</code></pre>
 <p><strong>For Helm charts and Akua-package deps, use the alias method on the import</strong> — the synthesized stub owns the engine call so the consumer just states the typed args:</p>
 <pre><code class="lang-kcl">import charts.webapp as webapp
 import pkgs.upstream as upstream
@@ -358,7 +358,7 @@ _up = upstream.render(upstream.Input { appName = &quot;x&quot;, replicas = 3 })<
 <p>  input: Input = ctx.input()   ```</p>
 <p>  <code>ctx.input()</code> is a thin wrapper around KCL's <code>option(&quot;input&quot;)</code> that hides the plumbing string — a typo becomes a parse error instead of a silent pass-through. <code>input: Input = ...</code> triggers KCL's structural coercion: the returned dict is validated against the <code>Input</code> schema at this binding site, defaults fill in, <code>check:</code> blocks run.</p>
 <p>  Under the hood <code>ctx.input()</code> is just <code>option(&quot;input&quot;) or {}</code>, so the Package remains <strong>standalone-valid KCL</strong> — <code>kcl fmt</code> / <code>kcl lint</code> / IDE LSPs all work once <code>import akua.ctx</code> resolves (akua materializes the stdlib at render time and exposes it to KCL via <code>ExecProgramArgs.external_pkgs</code>).</p>
-<ul><li>Fields use KCL's native type syntax: <code>str</code>, <code>int</code>, <code>float</code>, <code>bool</code>, <code>[T]</code>, <code>{str: T}</code>, unions (<code>&quot;a&quot; | &quot;b&quot; | &quot;c&quot;</code>), nested schemas.</li><li>Fields without defaults are required. Fields with defaults are optional.</li><li>Use KCL docstrings for field documentation — <code>akua</code> tooling surfaces them in autocomplete and generated docs.</li><li><code>check:</code> blocks can express cross-field constraints; they run during <code>akua render</code>.</li><li>No runtime side effects (no env lookups, no filesystem, no network). KCL's sandbox enforces this.</li></ul>
+<ul><li>Fields use KCL's native type syntax: <code>str</code>, <code>int</code>, <code>float</code>, <code>bool</code>, <code>[T]</code>, <code>{str: T}</code>, unions (<code>&quot;a&quot; | &quot;b&quot; | &quot;c&quot;</code>), nested schemas.</li><li>Fields without defaults are required. Fields with defaults are optional.</li><li>Use KCL docstrings for field documentation — <code>akua</code> tooling surfaces them in autocomplete and generated docs.</li><li><code>check:</code> blocks can express cross-field constraints; they run during <code>akuapkg render</code>.</li><li>No runtime side effects (no env lookups, no filesystem, no network). KCL's sandbox enforces this.</li></ul>
 <p>Example with all shapes:</p>
 <pre><code class="lang-python">schema Input:
     &quot;&quot;&quot;Public inputs for this package.&quot;&quot;&quot;
@@ -395,7 +395,7 @@ schema HostInput:
     hostname: str
     priority: int = 0</code></pre>
 <h3 id="ui-hints-optional">UI hints (optional) ✅</h3>
-<p>When a Package is consumed through a UI (merchant install form, Package Studio, generated Swagger form), renderers benefit from hints about field ordering, labels, placeholders, grouping. akua reads UI hints from two sources, both projected into the JSON Schema / OpenAPI output of <a href="https://github.com/cnap-tech/akua/blob/main/docs/cli.md#akua-export"><code>akua export</code></a>.</p>
+<p>When a Package is consumed through a UI (merchant install form, Package Studio, generated Swagger form), renderers benefit from hints about field ordering, labels, placeholders, grouping. akua reads UI hints from two sources, both projected into the JSON Schema / OpenAPI output of <a href="https://github.com/akua-dev/akua/blob/main/docs/cli.md#akuapkg-export"><code>akuapkg export</code></a>.</p>
 <p><strong>KCL docstrings</strong> — the field's <code>&quot;&quot;&quot;…&quot;&quot;&quot;</code> docstring becomes the schema property's <code>description</code>:</p>
 <pre><code class="lang-python">schema Input:
     &quot;&quot;&quot;Public inputs for this package.&quot;&quot;&quot;
@@ -418,15 +418,15 @@ schema HostInput:
 
     @ui(order=30, group=&quot;Capacity&quot;, widget=&quot;slider&quot;, min=1, max=20)
     replicas: int = 3</code></pre>
-<p><code>@ui(...)</code> is an akua-specific authoring hint, not a registered KCL decorator — <code>akua render</code> strips it before handing the source to KCL's resolver, while <code>akua export</code> extracts it from the parsed AST.</p>
+<p><code>@ui(...)</code> is an akua-specific authoring hint, not a registered KCL decorator — <code>akuapkg render</code> strips it before handing the source to KCL's resolver, while <code>akuapkg export</code> extracts it from the parsed AST.</p>
 <h3 id="exporting-a-view-vs-rendering">Exporting a view vs rendering ✅</h3>
 <p>The canonical Package is KCL. akua ships two different verbs producing different outputs from it:</p>
-<table><thead><tr><th>verb</th><th>purpose</th><th>needs inputs?</th><th>output</th></tr></thead><tbody><tr><td><code>akua export</code></td><td>convert the Package's <code>Input</code> schema to a standard interchange format</td><td>no</td><td>JSON Schema 2020-12 or OpenAPI 3.1</td></tr><tr><td><code>akua render</code></td><td>execute the Package's full pipeline and produce deploy-ready Kubernetes manifests</td><td>yes</td><td>rendered YAML the reconciler applies</td></tr></tbody></table>
-<p>For install UIs, API docs, rjsf / JSONForms, admission webhook schemas, and client SDK generators — <code>akua export</code> skips engine invocation and customer inputs:</p>
-<pre><code class="lang-sh">akua export --package package.k &gt; inputs.schema.json              # JSON Schema 2020-12
-akua export --package package.k --format=openapi &gt; package.openapi.json</code></pre>
-<p>For actual deployment rendering — use <code>akua render</code> with customer inputs (covered in §9).</p>
-<p><code>akua export</code> output is pure, spec-compliant JSON Schema 2020-12 / OpenAPI 3.1. Docstrings become <code>description</code>; <code>@ui(...)</code> decorators become <code>x-ui</code> metadata. Consumers that speak these standards — including every JSON Schema tool in the ecosystem — work unchanged.</p>
+<table><thead><tr><th>verb</th><th>purpose</th><th>needs inputs?</th><th>output</th></tr></thead><tbody><tr><td><code>akuapkg export</code></td><td>convert the Package's <code>Input</code> schema to a standard interchange format</td><td>no</td><td>JSON Schema 2020-12 or OpenAPI 3.1</td></tr><tr><td><code>akuapkg render</code></td><td>execute the Package's full pipeline and produce deploy-ready Kubernetes manifests</td><td>yes</td><td>rendered YAML the reconciler applies</td></tr></tbody></table>
+<p>For install UIs, API docs, rjsf / JSONForms, admission webhook schemas, and client SDK generators — <code>akuapkg export</code> skips engine invocation and customer inputs:</p>
+<pre><code class="lang-sh">akuapkg export --package package.k &gt; inputs.schema.json              # JSON Schema 2020-12
+akuapkg export --package package.k --format=openapi &gt; package.openapi.json</code></pre>
+<p>For actual deployment rendering — use <code>akuapkg render</code> with customer inputs (covered in §9).</p>
+<p><code>akuapkg export</code> output is pure, spec-compliant JSON Schema 2020-12 / OpenAPI 3.1. Docstrings become <code>description</code>; <code>@ui(...)</code> decorators become <code>x-ui</code> metadata. Consumers that speak these standards — including every JSON Schema tool in the ecosystem — work unchanged.</p>
 <p><strong>No <code>x-user-input</code> or <code>x-input</code> markers.</strong> Previous versions of akua layered custom extensions on JSON Schema to mark user-configurable fields and embed transforms. With KCL as the authoring substrate, both are redundant: the <code>Input</code> schema IS the customer-configurable contract by definition, and transforms live as KCL code in the package body. The eventual exported JSON Schema is standards-pure; UI renderers in the broader ecosystem don't need to learn akua-specific vocabulary.</p>
 <hr />
 <h2 id="4-body--engine-calls--transforms">4. Body — engine calls + transforms</h2>
@@ -467,7 +467,7 @@ _addons = kustomize.build(&quot;./overlays/monitoring&quot;)</code></pre>
 }
 
 resources = [*_pg, *_app, *_glue, *_addons, _servicemonitor]</code></pre>
-<p><strong>Schema-level validation via <code>check:</code> blocks</strong> — this is KCL's role in the two-layer validation model (schema → Rego for cross-resource policy, see <a href="https://github.com/cnap-tech/akua/blob/main/docs/policy-format.md">policy-format.md</a>):</p>
+<p><strong>Schema-level validation via <code>check:</code> blocks</strong> — this is KCL's role in the two-layer validation model (schema → Rego for cross-resource policy, see <a href="https://github.com/akua-dev/akua/blob/main/docs/policy-format.md">policy-format.md</a>):</p>
 <pre><code class="lang-python">schema Deployment:
     spec: DeploymentSpec
     check:
@@ -477,7 +477,7 @@ resources = [*_pg, *_app, *_glue, *_addons, _servicemonitor]</code></pre>
 <p>KCL <code>check:</code> blocks evaluate at render time against each resource; failures surface as lint errors with line + field context.</p>
 <hr />
 <h2 id="5-the-render-output">5. The render output</h2>
-<p><code>akua render --out ./deploy</code> writes every entry in <code>resources</code> as its own YAML file in <code>./deploy/</code>. Filenames are deterministic (<code>&lt;NNN&gt;-&lt;kind&gt;-&lt;name&gt;.yaml</code>), ordered by resource-list position.</p>
+<p><code>akuapkg render --out ./deploy</code> writes every entry in <code>resources</code> as its own YAML file in <code>./deploy/</code>. Filenames are deterministic (<code>&lt;NNN&gt;-&lt;kind&gt;-&lt;name&gt;.yaml</code>), ordered by resource-list position.</p>
 <pre><code>deploy/
 ├── 000-configmap-hello.yaml
 ├── 001-service-hello.yaml
@@ -485,8 +485,8 @@ resources = [*_pg, *_app, *_glue, *_addons, _servicemonitor]</code></pre>
 <p>Raw manifests are akua's single render shape. Downstream systems that want a different shape use one of:</p>
 <ul><li><strong>In-body transformations</strong> — a KCL function (present or future) that</li></ul>
 <p>  consumes resources and returns more K8s resources. <code>kro.rgd(...)</code>,   <code>crossplane.composition(...)</code>, <code>kyverno.policy(...)</code> all fit this   mould: they produce CRDs + composite resources that go into   <code>resources</code> alongside everything else, and ship as plain YAML.</p>
-<ul><li><strong>Future distribution verbs</strong> — <code>akua publish --as helm-chart</code></li></ul>
-<p>  wraps rendered manifests into a Helm chart at distribution time;   <code>akua publish --as oci-bundle</code> signs and packages them. These are   distribution concerns, not render concerns — the Package's <code>resources</code>   are the input, not a pre-declared output list.</p>
+<ul><li><strong>Future distribution verbs</strong> — <code>akuapkg publish --as helm-chart</code></li></ul>
+<p>  wraps rendered manifests into a Helm chart at distribution time;   <code>akuapkg publish --as oci-bundle</code> signs and packages them. These are   distribution concerns, not render concerns — the Package's <code>resources</code>   are the input, not a pre-declared output list.</p>
 <p>This keeps the Package shape trivially uniform: one <code>resources</code> list, one render target. Authors reason about what exists; the CLI decides how it ships.</p>
 <hr />
 <h2 id="6-metadata">6. Metadata</h2>
@@ -502,7 +502,7 @@ resources = [*_pg, *_app, *_glue, *_addons, _servicemonitor]</code></pre>
     # Machine-readable keyword list for catalog discovery
     keywords: [&quot;postgres&quot;, &quot;webapp&quot;, &quot;payments&quot;]
 
-    # Minimum akua version required to render this package
+    # Minimum akuapkg version required to render this package
     requires: {
         akua:    &quot;&gt;=0.2.0&quot;
         engines: { helm: &quot;&gt;=4.0&quot;, kcl: &quot;&gt;=0.12&quot; }
@@ -512,11 +512,11 @@ resources = [*_pg, *_app, *_glue, *_addons, _servicemonitor]</code></pre>
 <hr />
 <h2 id="7-whats-disallowed">7. What's disallowed</h2>
 <p>Because determinism and the WASI sandbox are load-bearing:</p>
-<ul><li><strong>No runtime I/O.</strong> No <code>os.read</code>, <code>http.get</code>, <code>file.exists</code>, env-var lookups. KCL's sandbox enforces this.</li><li><strong>No non-determinism.</strong> No <code>random()</code>, no <code>now()</code>, no <code>uuid()</code>. Results depend only on <code>input</code> and imports.</li><li><strong>No cluster reads at render time.</strong> Use RGD output + kro for runtime late-binding; never a live query from KCL.</li><li><strong>No <code>input</code> overwrite at runtime.</strong> Inputs are provided once at render start and treated as immutable through the body.</li><li><strong>No cross-source value imports.</strong> Source A cannot reference Source B's output. Both derive from <code>input</code>. (Runtime cross-refs are the RGD case; see <a href="https://github.com/cnap-tech/akua/blob/main/docs/policy-format.md">policy-format.md</a> for the broader framing.)</li></ul>
+<ul><li><strong>No runtime I/O.</strong> No <code>os.read</code>, <code>http.get</code>, <code>file.exists</code>, env-var lookups. KCL's sandbox enforces this.</li><li><strong>No non-determinism.</strong> No <code>random()</code>, no <code>now()</code>, no <code>uuid()</code>. Results depend only on <code>input</code> and imports.</li><li><strong>No cluster reads at render time.</strong> Use RGD output + kro for runtime late-binding; never a live query from KCL.</li><li><strong>No <code>input</code> overwrite at runtime.</strong> Inputs are provided once at render start and treated as immutable through the body.</li><li><strong>No cross-source value imports.</strong> Source A cannot reference Source B's output. Both derive from <code>input</code>. (Runtime cross-refs are the RGD case; see <a href="https://github.com/akua-dev/akua/blob/main/docs/policy-format.md">policy-format.md</a> for the broader framing.)</li></ul>
 <p>Violation of any of these is a compile error with a clear message.</p>
 <hr />
 <h2 id="8-rendering-model">8. Rendering model</h2>
-<p><code>akua render</code>:</p>
+<p><code>akuapkg render</code>:</p>
 <ol><li>Parses <code>package.k</code> and type-checks the program.</li><li>Loads <code>input</code> from inputs file (YAML or KCL). Validates against the <code>Input</code> schema.</li><li>Resolves dependencies via <code>akua.toml</code> / <code>akua.lock</code>. Pulls and verifies signed artifacts.</li><li>Evaluates the KCL program. Every engine call happens here (in-process, sandboxed).</li><li>Collects the <code>resources</code> list — <code>pkg.render</code> calls have already resolved inline.</li><li>Writes each resource as its own YAML file under <code>--out</code>.</li><li>(Future) Writes <code>attestation.json</code> (SLSA v1 predicate) alongside the manifests.</li></ol>
 <p>Every step is deterministic: same inputs + same <code>akua.lock</code> + same <code>akua</code> version → byte-identical output.</p>
 <hr />
@@ -543,7 +543,7 @@ resources = _nginx</code></pre>
 <p>See <a href="/examples/01-hello-webapp">examples/01-hello-webapp</a> for the fully runnable version.</p>
 <hr />
 <h2 id="10-testing-packages">10. Testing Packages</h2>
-<p>Packages ship with tests. The test runner is built into <code>akua test</code>; no separate framework required.</p>
+<p>Packages ship with tests. The test runner is built into <code>akuapkg test</code>; no separate framework required.</p>
 <h3 id="test-file-conventions">Test file conventions</h3>
 <ul><li><code>test_*.k</code> or <code>*_test.k</code> files anywhere under the package directory are discovered automatically.</li><li>A test file is a KCL program that uses <code>assert</code> or <code>check:</code> blocks to express expectations against the package's render output or schema.</li></ul>
 <h3 id="example--schema-defaults">Example — schema defaults</h3>
@@ -584,24 +584,24 @@ assert _deployment.spec.template.metadata.labels[&quot;team&quot;] == &quot;paym
 └── production/
     ├── inputs.yaml
     └── expected.golden.yaml</code></pre>
-<pre><code class="lang-sh">akua test --golden              # regenerate goldens if they drifted intentionally
-akua test --golden=verify       # fail CI if goldens don't match (default in CI)</code></pre>
+<pre><code class="lang-sh">akuapkg test --golden              # regenerate goldens if they drifted intentionally
+akuapkg test --golden=verify       # fail CI if goldens don't match (default in CI)</code></pre>
 <h3 id="running">Running</h3>
-<pre><code class="lang-sh">akua test                       # runs everything, including Rego tests
-akua test --watch               # re-runs on file change (ideal for TDD)
-akua test --coverage            # report per-schema / per-source coverage
-akua test --filter=default      # only tests matching 'default'</code></pre>
+<pre><code class="lang-sh">akuapkg test                       # runs everything, including Rego tests
+akuapkg test --watch               # re-runs on file change (ideal for TDD)
+akuapkg test --coverage            # report per-schema / per-source coverage
+akuapkg test --filter=default      # only tests matching 'default'</code></pre>
 <p>Tests run via the embedded KCL engine (see <a href="/concepts/embedded-engines">embedded-engines.md</a>) — fast, sandboxed, deterministic.</p>
 <h3 id="what-to-test">What to test</h3>
-<ul><li>Schema defaults and constraints — does <code>input.replicas = 0</code> correctly fail the <code>check:</code> block?</li><li>Rendered-output shape — does the Deployment have the right labels, the right replicaCount?</li><li>Policy compat — does rendering with a specific tier succeed? (Integration test; see <a href="https://github.com/cnap-tech/akua/blob/main/docs/policy-format.md#9-authoring-workflow">policy-format.md §9</a>)</li><li>Upgrade compatibility — golden tests catch &quot;dep bump accidentally changed the rendered manifest.&quot;</li></ul>
+<ul><li>Schema defaults and constraints — does <code>input.replicas = 0</code> correctly fail the <code>check:</code> block?</li><li>Rendered-output shape — does the Deployment have the right labels, the right replicaCount?</li><li>Policy compat — does rendering with a specific tier succeed? (Integration test; see <a href="https://github.com/akua-dev/akua/blob/main/docs/policy-format.md#9-authoring-workflow">policy-format.md §9</a>)</li><li>Upgrade compatibility — golden tests catch &quot;dep bump accidentally changed the rendered manifest.&quot;</li></ul>
 <p>Packages without tests ship with a lint warning; platform teams can enforce a policy rule requiring tests for production-tier packages.</p>
 <hr />
 <h2 id="11-relationship-to-other-docs">11. Relationship to other docs</h2>
-<ul><li><strong><a href="https://github.com/cnap-tech/akua/blob/main/docs/cli.md">cli.md — <code>akua init</code> / <code>akua add</code> / <code>akua render</code> / <code>akua export</code> / <code>akua test</code> / <code>akua publish</code></a></strong> — the verbs that operate on packages. <code>render</code> runs the program; <code>export</code> converts the canonical form to a view.</li><li><strong><a href="/concepts/lockfile-format">lockfile-format.md</a></strong> — how <code>akua.toml</code> + <code>akua.lock</code> pin imports</li><li><strong><a href="https://github.com/cnap-tech/akua/blob/main/docs/policy-format.md">policy-format.md</a></strong> — how Rego policies evaluate against rendered resources (separate concern from <code>check:</code> blocks)</li><li><strong><a href="/concepts/embedded-engines">embedded-engines.md</a></strong> — which engines run your tests</li><li><strong><a href="/examples/">examples/</a></strong> — runnable Packages at increasing complexity</li></ul>
+<ul><li><strong><a href="https://github.com/akua-dev/akua/blob/main/docs/cli.md">cli.md — <code>akuapkg init</code> / <code>akuapkg add</code> / <code>akuapkg render</code> / <code>akuapkg export</code> / <code>akuapkg test</code> / <code>akuapkg publish</code></a></strong> — the verbs that operate on packages. <code>render</code> runs the program; <code>export</code> converts the canonical form to a view.</li><li><strong><a href="/concepts/lockfile-format">lockfile-format.md</a></strong> — how <code>akua.toml</code> + <code>akua.lock</code> pin imports</li><li><strong><a href="https://github.com/akua-dev/akua/blob/main/docs/policy-format.md">policy-format.md</a></strong> — how Rego policies evaluate against rendered resources (separate concern from <code>check:</code> blocks)</li><li><strong><a href="/concepts/embedded-engines">embedded-engines.md</a></strong> — which engines run your tests</li><li><strong><a href="/examples/">examples/</a></strong> — runnable Packages at increasing complexity</li></ul>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/cnap-tech/akua">github.com/cnap-tech/akua</a> ·
+  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
   Apache-2.0
 </footer>
 </main>

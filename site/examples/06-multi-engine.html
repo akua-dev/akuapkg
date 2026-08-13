@@ -332,8 +332,8 @@ _glue    = kro.rgd(kro.Rgd { definition = platform.RGD, instance = { ... } })
 resources = [*_app, *_monitor, _netpol, _glue]</code></pre>
 <p>One Package, one flat resource list, one render output. ArgoCD/Flux applies the rendered YAML as it would any other manifest set; kro's controller sees the RGD and reconciles its instances.</p>
 <h2 id="render">Render</h2>
-<pre><code class="lang-sh">akua add                         # resolve deps
-akua render --inputs inputs.yaml --out ./deploy</code></pre>
+<pre><code class="lang-sh">akuapkg add                         # resolve deps
+akuapkg render --inputs inputs.yaml --out ./deploy</code></pre>
 <p>Result:</p>
 <pre><code>deploy/
 ├── 000-deployment-webapp.yaml          # from helm
@@ -344,7 +344,7 @@ akua render --inputs inputs.yaml --out ./deploy</code></pre>
 ├── 005-networkpolicy-webapp.yaml       # from inline KCL
 └── 006-resourcegraphdefinition-glue.yaml  # from kro.rgd — kro reconciles it</code></pre>
 <h2 id="see-also">See also</h2>
-<ul><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/package-format.md">package-format.md</a> — the Package spec</li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/embedded-engines.md">embedded-engines.md</a> — which engines are embedded; escape-hatch via <code>--engine=shell</code></li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/architecture.md">architecture.md#what-akua-is-not</a> — why we compose reconcilers instead of replacing them</li></ul>
+<ul><li><a href="https://github.com/akua-dev/akua/blob/main/docs/package-format.md">package-format.md</a> — the Package spec</li><li><a href="https://github.com/akua-dev/akua/blob/main/docs/embedded-engines.md">embedded-engines.md</a> — which engines are embedded; escape-hatch via <code>--engine=shell</code></li><li><a href="https://github.com/akua-dev/akua/blob/main/docs/architecture.md">architecture.md#what-akua-is-not</a> — why we compose reconcilers instead of replacing them</li></ul>
 <h2>package.k</h2><pre><code class="lang-kcl"># Example 06 — multi-engine
 #
 # One Package, four sources, one render output (raw YAML):
@@ -354,8 +354,8 @@ akua render --inputs inputs.yaml --out ./deploy</code></pre>
 #   - Inline KCL  (NetworkPolicy authored directly in KCL)
 #
 # Render:
-#   akua add
-#   akua render --inputs inputs.yaml --out ./deploy
+#   akuapkg add
+#   akuapkg render --inputs inputs.yaml --out ./deploy
 
 import akua.ctx
 import akua.kustomize
@@ -440,12 +440,12 @@ resources = [*_app, *_monitor, _netpol, _glue]
 </code></pre>
 
 <p style="margin-top: 32px; color: var(--muted); font-size: 14px;">
-  Source: <a href="https://github.com/cnap-tech/akua/tree/main/examples/06-multi-engine">examples/06-multi-engine/</a>
+  Source: <a href="https://github.com/akua-dev/akua/tree/main/examples/06-multi-engine">examples/06-multi-engine/</a>
 </p>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/cnap-tech/akua">github.com/cnap-tech/akua</a> ·
+  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
   Apache-2.0
 </footer>
 </main>

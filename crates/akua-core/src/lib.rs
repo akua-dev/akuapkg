@@ -26,7 +26,7 @@
 /// }
 /// ```
 ///
-/// Workspace-internal by intent: `akua-cli` reuses it for verbs that
+/// Workspace-internal by intent: `akuapkg-cli` reuses it for verbs that
 /// define their own response types (e.g. `VersionOutput`). External
 /// consumers don't need it — they're not writing to `sdk-types/` or
 /// the bundle. `#[macro_export]` is the mechanism that makes the

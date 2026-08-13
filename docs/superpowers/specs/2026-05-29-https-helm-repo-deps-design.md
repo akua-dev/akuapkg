@@ -49,7 +49,7 @@ invariant governs akua's **own `publish` output**, not third-party upstreams.
 
 HTTPS helm-repo charts adopt the identical pattern:
 
-- `akua add` / `akua lock` resolve the version, download the `.tgz`, compute
+- `akuapkg add` / `akuapkg lock` resolve the version, download the `.tgz`, compute
   its tree SHA256, and write `digest = "sha256:<hex>"` into `akua.lock`.
 - Every subsequent fetch verifies the downloaded tarball's tree hash against
   the pinned digest; a mismatch fails the resolve hard (same as OCI's
@@ -100,11 +100,11 @@ A new `helm_repo_fetcher` module (modeled on `git_fetcher`):
 
 ## Determinism
 
-- `index.yaml` is consulted **only** at `akua add` / `akua lock`. It writes the
+- `index.yaml` is consulted **only** at `akuapkg add` / `akuapkg lock`. It writes the
   resolved exact version and the `.tgz` digest into `akua.lock`.
-- `akua render` resolves from the pinned digest + cache; it never reads
+- `akuapkg render` resolves from the pinned digest + cache; it never reads
   `index.yaml` and never hits the network. Same inputs + same lockfile + same
-  akua version → byte-identical output, satisfying the determinism invariant.
+  akuapkg version → byte-identical output, satisfying the determinism invariant.
 
 ## Data-model changes
 
@@ -150,8 +150,8 @@ Re-pull verifies `digest`. `replace` provenance recorded as for oci/git.
 
 ## CLI / SDK surface (one contract)
 
-- `akua add` gains a helm-repo form:
-  `akua add temporal --repo https://go.temporal.io/helm-charts --chart temporal --version ">=0.60,<0.63"`.
+- `akuapkg add` gains a helm-repo form:
+  `akuapkg add temporal --repo https://go.temporal.io/helm-charts --chart temporal --version ">=0.60,<0.63"`.
   Resolves the range, writes `akua.toml` + `akua.lock`.
 - The napi shim + `packages/sdk` `Akua.add()` route the new fields through.
 - `docs/lockfile-format.md`, `docs/package-format.md`, and the dependency-source
@@ -162,7 +162,7 @@ Re-pull verifies `digest`. `replace` provenance recorded as for oci/git.
 - `repo` URLs with embedded `user:pass@` rejected at parse (as for git).
 - Tarball extraction goes through the existing path-escape guard; a malicious
   `.tgz` with `../` members cannot escape the cache dir.
-- `akua publish` strips `replace` for helm deps too (existing behavior is
+- `akuapkg publish` strips `replace` for helm deps too (existing behavior is
   source-agnostic).
 - Credentials only ever come from the `host_auth` map; akua never reads
   `~/.netrc`, `helm`'s `repositories.yaml`, or ambient credential stores.

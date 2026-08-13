@@ -301,10 +301,10 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
   <h1>example 12 — vendor-offline (render without network or auth)</h1>
   <p class="tagline">A Package whose dep is materialized into `.akua/vendor//` so render works without re-fetching from the canonical source. This example takes the offline guarantee literally — the canonical...</p>
 </header>
-<blockquote><strong>Renders end-to-end</strong> off the local vendor tree. No registry, no network, no credentials needed at render time. The same Package renders identically inside an air-gapped environment or behind a firewall once <code>akua vendor add</code> has staged the bytes.</blockquote>
+<blockquote><strong>Renders end-to-end</strong> off the local vendor tree. No registry, no network, no credentials needed at render time. The same Package renders identically inside an air-gapped environment or behind a firewall once <code>akuapkg vendor add</code> has staged the bytes.</blockquote>
 <p>A Package whose dep is materialized into <code>.akua/vendor/&lt;name&gt;/</code> so render works without re-fetching from the canonical source. This example takes the offline guarantee literally — the canonical <code>upstream-chart/</code> source <strong>is not present in the checkout</strong>. Render succeeds because the resolver finds the bytes under <code>.akua/vendor/upstream/</code>.</p>
 <h2 id="why-vendor">Why vendor</h2>
-<p>The resolver prefers <code>.akua/vendor/&lt;name&gt;/</code> when it exists for <em>every</em> dep kind — path, OCI, and git alike (see <code>chart_resolver::resolve_with_options</code>). <code>akua vendor add</code> is the public CLI verb that populates that path from a declared dep and pins the digest in <code>akua.lock</code>. The contract:</p>
+<p>The resolver prefers <code>.akua/vendor/&lt;name&gt;/</code> when it exists for <em>every</em> dep kind — path, OCI, and git alike (see <code>chart_resolver::resolve_with_options</code>). <code>akuapkg vendor add</code> is the public CLI verb that populates that path from a declared dep and pins the digest in <code>akua.lock</code>. The contract:</p>
 <ul><li>The dep declaration in <code>akua.toml</code> stays canonical (<code>path</code> / <code>oci</code></li></ul>
 <p>  / <code>git</code>). It records <em>what</em> the dep is.</p>
 <ul><li><code>.akua/vendor/&lt;name&gt;/</code> records <em>the bytes you want render to use.</em></li></ul>
@@ -322,17 +322,17 @@ ls upstream-chart/  # → No such file or directory
 ls .akua/vendor/upstream/  # → Chart.yaml  templates/
 
 # 3. Render — succeeds without network, auth, or canonical source:
-akua render --out ./rendered
+akuapkg render --out ./rendered
 
-# 4. Verify integrity — `akua vendor check` re-hashes the vendor tree
+# 4. Verify integrity — `akuapkg vendor check` re-hashes the vendor tree
 #    and compares against akua.lock:
-akua vendor check
+akuapkg vendor check
 # → ok
 
 # 5. List what's vendored, including any orphan trees that no longer
 #    correspond to a dep in akua.toml:
-akua vendor list</code></pre>
-<p>To regenerate the vendor tree from a canonical source (e.g., during development before committing), restore <code>upstream-chart/</code> and run <code>akua vendor add upstream</code>.</p>
+akuapkg vendor list</code></pre>
+<p>To regenerate the vendor tree from a canonical source (e.g., during development before committing), restore <code>upstream-chart/</code> and run <code>akuapkg vendor add upstream</code>.</p>
 <h2 id="when-vendoring-matters">When vendoring matters</h2>
 <p>For interactive Package authoring, vendoring is overkill — let the resolver fetch from OCI or git on every render.</p>
 <p>It earns its keep when:</p>
@@ -345,17 +345,17 @@ akua vendor list</code></pre>
 <ul><li><strong>Per-customer install repos</strong> (the cnap install-as-Package use</li></ul>
 <p>  case). The install pipeline mints a per-install token, vendors the   composed Package's bytes once at bootstrap, and commits the result.   Subsequent renders need neither the token nor network access.</p>
 <h2 id="out-of-scope-for-now">Out of scope (for now)</h2>
-<ul><li><strong>Recursive transitive vendoring.</strong> <code>akua vendor add upstream</code></li></ul>
-<p>  vendors <code>upstream</code> only. If <code>upstream</code> itself depends on a chart   that needs network at render time, vendor that too — track CI   drift with <code>akua vendor check</code>.</p>
+<ul><li><strong>Recursive transitive vendoring.</strong> <code>akuapkg vendor add upstream</code></li></ul>
+<p>  vendors <code>upstream</code> only. If <code>upstream</code> itself depends on a chart   that needs network at render time, vendor that too — track CI   drift with <code>akuapkg vendor check</code>.</p>
 <ul><li><strong>Workspace-wide <code>vendor add</code> (no name).</strong> Currently <code>add</code> takes</li></ul>
 <p>  exactly one dep name. Looping is the caller's job.</p>
 <h2 id="path-escape-safety">Path-escape safety</h2>
-<p><code>akua vendor add</code> rejects:</p>
+<p><code>akuapkg vendor add</code> rejects:</p>
 <ul><li>Absolute paths in <code>path = &quot;...&quot;</code>. <code>path = &quot;/etc&quot;</code> → <code>E_PATH_ESCAPE</code>.</li><li>Relative paths that canonicalize outside the workspace. `path =</li></ul>
 <p>  &quot;../sibling&quot;<code> → </code>E_PATH_ESCAPE`.</p>
 <p>Same workspace-local invariant the resolver enforces for path deps — vendor cannot be used as a side-channel to copy arbitrary host bytes into an install repo.</p>
 <h2>package.k</h2><pre><code class="lang-kcl"># Renders a chart vendored into `.akua/vendor/upstream/` via
-# `akua vendor add upstream`. The dep declaration in `akua.toml`
+# `akuapkg vendor add upstream`. The dep declaration in `akua.toml`
 # stays canonical (`path = &quot;./upstream-chart&quot;`); the resolver
 # prefers the vendored copy when present, so render is offline-
 # safe once the vendor tree is committed alongside the Package.
@@ -395,12 +395,12 @@ metadata:
   namespace: default
 </code></pre>
 <p style="margin-top: 32px; color: var(--muted); font-size: 14px;">
-  Source: <a href="https://github.com/cnap-tech/akua/tree/main/examples/12-vendor-offline">examples/12-vendor-offline/</a>
+  Source: <a href="https://github.com/akua-dev/akua/tree/main/examples/12-vendor-offline">examples/12-vendor-offline/</a>
 </p>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/cnap-tech/akua">github.com/cnap-tech/akua</a> ·
+  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
   Apache-2.0
 </footer>
 </main>

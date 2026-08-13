@@ -7,7 +7,7 @@ compatibility: Requires a cosign-compatible signing key (keyless via Sigstore is
 
 # Publish a signed + attested Package
 
-Default akua publish behavior signs the package with cosign and generates a SLSA v1 provenance predicate. No extra flags needed. This skill walks through the path, the verification, and the CI integration.
+Default akuapkg publish behavior signs the package with cosign and generates a SLSA v1 provenance predicate. No extra flags needed. This skill walks through the path, the verification, and the CI integration.
 
 ## When to use
 
@@ -40,7 +40,7 @@ Keyless Sigstore (no key material to manage):
 ### 2. Dry-run the publish
 
 ```sh
-akua publish --to oci://ghcr.io/you/my-app --tag v1.0.0 --plan
+akuapkg publish --to oci://ghcr.io/you/my-app --tag v1.0.0 --plan
 ```
 
 Plan output: target ref, tag, digest (predicted), size, whether signing and attestation will apply, policy verdict.
@@ -48,12 +48,12 @@ Plan output: target ref, tag, digest (predicted), size, whether signing and atte
 ### 3. Publish
 
 ```sh
-akua publish --to oci://ghcr.io/you/my-app --tag v1.0.0
+akuapkg publish --to oci://ghcr.io/you/my-app --tag v1.0.0
 ```
 
 This:
 
-- Builds the package (runs `akua render` internally against the declared default inputs; rejects if the package fails to render)
+- Builds the package (runs `akuapkg render` internally against the declared default inputs; rejects if the package fails to render)
 - Computes content-addressable digest
 - Pushes to the target OCI registry
 - Generates SLSA v1 predicate from build environment
@@ -77,7 +77,7 @@ Output:
 ### 4. Verify after publish
 
 ```sh
-akua verify oci://ghcr.io/you/my-app:v1.0.0
+akuapkg verify oci://ghcr.io/you/my-app:v1.0.0
 ```
 
 Confirms: signature valid, signer identity matches expected, SLSA predicate present and valid, chain terminates at a trusted root.
@@ -112,11 +112,11 @@ jobs:
       - name: Publish
         run: |
           akua login ghcr.io --token=${{ secrets.GITHUB_TOKEN }}
-          akua publish --to oci://ghcr.io/${{ github.repository }} --tag ${{ github.ref_name }}
+          akuapkg publish --to oci://ghcr.io/${{ github.repository }} --tag ${{ github.ref_name }}
 
       - name: Verify
         run: |
-          akua verify oci://ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+          akuapkg verify oci://ghcr.io/${{ github.repository }}:${{ github.ref_name }}
 ```
 
 The `id-token: write` permission is what enables keyless signing — GitHub Actions OIDC → Sigstore Fulcio → signing certificate embedded in the signature. No key material to manage or rotate.
@@ -131,9 +131,9 @@ An agent releasing a package should always:
 
 ```sh
 IDEMP=$(uuidgen)
-akua publish --to oci://ghcr.io/you/my-app --tag v1.0.0 \
+akuapkg publish --to oci://ghcr.io/you/my-app --tag v1.0.0 \
   --idempotency-key=$IDEMP --json | tee publish.json
-akua verify oci://ghcr.io/you/my-app:v1.0.0 --json | tee verify.json
+akuapkg verify oci://ghcr.io/you/my-app:v1.0.0 --json | tee verify.json
 ```
 
 If `verify.json.signed` is not `true` or the signer identity doesn't match expected, the release is not complete; surface to a human.
@@ -148,7 +148,7 @@ Policy tiers can require:
 - Approvers (two-person review before production publish)
 
 ```sh
-akua publish ... --plan --policy=tier/production --json
+akuapkg publish ... --plan --policy=tier/production --json
 ```
 
 Non-zero exit (code 3) if policy denies. Code 5 if needs approval; the output includes an approval URL agents/humans can follow.
@@ -156,13 +156,13 @@ Non-zero exit (code 3) if policy denies. Code 5 if needs approval; the output in
 ## Failure modes
 
 - **`E_SIGN_FAILED`** — cosign can't acquire a signing certificate. Check OIDC setup (GitHub Actions `id-token: write`) or `cosign login`.
-- **`E_PUSH_FAILED`** — registry rejected the push. Auth (`akua whoami`), registry quota, or network.
+- **`E_PUSH_FAILED`** — registry rejected the push. Auth (`akuapkg whoami`), registry quota, or network.
 - **`E_ATTESTATION_FAILED`** — SLSA predicate generation failed. Usually a missing build-environment field; error message specifies which.
-- **Tag already exists** — `akua publish` refuses to overwrite by default. Use `--overwrite` only if you're intentionally republishing a fixed version (and update the policy to allow it).
+- **Tag already exists** — `akuapkg publish` refuses to overwrite by default. Use `--overwrite` only if you're intentionally republishing a fixed version (and update the policy to allow it).
 
 ## Reference
 
-- [cli.md — akua publish](../../docs/cli.md#akua-publish)
+- [cli.md — akuapkg publish](../../docs/cli.md#akua-publish)
 - [cli.md — akua attest](../../docs/cli.md#akua-attest)
-- [cli.md — akua verify](../../docs/cli.md#akua-verify)
+- [cli.md — akuapkg verify](../../docs/cli.md#akuapkg-verify)
 - [SLSA Level 3 requirements](https://slsa.dev/spec/v1.0/levels#build-l3)

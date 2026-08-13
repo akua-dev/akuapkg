@@ -38,11 +38,11 @@ When `akua` is run inside an AI-agent session, it detects this from env vars and
 
 ```sh
 # Human shell — text output
-$ akua render
+$ akuapkg render
 [pretty text output]
 
 # Agent context — auto-JSON, no flag needed
-$ CLAUDECODE=1 akua render
+$ CLAUDECODE=1 akuapkg render
 {"format":"raw-manifests","target":"./deploy","manifests":3,"hash":"sha256:…"}
 ```
 
@@ -55,23 +55,23 @@ See [cli-contract.md §1.5](cli-contract.md#15-agent-context-auto-detection) for
 ```
 AUTHOR              PUBLISH             DEPLOY              OPERATE
 ------              -------             ------              -------
-akua init           akua attest         akua deploy         akua secret
-akua add            akua publish        akua rollout        akua policy
-akua vendor         akua pull           akua dev            akua audit
-akua render         akua inspect                            akua query
-akua diff           akua export                              akua infra
+akuapkg init           akua attest         akua deploy         akua secret
+akuapkg add            akuapkg publish        akua rollout        akua policy
+akuapkg vendor         akuapkg pull           akuapkg dev            akua audit
+akuapkg render         akuapkg inspect                            akua query
+akuapkg diff           akuapkg export                              akua infra
 
 DEVELOP             SESSION             META
 -------             -------             ----
-akua test           akua login          akua help
-akua fmt            akua logout         akua version
-akua lint           akua whoami         akua telemetry
-akua check                              akua api
-                                        akua lint-cli
+akuapkg test           akua login          akua help
+akuapkg fmt            akua logout         akuapkg version
+akuapkg lint           akuapkg whoami         akua telemetry
+akuapkg check                              akuapkg api
+                                        akuapkg lint-cli
 akua bench
 akua trace
 akua cov
-akua repl
+akuapkg repl
 akua eval
 ```
 
@@ -90,12 +90,12 @@ Thirty-five verbs. Grouped by purpose. Each covered below.
 
 ---
 
-## `akua init` ✅
+## `akuapkg init` ✅
 
 Scaffold a new package or workspace.
 
 ```
-akua init [name] [flags]
+akuapkg init [name] [flags]
 ```
 
 Creates a directory with:
@@ -108,7 +108,7 @@ Creates a directory with:
 
 | flag | description |
 |---|---|
-| `--template=<name>` | use a template (see `akua init --list-templates`) |
+| `--template=<name>` | use a template (see `akuapkg init --list-templates`) |
 | `--package-name=<name>` | name for the Package (defaults to directory name) |
 | `--no-git` | skip `git init` |
 | `--list-templates` | list available templates |
@@ -138,12 +138,12 @@ Creates a directory with:
 
 ---
 
-## `akua add` ✅
+## `akuapkg add` ✅
 
 Insert a dependency into `akua.toml`. Pure manifest edit — the resolver best-effortly updates `akua.lock` immediately after.
 
 ```
-akua add <name> (--oci=<url> | --git=<url> | --path=<path> | --repo=<url> --chart=<chart>) [flags]
+akuapkg add <name> (--oci=<url> | --git=<url> | --path=<path> | --repo=<url> --chart=<chart>) [flags]
 ```
 
 Exactly one source flag is required. `--repo` requires `--chart`.
@@ -161,19 +161,19 @@ Exactly one source flag is required. `--repo` requires `--chart`.
 
 ```sh
 # OCI dep
-akua add cnpg --oci oci://ghcr.io/cloudnative-pg/charts/cluster --version 0.20.0
+akuapkg add cnpg --oci oci://ghcr.io/cloudnative-pg/charts/cluster --version 0.20.0
 
 # Git dep pinned to a tag
-akua add tooling --git https://github.com/acme/tools --tag v1.2.3
+akuapkg add tooling --git https://github.com/acme/tools --tag v1.2.3
 
 # Local path dep
-akua add shared --path ../shared
+akuapkg add shared --path ../shared
 
 # HTTPS Helm-repo dep
-akua add temporal --repo https://go.temporal.io/helm-charts --chart temporal --version 0.62.0
+akuapkg add temporal --repo https://go.temporal.io/helm-charts --chart temporal --version 0.62.0
 
 # Replace an existing entry
-akua add cnpg --oci oci://ghcr.io/cloudnative-pg/charts/cluster --version 0.21.0 --force
+akuapkg add cnpg --oci oci://ghcr.io/cloudnative-pg/charts/cluster --version 0.21.0 --force
 ```
 
 ### Flags
@@ -209,16 +209,16 @@ akua add cnpg --oci oci://ghcr.io/cloudnative-pg/charts/cluster --version 0.21.0
 
 ---
 
-## `akua vendor` ✅
+## `akuapkg vendor` ✅
 
 Materialize and inspect the workspace vendor tree at `.akua/vendor/`.
 
 ```
-akua vendor <subcommand> [flags]
+akuapkg vendor <subcommand> [flags]
 ```
 
 Subcommands:
-- `add <name>` — copy the declared dependency into `.akua/vendor/<name>/` and pin its digest in `akua.lock`. The dependency must already exist in `[dependencies]`; otherwise the command fails with a suggestion to declare it in `akua.toml`. Works for `path`, `oci`, `git`, and `helm` (repo) deps alike — the resolver's vendor-first lookup is universal across all four source kinds, so once added, the canonical source can be deleted and `akua render` still succeeds via the vendored bytes.
+- `add <name>` — copy the declared dependency into `.akua/vendor/<name>/` and pin its digest in `akua.lock`. The dependency must already exist in `[dependencies]`; otherwise the command fails with a suggestion to declare it in `akua.toml`. Works for `path`, `oci`, `git`, and `helm` (repo) deps alike — the resolver's vendor-first lookup is universal across all four source kinds, so once added, the canonical source can be deleted and `akuapkg render` still succeeds via the vendored bytes.
 - `check` — compare the on-disk vendor trees against `akua.toml` + `akua.lock`. Drift exits with code `1`.
 - `list` — enumerate on-disk vendor trees, including orphaned entries.
 
@@ -251,15 +251,15 @@ See `examples/12-vendor-offline/` for the end-to-end offline-render contract dem
 
 ---
 
-## `akua lint` ✅
+## `akuapkg lint` ✅
 
 Parse-only check of a `package.k` — catches syntax errors and import-
 resolution failures without executing the program. Runtime errors
 (schema validation, unresolved options, engine failures) surface
-through `akua render --dry-run`.
+through `akuapkg render --dry-run`.
 
 ```
-akua lint [flags]
+akuapkg lint [flags]
 ```
 
 ### Flags
@@ -306,17 +306,17 @@ Or on parse failure:
 
 ---
 
-## `akua render` ✅
+## `akuapkg render` ✅
 
 **Run the Package's program.** Evaluate the KCL, invoke every source engine (Helm, kro, Kustomize), compose results, produce deploy-ready manifests.
 
 ```
-akua render [path] [flags]
+akuapkg render [path] [flags]
 ```
 
 **Discovery.** With no `path`, renders every user-authored document in the workspace whose schema declares render semantics — typically the workspace's App-shaped documents that reference a Package and carry inputs. With a `path`, renders only that file. Users author their own App / Environment / etc. schemas (akua does not specify them; see [package-format.md](package-format.md)); `render` processes whichever documents the workspace declares as renderable.
 
-> **Not the same as `akua export`.** `render` executes the full pipeline against customer inputs and writes manifests a reconciler applies to a cluster. `export` converts a canonical artifact (schema, user-authored KCL document, policy bundle) into a format view (JSON Schema, YAML, OpenAPI, Rego bundle). Render needs inputs; export usually doesn't. Render invokes engines; export is format translation. See [`akua export`](#akua-export) below.
+> **Not the same as `akuapkg export`.** `render` executes the full pipeline against customer inputs and writes manifests a reconciler applies to a cluster. `export` converts a canonical artifact (schema, user-authored KCL document, policy bundle) into a format view (JSON Schema, YAML, OpenAPI, Rego bundle). Render needs inputs; export usually doesn't. Render invokes engines; export is format translation. See [`akuapkg export`](#akuapkg-export) below.
 
 ### Flags
 
@@ -330,7 +330,7 @@ akua render [path] [flags]
 
 > **Engines.** Helm and Akua-package composition reach the user via alias-method calls — `webapp.template(webapp.TemplateOpts{values = webapp.Values{...}})`, `upstream.render(upstream.Input{...})` — synthesized per dep from `akua.toml`. Kustomize stays engine-direct (`kustomize.build({path = "./overlays"})`) because its input is a within-Package directory, not a typed dep. All backends ship as embedded WASM modules; akua never shells out to `helm` or `kustomize` binaries — every engine runs inside the wasmtime sandbox alongside the render worker. See [`docs/security-model.md`](security-model.md) and [`docs/embedded-engines.md`](embedded-engines.md).
 >
-> **One render output.** akua writes raw YAML manifests, one file per resource. Distribution shapes like Helm charts or OCI bundles are future `akua publish --as <format>` concerns — they wrap rendered manifests at distribution time, not as a Package-declared output.
+> **One render output.** akua writes raw YAML manifests, one file per resource. Distribution shapes like Helm charts or OCI bundles are future `akuapkg publish --as <format>` concerns — they wrap rendered manifests at distribution time, not as a Package-declared output.
 
 ### Exit codes
 
@@ -348,17 +348,17 @@ akua render [path] [flags]
 }
 ```
 
-`format` is always `"raw-manifests"` today. `target` is the resolved output directory. `hash` is `sha256:<hex>` of the concatenated `<filename>\n<yaml>` blocks — stable across runs when inputs + lockfile + akua version match.
+`format` is always `"raw-manifests"` today. `target` is the resolved output directory. `hash` is `sha256:<hex>` of the concatenated `<filename>\n<yaml>` blocks — stable across runs when inputs + lockfile + akuapkg version match.
 
 ---
 
-## `akua diff` ✅
+## `akuapkg diff` ✅
 
 Structural diff between two package versions, or between a local package and a published version.
 
 ```
-akua diff <a> <b> [flags]
-akua diff <ref>                    # diff local HEAD against published ref
+akuapkg diff <a> <b> [flags]
+akuapkg diff <ref>                    # diff local HEAD against published ref
 ```
 
 ### Flags
@@ -399,7 +399,7 @@ akua diff <ref>                    # diff local HEAD against published ref
 
 ---
 
-## `akua attest` 🚧
+## `akuapkg attest` 🚧
 
 Emit a SLSA v1 provenance predicate for the current package or a built artifact.
 
@@ -433,12 +433,12 @@ akua attest [path] [flags]
 
 ---
 
-## `akua publish` 🚧
+## `akuapkg publish` 🚧
 
 Push a signed package to an OCI registry.
 
 ```
-akua publish [path] [flags]
+akuapkg publish [path] [flags]
 ```
 
 ### Flags
@@ -471,12 +471,12 @@ akua publish [path] [flags]
 
 ---
 
-## `akua pull` 🚧
+## `akuapkg pull` 🚧
 
 Fetch a package from an OCI registry into the local cache.
 
 ```
-akua pull <ref> [flags]
+akuapkg pull <ref> [flags]
 ```
 
 ### Flags
@@ -489,14 +489,14 @@ akua pull <ref> [flags]
 
 ---
 
-## `akua inspect` ✅
+## `akuapkg inspect` ✅
 
 Report a `package.k`'s input surface — every `option()` call-site with
 its name, declared type, required flag, default, and help text.
 Parse-only: the program is not executed.
 
 ```
-akua inspect [flags]
+akuapkg inspect [flags]
 ```
 
 ### Flags
@@ -531,21 +531,21 @@ kcl_lang's `list_options` only reads a type arg passed directly to
 
 > **SDK-first OCI inspection.** Published Akua Package inspection is
 > available first through `@akua-dev/sdk` as `inspectOciPackage()`.
-> The CLI target `akua inspect <oci://...>` remains future work for
+> The CLI target `akuapkg inspect <oci://...>` remains future work for
 > full audit reports such as signatures, SLSA attestations, source
 > provenance, and rendered-manifest counts.
 
 ---
 
-## `akua export` ✅
+## `akuapkg export` ✅
 
 **Convert a Package's `Input` schema to a standard interchange format.** Emits JSON Schema 2020-12 (raw) or OpenAPI 3.1 (Input wrapped under `components.schemas`). Backed by KCL's resolver + AST walk; field docstrings become `description`, `@ui(...)` decorators become `x-ui` extensions.
 
 ```
-akua export --package <path> [--format=<json-schema|openapi>] [--out=<file>]
+akuapkg export --package <path> [--format=<json-schema|openapi>] [--out=<file>]
 ```
 
-> **Not the same as `akua render`.** `export` is format translation — it doesn't invoke Helm / kro / Kustomize and doesn't need customer inputs. It answers *"how do I describe this Package's inputs in a format other tools understand?"* Use `render` when you want deploy-ready manifests; use `export` when you want a schema for a UI form renderer or API doc generator. See [`akua render`](#akua-render) above.
+> **Not the same as `akuapkg render`.** `export` is format translation — it doesn't invoke Helm / kro / Kustomize and doesn't need customer inputs. It answers *"how do I describe this Package's inputs in a format other tools understand?"* Use `render` when you want deploy-ready manifests; use `export` when you want a schema for a UI form renderer or API doc generator. See [`akuapkg render`](#akuapkg-render) above.
 
 ### Supported formats
 
@@ -596,13 +596,13 @@ schema Input:
 
 ```sh
 # JSON Schema for a web form
-akua export --package package.k > inputs.schema.json
+akuapkg export --package package.k > inputs.schema.json
 
 # OpenAPI 3.1 for API docs
-akua export --package package.k --format=openapi > package.openapi.json
+akuapkg export --package package.k --format=openapi > package.openapi.json
 
 # Write to file directly
-akua export --package package.k --out=exported/inputs.schema.json
+akuapkg export --package package.k --out=exported/inputs.schema.json
 ```
 
 ### Exit codes
@@ -611,13 +611,13 @@ akua export --package package.k --out=exported/inputs.schema.json
 
 ---
 
-## `akua api` ✅
+## `akuapkg api` ✅
 
 Call the hosted Akua API from the OSS CLI. This is an optional hosted extension: local package workflows such as `render`, `export`, `check`, `lint`, `test`, and `verify` do not require hosted API credentials or network access.
 
 ```
-akua api <path-or-url> [flags]
-akua api spec [--audience=<public|partner|admin|internal>] [flags]
+akuapkg api <path-or-url> [flags]
+akuapkg api spec [--audience=<public|partner|admin|internal>] [flags]
 ```
 
 `<path-or-url>` can be a version-relative path such as `/workspaces` or an absolute URL on the configured API origin. Relative paths are resolved under the base URL. The default base URL is `https://api.akua.dev/v1/`.
@@ -626,22 +626,22 @@ akua api spec [--audience=<public|partner|admin|internal>] [flags]
 
 ```sh
 # List workspaces
-akua api /workspaces
+akuapkg api /workspaces
 
 # Create a product from a JSON body
-akua api /products -X POST --input product.json
+akuapkg api /products -X POST --input product.json
 
 # Send typed fields as JSON
-akua api /access_decisions -X POST -F permission=offers.create
+akuapkg api /access_decisions -X POST -F permission=offers.create
 
 # Send a workspace context header
-akua api /products --workspace ws_123
+akuapkg api /products --workspace ws_123
 
 # Fetch the public OpenAPI document
-akua api spec
+akuapkg api spec
 
 # Use a non-default API origin
-akua api /workspaces --base-url https://staging.example.dev/v1/
+akuapkg api /workspaces --base-url https://staging.example.dev/v1/
 ```
 
 ### Request flags
@@ -677,18 +677,18 @@ Connection values resolve in this order:
 | bearer token | `--token`, then `AKUA_API_TOKEN` |
 | workspace context | `--workspace`, then `AKUA_WORKSPACE_ID` |
 
-`akua api` uses hosted API bearer tokens only. `akua auth` remains registry auth for OCI operations and is not reused for hosted API requests. A missing hosted API token fails with `E_AUTH_REQUIRED`; pass `--token` or set `AKUA_API_TOKEN`.
+`akuapkg api` uses hosted API bearer tokens only. `akuapkg auth` remains registry auth for OCI operations and is not reused for hosted API requests. A missing hosted API token fails with `E_AUTH_REQUIRED`; pass `--token` or set `AKUA_API_TOKEN`.
 
-### `akua api spec`
+### `akuapkg api spec`
 
-`akua api spec` fetches the public OpenAPI document from `/openapi.json` on the configured base URL. `akua api spec --audience public` is equivalent.
+`akuapkg api spec` fetches the public OpenAPI document from `/openapi.json` on the configured base URL. `akuapkg api spec --audience public` is equivalent.
 
 Elevated audiences are visible in the CLI contract but not served in this release:
 
 ```sh
-akua api spec --audience partner
-akua api spec --audience admin
-akua api spec --audience internal
+akuapkg api spec --audience partner
+akuapkg api spec --audience admin
+akuapkg api spec --audience internal
 ```
 
 Each elevated audience exits with `E_UNSUPPORTED` until the hosted API serves authorized audience-specific OpenAPI documents. The CLI does not locally filter the public OpenAPI document to simulate elevated audiences.
@@ -709,12 +709,12 @@ HTTP `401` maps to auth errors, `403` maps to forbidden user errors, `429` exits
 
 ---
 
-## `akua dev` ✅
+## `akuapkg dev` ✅
 
 Start the hot-reload development loop.
 
 ```
-akua dev [flags]
+akuapkg dev [flags]
 ```
 
 Single long-running process. Watches workspace for changes. Renders, validates policy, applies to local target. Serves a browser UI at `http://localhost:5173`.
@@ -745,11 +745,11 @@ Streaming JSON-lines of pipeline events:
 {"t":1713636002,"stage":"reconcile","resource":"Deployment/api","status":"ready"}
 ```
 
-Useful for agents that want to drive `akua dev` programmatically.
+Useful for agents that want to drive `akuapkg dev` programmatically.
 
 ---
 
-## `akua deploy` 🚧
+## `akuapkg deploy` 🚧
 
 Deploy rendered output to a reconciler target.
 
@@ -805,7 +805,7 @@ akua deploy cancel   --handle=<h>
 
 ---
 
-## `akua rollout` 🚧
+## `akuapkg rollout` 🚧
 
 Cross-repo / cross-service staged rollout orchestration.
 
@@ -836,7 +836,7 @@ akua rollout abort   --handle=<h>     # triggers rollback
 
 ---
 
-## `akua secret` 🚧
+## `akuapkg secret` 🚧
 
 Typed secret operations. Secrets move as refs, never raw bytes.
 
@@ -878,7 +878,7 @@ akua secret delete  <name>                    # soft delete; needs approval
 
 ---
 
-## `akua policy` 🚧
+## `akuapkg policy` 🚧
 
 Policy tier operations.
 
@@ -924,7 +924,7 @@ akua policy publish <tier>                            # publish custom tier to O
 
 ---
 
-## `akua audit` 🚧
+## `akuapkg audit` 🚧
 
 Causality spine. Trace changes, explain incidents, query the audit trail.
 
@@ -971,7 +971,7 @@ akua audit who       <resource>                       # who has permission to mo
 
 ---
 
-## `akua query` 🚧
+## `akuapkg query` 🚧
 
 Structured queries against observability stores.
 
@@ -1010,7 +1010,7 @@ akua query "error_rate p99 last 1h service=checkout" --json
 
 ---
 
-## `akua infra` 🚧
+## `akuapkg infra` 🚧
 
 Cluster, network, DNS, cert primitives. Wraps Crossplane or Terraform under the hood.
 
@@ -1030,7 +1030,7 @@ akua infra import <resource>        # bring external resource under management
 
 ---
 
-## `akua login` 🚧
+## `akuapkg login` 🚧
 
 Authenticate to OCI registries and signing providers.
 
@@ -1050,7 +1050,7 @@ Credentials are stored in the system credential store (Keychain, libsecret, Cred
 
 ---
 
-## `akua logout` 🚧
+## `akuapkg logout` 🚧
 
 Remove stored credentials.
 
@@ -1061,12 +1061,12 @@ akua logout --all
 
 ---
 
-## `akua whoami` ✅
+## `akuapkg whoami` ✅
 
 Display current identity, logged-in registries, and scopes.
 
 ```
-akua whoami [flags]
+akuapkg whoami [flags]
 ```
 
 ### JSON output
@@ -1091,12 +1091,12 @@ akua whoami [flags]
 
 ---
 
-## `akua test` 🚧
+## `akuapkg test` 🚧
 
 Run unit tests for packages, policies, or both. Unified test runner across engines — detects target types by file extension.
 
 ```
-akua test [path] [flags]
+akuapkg test [path] [flags]
 ```
 
 Discovers and runs:
@@ -1147,12 +1147,12 @@ Discovers and runs:
 
 ---
 
-## `akua fmt` ✅
+## `akuapkg fmt` ✅
 
 Format KCL and Rego sources in place.
 
 ```
-akua fmt [path] [flags]
+akuapkg fmt [path] [flags]
 ```
 
 Uses embedded `kcl fmt` for `.k` files and embedded `opa fmt` for `.rego` files. Idempotent; safe to run in CI.
@@ -1170,15 +1170,15 @@ Uses embedded `kcl fmt` for `.k` files and embedded `opa fmt` for `.rego` files.
 
 ---
 
-## `akua check` ✅
+## `akuapkg check` ✅
 
 Syntax + type + dependency check. No execution, no rendering. Fast.
 
 ```
-akua check [path] [flags]
+akuapkg check [path] [flags]
 ```
 
-Stricter than `akua lint` (actual compile errors, not style); cheaper than `akua render` (doesn't invoke engines). Good for IDE save hooks and pre-commit.
+Stricter than `akuapkg lint` (actual compile errors, not style); cheaper than `akuapkg render` (doesn't invoke engines). Good for IDE save hooks and pre-commit.
 
 ### JSON output
 
@@ -1208,7 +1208,7 @@ On error:
 
 ---
 
-## `akua bench` 🚧
+## `akuapkg bench` 🚧
 
 Benchmark policy evaluation and package render latency.
 
@@ -1245,7 +1245,7 @@ Uses OPA partial evaluation for policy benchmarks; the KCL interpreter's own tim
 
 ---
 
-## `akua trace` 🚧
+## `akuapkg trace` 🚧
 
 Explain the evaluation path of a policy query. Useful for debugging "why did this rule deny?" or "why didn't this rule fire?"
 
@@ -1279,7 +1279,7 @@ ALLOW deny[msg] evaluated to {"production Deployments must have a team label"}
 
 ---
 
-## `akua cov` 🚧
+## `akuapkg cov` 🚧
 
 Generate a test coverage report across rules (Rego) and schemas (KCL).
 
@@ -1287,7 +1287,7 @@ Generate a test coverage report across rules (Rego) and schemas (KCL).
 akua cov [path] [flags]
 ```
 
-Equivalent to `akua test --coverage` but produces a standalone report. Useful for CI gates that enforce a minimum coverage percentage.
+Equivalent to `akuapkg test --coverage` but produces a standalone report. Useful for CI gates that enforce a minimum coverage percentage.
 
 ### Flags
 
@@ -1298,12 +1298,12 @@ Equivalent to `akua test --coverage` but produces a standalone report. Useful fo
 
 ---
 
-## `akua repl` ✅
+## `akuapkg repl` ✅
 
 Interactive REPL for exploring policies and packages.
 
 ```
-akua repl [flags]
+akuapkg repl [flags]
 ```
 
 Supports two modes (tab-switched):
@@ -1315,7 +1315,7 @@ Useful for experimenting before committing to a rule or package change.
 
 ---
 
-## `akua eval` 🚧
+## `akuapkg eval` 🚧
 
 One-shot evaluator — cheap, scriptable. For Rego queries and KCL expressions without entering the REPL.
 
@@ -1346,7 +1346,7 @@ akua eval --lang=kcl  'schema Input; input = Input {...}; input.replicas * 2'
 
 ---
 
-## `akua help` 🚧
+## `akuapkg help` 🚧
 
 ```
 akua help                    # list all verbs
@@ -1358,11 +1358,11 @@ The `--json` form is the agent-discovery surface.
 
 ---
 
-## `akua version` ✅
+## `akuapkg version` ✅
 
 ```
-akua version                 # print version + git SHA
-akua version --json
+akuapkg version                 # print version + git SHA
+akuapkg version --json
 ```
 
 ```json
@@ -1378,7 +1378,7 @@ akua version --json
 
 ---
 
-## `akua telemetry` 🚧
+## `akuapkg telemetry` 🚧
 
 Opt-in, anonymized usage data.
 
@@ -1393,12 +1393,12 @@ Default: disabled. Agents enable explicitly if desired.
 
 ---
 
-## `akua lint-cli` (internal, advanced) 🚧
+## `akuapkg lint-cli` (internal, advanced) 🚧
 
 Validate that the current binary honors the CLI contract.
 
 ```
-akua lint-cli
+akuapkg lint-cli
 ```
 
 Used in CI to catch contract violations before release.
@@ -1418,9 +1418,9 @@ A minimal set. No hidden state.
 | `AKUA_LOG_LEVEL` | override `--log-level` |
 | `AKUA_NO_TELEMETRY` | force telemetry off (for CI) |
 | `AKUA_TOKEN_FILE` | path to a token file for non-interactive auth |
-| `AKUA_API_TOKEN` | hosted API bearer token for `akua api` |
-| `AKUA_API_BASE_URL` | hosted API base URL for `akua api` (default: `https://api.akua.dev/v1/`) |
-| `AKUA_WORKSPACE_ID` | workspace context sent by `akua api` as `akua-context` |
+| `AKUA_API_TOKEN` | hosted API bearer token for `akuapkg api` |
+| `AKUA_API_BASE_URL` | hosted API base URL for `akuapkg api` (default: `https://api.akua.dev/v1/`) |
+| `AKUA_WORKSPACE_ID` | workspace context sent by `akuapkg api` as `akua-context` |
 | `AKUA_AGENT` | signal an agent context explicitly (value is the agent name) |
 | `AKUA_NO_AGENT_DETECT` | disable agent-context auto-detection |
 

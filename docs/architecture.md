@@ -10,7 +10,7 @@ This document describes the **target architecture**. Implementation is tracked i
     author                  compile                   consume
     ──────                  ───────                   ───────
 
-    KCL Package      ──▶   akua render    ──▶   reconcilers:
+    KCL Package      ──▶   akuapkg render    ──▶   reconcilers:
     (*.k + akua.toml)        │                     ArgoCD / Flux / kro
                             │                     Helm release lifecycle
     Rego Policy      ──▶    ├─ embedded           kubectl / Crossplane
@@ -24,7 +24,7 @@ This document describes the **target architecture**. Implementation is tracked i
     (human intent +         │   Kustomize
      digest-pinned ledger)  │   kro (offline)
                             │
-                            └─ akua publish  ──▶  OCI registry
+                            └─ akuapkg publish  ──▶  OCI registry
                                 (signed + SLSA)     (cosign + SLSA v1)
 ```
 
@@ -36,9 +36,9 @@ Three stages, each independently pluggable. See [`docs/package-format.md`](./pac
 |---|---|---|
 | **CLI** — `akua` binary | 27 shipped verbs + ~10 planned (see [`cli.md`](./cli.md)) | developers, CI, agents in sandboxes |
 | **SDK** — `@akua-dev/sdk` | same capabilities, Node/Bun-native | backend services that embed akua in-process |
-| **Browser** — playground at `akua.dev` + local `akua dev` UI | subset that compiles to WebAssembly | authoring, review, live-preview |
+| **Browser** — playground at `akua.dev` + local `akuapkg dev` UI | subset that compiles to WebAssembly | authoring, review, live-preview |
 
-**Trust contract:** the binary, the SDK, and the browser produce byte-identical output for the same inputs. No "the real thing is behind the paywall." A backend service calling `@akua-dev/sdk.render()` gets the same bytes a developer gets from `akua render` in their terminal.
+**Trust contract:** the binary, the SDK, and the browser produce byte-identical output for the same inputs. No "the real thing is behind the paywall." A backend service calling `@akua-dev/sdk.render()` gets the same bytes a developer gets from `akuapkg render` in their terminal.
 
 See [`docs/cli-contract.md`](./cli-contract.md) for the universal contract every consumer honors.
 
@@ -50,19 +50,19 @@ See [`docs/embedded-engines.md`](./embedded-engines.md) for the embedding contra
 
 ## Canonical form is typed code
 
-- **Packages** — authored in **KCL** (`Package.k` with three regions: imports / schema / body). Published as signed OCI artifacts. `akua render` emits raw YAML, one file per resource. See [`docs/package-format.md`](./package-format.md).
+- **Packages** — authored in **KCL** (`Package.k` with three regions: imports / schema / body). Published as signed OCI artifacts. `akuapkg render` emits raw YAML, one file per resource. See [`docs/package-format.md`](./package-format.md).
 - **Policies** — authored in **Rego**. Kyverno / CEL / foreign Rego modules are consumed as compile-resolved imports via `akua.toml`, not runtime string lookups.
-- **Higher-level workspace concepts** (App, Environment, Cluster, Secret, Gateway, Workspace, PolicySet, …) — **user-defined KCL schemas** in the consumer's own workspace, shaped to their deployment reality. akua does not ship a KRM vocabulary. Reconcilers (ArgoCD / Flux / kro) consume the raw-Kubernetes output of `akua render`; they don't need akua-specific kinds.
+- **Higher-level workspace concepts** (App, Environment, Cluster, Secret, Gateway, Workspace, PolicySet, …) — **user-defined KCL schemas** in the consumer's own workspace, shaped to their deployment reality. akua does not ship a KRM vocabulary. Reconcilers (ArgoCD / Flux / kro) consume the raw-Kubernetes output of `akuapkg render`; they don't need akua-specific kinds.
 
 ## Determinism
 
-Same inputs + same `akua.lock` + same akua version → byte-identical output. No `now()`, no `random()`, no env reads, no filesystem reads, no cluster reads inside the render pipeline.
+Same inputs + same `akua.lock` + same akuapkg version → byte-identical output. No `now()`, no `random()`, no env reads, no filesystem reads, no cluster reads inside the render pipeline.
 
 See [`design-notes.md §engine-determinism`](./design-notes.md#10-engine-determinism-reality-check) for the pragmatic trade-offs (why Helm stays non-pure even though pure-functional would be cleaner).
 
 ## Signing + attestation by default
 
-`akua publish` emits a cosign signature plus a SLSA v1 predicate unless the caller explicitly opts out. On pull, the `akua.lock` digest is verified before any bytes touch disk (always — the universal integrity gate); cosign signature + SLSA attestation verification engages, fail-closed, when a `[signing] cosign_public_key` is configured. See [`docs/lockfile-format.md`](./lockfile-format.md) and [`docs/cli.md`](./cli.md) `publish` / `verify`.
+`akuapkg publish` emits a cosign signature plus a SLSA v1 predicate unless the caller explicitly opts out. On pull, the `akua.lock` digest is verified before any bytes touch disk (always — the universal integrity gate); cosign signature + SLSA attestation verification engages, fail-closed, when a `[signing] cosign_public_key` is configured. See [`docs/lockfile-format.md`](./lockfile-format.md) and [`docs/cli.md`](./cli.md) `publish` / `verify`.
 
 ## What akua is not
 

@@ -322,29 +322,29 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <ol><li><strong>Body</strong> — one call to <code>nginx.template(nginx.TemplateOpts{...})</code></li></ol>
 <p>   wiring public schema into chart values. Resources are aggregated    into top-level <code>resources</code>. akua writes one YAML file per resource    under <code>--out</code>.</p>
 <h2 id="run">Run</h2>
-<pre><code class="lang-sh">akua add                                 # resolve deps → writes akua.lock
-akua render --inputs inputs.yaml         # render to ./deploy/
+<pre><code class="lang-sh">akuapkg add                                 # resolve deps → writes akua.lock
+akuapkg render --inputs inputs.yaml         # render to ./deploy/
 ls deploy/                               # 000-deployment-hello.yaml, 001-service-hello.yaml</code></pre>
 <p>Under <code>--strict</code>, akua rejects raw-string chart paths — every chart must be declared in <code>akua.toml</code> and imported as <code>charts.&lt;name&gt;</code>:</p>
-<pre><code class="lang-sh">akua render --strict --inputs inputs.yaml</code></pre>
+<pre><code class="lang-sh">akuapkg render --strict --inputs inputs.yaml</code></pre>
 <h2 id="vendored-chart-vs-oci-pull">Vendored chart vs OCI pull</h2>
 <p>This example vendors nginx into <code>vendor/nginx/</code> so the Package is self-contained and rendering works offline. To point at a registry instead, swap the <code>akua.toml</code> dep for:</p>
 <pre><code class="lang-toml">[dependencies]
 nginx = { oci = &quot;oci://registry-1.docker.io/bitnamicharts/nginx&quot;, version = &quot;18.2.0&quot; }</code></pre>
-<p>akua pulls the chart into <code>$XDG_CACHE_HOME/akua/oci/</code> on first <code>akua add</code> / <code>akua render</code>, verifying the blob digest against <code>akua.lock</code> on subsequent renders. See Phase 2b in <code>docs/roadmap.md</code>.</p>
+<p>akua pulls the chart into <code>$XDG_CACHE_HOME/akua/oci/</code> on first <code>akuapkg add</code> / <code>akuapkg render</code>, verifying the blob digest against <code>akua.lock</code> on subsequent renders. See Phase 2b in <code>docs/roadmap.md</code>.</p>
 <h2 id="local-fork-override">Local fork override</h2>
 <p>While iterating on a chart, point a real <code>oci://</code> dep at a local clone without losing the canonical source-of-record:</p>
 <pre><code class="lang-toml">nginx = { oci = &quot;oci://registry-1.docker.io/bitnamicharts/nginx&quot;, version = &quot;18.2.0&quot;, replace = { path = &quot;../nginx-fork&quot; } }</code></pre>
 <p><code>akua.lock</code> still records the <code>oci://</code> digest; files resolve from <code>../nginx-fork</code>. Drop the <code>replace</code> clause to switch back.</p>
 <h2 id="see-also">See also</h2>
-<ul><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/package-format.md">package-format.md</a> — canonical Package spec</li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/cli.md">cli.md <code>render</code></a> — render verb + flags</li><li><a href="https://github.com/cnap-tech/akua/blob/main/docs/roadmap.md">roadmap.md Phase 2</a> — chart dep resolver design</li><li><a href="/examples/02-webapp-postgres">02-webapp-postgres/</a> — next example: cross-source wiring</li></ul>
+<ul><li><a href="https://github.com/akua-dev/akua/blob/main/docs/package-format.md">package-format.md</a> — canonical Package spec</li><li><a href="https://github.com/akua-dev/akua/blob/main/docs/cli.md">cli.md <code>render</code></a> — render verb + flags</li><li><a href="https://github.com/akua-dev/akua/blob/main/docs/roadmap.md">roadmap.md Phase 2</a> — chart dep resolver design</li><li><a href="/examples/02-webapp-postgres">02-webapp-postgres/</a> — next example: cross-source wiring</li></ul>
 <h2>package.k</h2><pre><code class="lang-kcl"># Example 01 — hello-webapp
 #
 # Smallest useful akua Package. One local-path chart dep, a few public
 # inputs, raw-manifest output.
 #
 # Render:
-#   akua render --inputs inputs.yaml      # render to ./rendered by default
+#   akuapkg render --inputs inputs.yaml      # render to ./rendered by default
 
 import akua.ctx
 import charts.nginx as nginx    # Phase 2a: resolved from akua.toml
@@ -425,12 +425,12 @@ spec:
   type: ClusterIP
 </code></pre>
 <p style="margin-top: 32px; color: var(--muted); font-size: 14px;">
-  Source: <a href="https://github.com/cnap-tech/akua/tree/main/examples/01-hello-webapp">examples/01-hello-webapp/</a>
+  Source: <a href="https://github.com/akua-dev/akua/tree/main/examples/01-hello-webapp">examples/01-hello-webapp/</a>
 </p>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/cnap-tech/akua">github.com/cnap-tech/akua</a> ·
+  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
   Apache-2.0
 </footer>
 </main>

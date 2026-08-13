@@ -15,7 +15,7 @@ callable end-to-end.
 |---|---|
 | `package.k` | KCL Package; imports `akua.helm`, calls `helm.template`, wires the result into `resources = …`. |
 | `akua.toml` | Manifest — no external deps. |
-| `inputs.example.yaml` | Auto-discovered by `akua render` when `--inputs` is omitted. |
+| `inputs.example.yaml` | Auto-discovered by `akuapkg render` when `--inputs` is omitted. |
 | `chart/` | A tiny in-tree Helm chart (one `ConfigMap` template). |
 
 ## Render
@@ -23,14 +23,14 @@ callable end-to-end.
 `package.k` passes `"./chart"` to `helm.template`; akua resolves that
 against the Package.k's directory (via the path-traversal-guarded
 `resolve_in_package`) and hands the chart tarball to the embedded
-WASM Helm engine. `akua render` works from any cwd — point
+WASM Helm engine. `akuapkg render` works from any cwd — point
 `--package` at this directory:
 
 ```sh
 # Build the embedded helm engine once per machine:
 task build:helm-engine-wasm
 
-akua render --package examples/00-helm-hello/package.k --out ./rendered
+akuapkg render --package examples/00-helm-hello/package.k --out ./rendered
 ```
 
 The rendered `ConfigMap` lands at `./rendered/000-configmap-hello-greeting.yaml`
@@ -55,4 +55,4 @@ shell-out, ever."
 ## Spec
 
 See [`docs/package-format.md §5`](../../docs/package-format.md#5-outputs--what-akua-emits)
-for the `outputs` shape and [`docs/cli.md` `akua render`](../../docs/cli.md#akua-render).
+for the `outputs` shape and [`docs/cli.md` `akuapkg render`](../../docs/cli.md#akua-render).

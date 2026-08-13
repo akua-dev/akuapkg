@@ -26,7 +26,7 @@ fetch buffering, decompression bombs).
 
 | # | Severity | Finding | Area | Status |
 |---|---|---|---|---|
-| 1 | HIGH | `akua publish` does not strip `replace` directives before packing+signing | supply-chain | ✅ fixed |
+| 1 | HIGH | `akuapkg publish` does not strip `replace` directives before packing+signing | supply-chain | ✅ fixed |
 | 2 | HIGH | KCL injection via unsanitized `values.schema.json` property names | codegen | ✅ fixed |
 | 3 | HIGH | KCL docstring breakout via unescaped `"""` in schema descriptions | codegen | ✅ fixed |
 | 4 | MEDIUM | Native helm/kustomize engine Stores have no memory cap + infinite epoch → chart DoS | sandbox | ✅ fixed |
@@ -54,15 +54,15 @@ is the universal verified-before-write gate and cosign signature verification en
 (fail-closed) when a `[signing].cosign_public_key` is configured — keeping signing
 opt-in rather than breaking every key-less workspace. **#16** (stale worker preopen
 comment) and **#17** (`--timeout` now derives the worker epoch deadline, with a unit
-test) are fixed. All `akua-core` + `akua-cli` tests pass on the merged result; the CLI
+test) are fixed. All `akua-core` + `akuapkg-cli` tests pass on the merged result; the CLI
 builds clean. Each "Fix:" note below describes the change that landed.
 
 ## Findings
 
-### 1. [HIGH] `akua publish` does not strip `replace` before signing
-`crates/akua-core/src/package_tar.rs:133-144`, `crates/akua-cli/src/verbs/publish.rs:183`
+### 1. [HIGH] `akuapkg publish` does not strip `replace` before signing
+`crates/akua-core/src/package_tar.rs:133-144`, `crates/akuapkg-cli/src/verbs/publish.rs:183`
 
-CLAUDE.md: *"`akua publish` strips every `replace` directive from the artifact's
+CLAUDE.md: *"`akuapkg publish` strips every `replace` directive from the artifact's
 manifest before signing — consumers never inherit a publisher's replace."* This is
 **not implemented.** `pack_workspace_with_vendored_deps` appends `akua.toml`
 byte-for-byte, so the manifest's `replace` directives survive into the digested,
@@ -132,7 +132,7 @@ serde shape).
 
 The `blocking-http-transport-curl-rustls` gix feature applies Git-compatible TLS env
 settings, including `GIT_SSL_NO_VERIFY`. On a poisoned environment, an attacker can
-disable TLS validation and MITM the *first* `akua add` of a git dep (TOFU window);
+disable TLS validation and MITM the *first* `akuapkg add` of a git dep (TOFU window);
 subsequent fetches are protected by the lockfile commit pin. **Fix:** every initial
 clone and cached-repository refresh now forces `ssl_verify = true` before the TLS
 handshake, ignoring `GIT_SSL_NO_VERIFY` and `http.sslVerify=false`. The connection
@@ -141,7 +141,7 @@ retains only `ssl_ca_info`, so custom trust configured through `GIT_SSL_CAINFO` 
 credentials, or other Git transport options.
 
 ### 9. [MEDIUM] Cosign verification is opt-in, not "verify by default"
-`crates/akua-cli/src/verbs/render.rs:482-498`, `verify.rs:280-285`, `oci_fetcher.rs:439-449`
+`crates/akuapkg-cli/src/verbs/render.rs:482-498`, `verify.rs:280-285`, `oci_fetcher.rs:439-449`
 
 Signature/attestation verification only engages when `[signing].cosign_public_key`
 is configured; absent a key, the crypto verify is a silent no-op and only

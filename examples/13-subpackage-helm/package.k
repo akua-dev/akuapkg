@@ -8,7 +8,7 @@ import pkgs.webserver as ws
 #
 # Render:
 #
-#   akua render --out ./rendered
+#   akuapkg render --out ./rendered
 schema Input:
     """Public inputs for the subpackage-helm root Package."""
     namespace: str = "demo"

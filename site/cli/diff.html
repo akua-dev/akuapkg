@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>akua diff — akua</title>
+<title>akuapkg diff — akua</title>
 <meta name="description" content="Structural diff between two package versions, or between a local package and a published version." />
 <meta name="color-scheme" content="dark" />
 <link rel="icon" type="image/png" href="/assets/logo.png" />
 <link rel="apple-touch-icon" href="/assets/logo.png" />
-<meta property="og:title" content="akua diff — akua" />
+<meta property="og:title" content="akuapkg diff — akua" />
 <meta property="og:description" content="Structural diff between two package versions, or between a local package and a published version." />
 <meta property="og:url" content="https://cli.akua.dev/cli/diff" />
 <meta property="og:image" content="https://akua.dev/assets/logo.png" />
@@ -292,19 +292,19 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <div class="layout">
 <aside class="sidebar">
 <p class="sidebar-title"><a href="/cli/">CLI reference</a></p>
-<h3>Shipped</h3><ul><li><a href="/cli/init">init</a></li><li><a href="/cli/add">add</a></li><li><a href="/cli/vendor">vendor</a></li><li><a href="/cli/lint">lint</a></li><li><a href="/cli/render">render</a></li><li><a href="/cli/diff" class="active">diff</a></li><li><a href="/cli/inspect">inspect</a></li><li><a href="/cli/export">export</a></li><li><a href="/cli/dev">dev</a></li><li><a href="/cli/whoami">whoami</a></li><li><a href="/cli/fmt">fmt</a></li><li><a href="/cli/check">check</a></li><li><a href="/cli/repl">repl</a></li><li><a href="/cli/version">version</a></li><li><a href="/cli/lint-cli">lint-cli</a></li></ul>
+<h3>Shipped</h3><ul><li><a href="/cli/init">init</a></li><li><a href="/cli/add">add</a></li><li><a href="/cli/vendor">vendor</a></li><li><a href="/cli/lint">lint</a></li><li><a href="/cli/render">render</a></li><li><a href="/cli/diff" class="active">diff</a></li><li><a href="/cli/inspect">inspect</a></li><li><a href="/cli/export">export</a></li><li><a href="/cli/api">api</a></li><li><a href="/cli/dev">dev</a></li><li><a href="/cli/whoami">whoami</a></li><li><a href="/cli/fmt">fmt</a></li><li><a href="/cli/check">check</a></li><li><a href="/cli/repl">repl</a></li><li><a href="/cli/version">version</a></li><li><a href="/cli/lint-cli">lint-cli</a></li></ul>
 <h3>Planned</h3><ul><li><a href="/cli/attest">attest</a></li><li><a href="/cli/publish">publish</a></li><li><a href="/cli/pull">pull</a></li><li><a href="/cli/deploy">deploy</a></li><li><a href="/cli/rollout">rollout</a></li><li><a href="/cli/secret">secret</a></li><li><a href="/cli/policy">policy</a></li><li><a href="/cli/audit">audit</a></li><li><a href="/cli/query">query</a></li><li><a href="/cli/infra">infra</a></li><li><a href="/cli/login">login</a></li><li><a href="/cli/logout">logout</a></li><li><a href="/cli/test">test</a></li><li><a href="/cli/bench">bench</a></li><li><a href="/cli/trace">trace</a></li><li><a href="/cli/cov">cov</a></li><li><a href="/cli/eval">eval</a></li><li><a href="/cli/help">help</a></li><li><a href="/cli/telemetry">telemetry</a></li></ul>
 </aside>
 <main>
 
 <header>
-  <p class="crumbs"><a href="/">akua</a> / <a href="/cli/">cli</a> / diff</p>
-  <h1>akua diff</h1>
+  <p class="crumbs"><a href="/">akuapkg</a> / <a href="/cli/">cli</a> / diff</p>
+  <h1>akuapkg diff</h1>
 </header>
 <p class="section-tag">Shipped</p>
 <p>Structural diff between two package versions, or between a local package and a published version.</p>
-<pre><code>akua diff &lt;a&gt; &lt;b&gt; [flags]
-akua diff &lt;ref&gt;                    # diff local HEAD against published ref</code></pre>
+<pre><code>akuapkg diff &lt;a&gt; &lt;b&gt; [flags]
+akuapkg diff &lt;ref&gt;                    # diff local HEAD against published ref</code></pre>
 <h3 id="flags">Flags</h3>
 <table><thead><tr><th>flag</th><th>description</th></tr></thead><tbody><tr><td>`--format=&lt;structural\</td><td>yaml\</td><td>both&gt;`</td><td>diff level (default: structural)</td></tr><tr><td>`--scope=&lt;schema\</td><td>sources\</td><td>manifests\</td><td>all&gt;`</td><td>what to compare (default: all)</td></tr><tr><td><code>--filter=&lt;pattern&gt;</code></td><td>only show diffs matching pattern</td></tr></tbody></table>
 <h3 id="exit-codes">Exit codes</h3>
@@ -332,7 +332,7 @@ akua diff &lt;ref&gt;                    # diff local HEAD against published ref
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/cnap-tech/akua">github.com/cnap-tech/akua</a> ·
+  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
   Apache-2.0
 </footer>
 </main>

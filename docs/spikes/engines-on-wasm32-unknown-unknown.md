@@ -4,7 +4,7 @@
 
 Phase 4 shipped `akua-wasm` compiling the KCL render path to `wasm32-unknown-unknown`. `@akua-dev/sdk` v0.0.0 consumes the Node build; `Akua.renderSource()` renders pure-KCL Packages in-process.
 
-The remaining Phase 4B gap is **engine callouts from the browser**: `helm.template(...)` and `kustomize.build(...)` are implemented as Go engines compiled to `wasm32-wasip1`, hosted inside the CLI's wasmtime Engine via the `engine-host-wasm` crate. That shape works on the CLI (`akua render`) and on `@akua-dev/sdk` for Node (bundled CLI binary — though the SDK today wires only `renderSource`, not the helm/kustomize callouts). It does **not** work in the browser: there's no wasmtime, no WASI host, and the `env::kcl_plugin_invoke_json_wasm` bridge has no one to answer it.
+The remaining Phase 4B gap is **engine callouts from the browser**: `helm.template(...)` and `kustomize.build(...)` are implemented as Go engines compiled to `wasm32-wasip1`, hosted inside the CLI's wasmtime Engine via the `engine-host-wasm` crate. That shape works on the CLI (`akuapkg render`) and on `@akua-dev/sdk` for Node (bundled CLI binary — though the SDK today wires only `renderSource`, not the helm/kustomize callouts). It does **not** work in the browser: there's no wasmtime, no WASI host, and the `env::kcl_plugin_invoke_json_wasm` bridge has no one to answer it.
 
 v0.1.0 blocks on deciding what to do. This doc enumerates the candidates and records the call.
 

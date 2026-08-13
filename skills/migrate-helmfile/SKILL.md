@@ -19,7 +19,7 @@ Helmfile orchestrates multiple Helm releases with templated values. akua replace
 ### 1. Scaffold a new akua Package
 
 ```sh
-akua init <package-name>
+akuapkg init <package-name>
 cd <package-name>
 ```
 
@@ -72,8 +72,8 @@ Defaults that were in Helmfile's `| default 3` move into the schema's `int = 3`.
 For each release:
 
 ```sh
-akua add chart oci://ghcr.io/cloudnative-pg/charts/cluster --version 0.20.0
-akua add chart ./charts/webapp
+akuapkg add chart oci://ghcr.io/cloudnative-pg/charts/cluster --version 0.20.0
+akuapkg add chart ./charts/webapp
 ```
 
 This generates typed `Chart` and `Values` subpackages, so you get autocomplete on chart values.
@@ -119,14 +119,14 @@ _app = helm.template(webapp.Chart {
 ### 7. Render and verify
 
 ```sh
-akua render --inputs inputs.yaml --out ./rendered
+akuapkg render --inputs inputs.yaml --out ./rendered
 ```
 
 Diff the output against the original Helmfile's `helmfile template` output:
 
 ```sh
 helmfile template > /tmp/before.yaml
-akua render --inputs inputs.yaml --stdout > /tmp/after.yaml
+akuapkg render --inputs inputs.yaml --stdout > /tmp/after.yaml
 diff /tmp/before.yaml /tmp/after.yaml
 ```
 
@@ -137,7 +137,7 @@ Expected: semantic equivalence. Cosmetic differences (whitespace, key ordering) 
 Helmfile was reconciling via `helmfile apply`. With akua, render at CI and commit raw YAML; let ArgoCD/Flux reconcile. Update your deploy pipeline:
 
 - Remove `helmfile apply` from CI
-- Add `akua render --out deploy/` to CI; commit the deploy/ directory
+- Add `akuapkg render --out deploy/` to CI; commit the deploy/ directory
 - Configure Argo/Flux to sync from the deploy/ path
 
 ### 9. Decommission Helmfile
@@ -158,6 +158,6 @@ Once the akua Package renders identically and a production run has succeeded, de
 
 ## Reference
 
-- [cli.md — akua add](../../docs/cli.md#akua-add)
+- [cli.md — akuapkg add](../../docs/cli.md#akua-add)
 - [examples/02-webapp-postgres](../../examples/02-webapp-postgres/) — canonical multi-source example
 - [new-package](../new-package/SKILL.md) — if starting fresh instead of migrating

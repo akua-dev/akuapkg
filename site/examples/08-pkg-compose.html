@@ -303,11 +303,11 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 </header>
 <p>Package composition via <code>pkg.render</code> — an outer Package calls a reusable inner Package twice with different inputs and concatenates the results. Renders end-to-end today (pure KCL; no helm needed).</p>
 <h2 id="whats-here">What's here</h2>
-<table><thead><tr><th>file</th><th>purpose</th></tr></thead><tbody><tr><td><code>package.k</code></td><td>Outer Package; calls <code>pkg.render(pkg.Render { package = &quot;shared&quot;, ... })</code> twice with distinct inputs.</td></tr><tr><td><code>shared/package.k</code></td><td>Inner Package; emits one ConfigMap parameterized by <code>name</code> + <code>payload</code>.</td></tr><tr><td><code>shared/akua.toml</code></td><td>Inner manifest — marks <code>shared/</code> as an Akua package.</td></tr><tr><td><code>akua.toml</code></td><td>Outer manifest — declares <code>shared</code> as a workspace-local path dep.</td></tr><tr><td><code>inputs.example.yaml</code></td><td>Per-component inputs, auto-discovered by <code>akua render</code>.</td></tr></tbody></table>
+<table><thead><tr><th>file</th><th>purpose</th></tr></thead><tbody><tr><td><code>package.k</code></td><td>Outer Package; calls <code>pkg.render(pkg.Render { package = &quot;shared&quot;, ... })</code> twice with distinct inputs.</td></tr><tr><td><code>shared/package.k</code></td><td>Inner Package; emits one ConfigMap parameterized by <code>name</code> + <code>payload</code>.</td></tr><tr><td><code>shared/akua.toml</code></td><td>Inner manifest — marks <code>shared/</code> as an Akua package.</td></tr><tr><td><code>akua.toml</code></td><td>Outer manifest — declares <code>shared</code> as a workspace-local path dep.</td></tr><tr><td><code>inputs.example.yaml</code></td><td>Per-component inputs, auto-discovered by <code>akuapkg render</code>.</td></tr></tbody></table>
 <h2 id="render">Render</h2>
-<pre><code class="lang-sh">cargo run -q -p akua-cli -- render --package examples/08-pkg-compose/package.k --out ./rendered</code></pre>
+<pre><code class="lang-sh">cargo run -q -p akuapkg-cli -- render --package examples/08-pkg-compose/package.k --out ./rendered</code></pre>
 <p>Or, from the example directory:</p>
-<pre><code class="lang-sh">akua render --out ./rendered</code></pre>
+<pre><code class="lang-sh">akuapkg render --out ./rendered</code></pre>
 <p>Two ConfigMaps land in <code>./rendered/</code> (checked in as reference output):</p>
 <pre><code>rendered/
 ├── 000-configmap-frontend.yaml
@@ -323,7 +323,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 #
 # Render:
 #
-#   akua render --package examples/08-pkg-compose/package.k --out ./rendered
+#   akuapkg render --package examples/08-pkg-compose/package.k --out ./rendered
 #
 # Produces two ConfigMaps: `config-frontend` and `config-backend`,
 # each with its own data payload from the outer's inputs.
@@ -388,12 +388,12 @@ data:
   LOG_LEVEL: info
 </code></pre>
 <p style="margin-top: 32px; color: var(--muted); font-size: 14px;">
-  Source: <a href="https://github.com/cnap-tech/akua/tree/main/examples/08-pkg-compose">examples/08-pkg-compose/</a>
+  Source: <a href="https://github.com/akua-dev/akua/tree/main/examples/08-pkg-compose">examples/08-pkg-compose/</a>
 </p>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/cnap-tech/akua">github.com/cnap-tech/akua</a> ·
+  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
   Apache-2.0
 </footer>
 </main>

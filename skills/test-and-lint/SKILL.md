@@ -20,7 +20,7 @@ akua embeds the full testing and debugging surface from its host engines (KCL, O
 
 ### 1. Add test files
 
-Test naming conventions (discovered automatically by `akua test`):
+Test naming conventions (discovered automatically by `akuapkg test`):
 
 - **KCL**: `test_*.k` or `*_test.k` anywhere under a Package
 - **Rego**: `*_test.rego` next to the policy files
@@ -66,10 +66,10 @@ assert _default_sample.replicas == 3, "default replicas should be 3"
 ### 2. Run tests locally
 
 ```sh
-akua test                       # runs everything
-akua test --coverage            # with coverage report
-akua test --watch               # TDD; re-runs on file change
-akua test --filter=<regex>      # only matching tests
+akuapkg test                       # runs everything
+akuapkg test --coverage            # with coverage report
+akuapkg test --watch               # TDD; re-runs on file change
+akuapkg test --filter=<regex>      # only matching tests
 ```
 
 Confirm all tests pass before committing. Coverage below 80% on policies is a smell.
@@ -77,12 +77,12 @@ Confirm all tests pass before committing. Coverage below 80% on policies is a sm
 ### 3. Format + lint
 
 ```sh
-akua fmt                        # in-place format
-akua lint                       # style + correctness
-akua check                      # syntax/type-only, fastest gate
+akuapkg fmt                        # in-place format
+akuapkg lint                       # style + correctness
+akuapkg check                      # syntax/type-only, fastest gate
 ```
 
-Expected output on a clean workspace: zero issues. Any lint warnings include the `rule` name and usually a `fix` suggestion; apply with `akua lint --fix` where auto-fixable.
+Expected output on a clean workspace: zero issues. Any lint warnings include the `rule` name and usually a `fix` suggestion; apply with `akuapkg lint --fix` where auto-fixable.
 
 ### 4. Wire pre-commit hooks
 
@@ -93,30 +93,30 @@ repos:
   - repo: local
     hooks:
       - id: akua-fmt
-        name: akua fmt
-        entry: akua fmt --check
+        name: akuapkg fmt
+        entry: akuapkg fmt --check
         language: system
         pass_filenames: false
       - id: akua-lint
-        name: akua lint
-        entry: akua lint --severity=error
+        name: akuapkg lint
+        entry: akuapkg lint --severity=error
         language: system
         pass_filenames: false
       - id: akua-check
-        name: akua check
-        entry: akua check
+        name: akuapkg check
+        entry: akuapkg check
         language: system
         pass_filenames: false
 ```
 
-Fast feedback at commit time. `akua check` is the cheapest syntax/type pass; runs in under 100 ms for typical workspaces.
+Fast feedback at commit time. `akuapkg check` is the cheapest syntax/type pass; runs in under 100 ms for typical workspaces.
 
 ### 5. Wire CI gates
 
 `.github/workflows/akua-test.yml`:
 
 ```yaml
-name: akua test
+name: akuapkg test
 on: [pull_request]
 jobs:
   test:
@@ -127,16 +127,16 @@ jobs:
         run: curl -fsSL https://cli.akua.dev/install | sh
       - name: Check + lint
         run: |
-          akua check
-          akua lint --severity=error
-          akua fmt --check
+          akuapkg check
+          akuapkg lint --severity=error
+          akuapkg fmt --check
       - name: Test with coverage
-        run: akua test --coverage --min=80
+        run: akuapkg test --coverage --min=80
       - name: Verify lockfile
-        run: akua verify
+        run: akuapkg verify
       - name: Integration test — render + policy
         run: |
-          akua render --filter=spec.env=production --out ./rendered
+          akuapkg render --filter=spec.env=production --out ./rendered
           akua policy check --tier tier/production --target ./rendered
 ```
 
@@ -156,7 +156,7 @@ Common patterns:
 
 - "Expected rule to fire but didn't" — check that every condition in the rule body is `TRUE` in the trace; any `FALSE` short-circuits the rule.
 - "Unexpected denial" — find the rule that fired (marked `ALLOW` / result-producing); work through its conditions.
-- "Different verdict in CI than local" — check `akua version --json` on both; embedded engine version mismatch is a common cause.
+- "Different verdict in CI than local" — check `akuapkg version --json` on both; embedded engine version mismatch is a common cause.
 
 ### 7. Benchmark if latency matters
 
@@ -178,30 +178,30 @@ Set minimum thresholds for policy quality:
 - name: Benchmark gate
   run: akua bench --policy=tier/production --p99-max-ms=10
 - name: Ratio of tests-to-rules
-  run: akua lint --severity=error  # fails if any rule has no test coverage
+  run: akuapkg lint --severity=error  # fails if any rule has no test coverage
 ```
 
 ## Agent-specific guidance
 
 When an agent is asked to fix a failing policy or add tests:
 
-1. **Always `akua test --json` first** to see the failure shape in structured form.
+1. **Always `akuapkg test --json` first** to see the failure shape in structured form.
 2. **Use `akua trace --json`** for any unexplained denial before proposing a fix; don't guess.
-3. **Add a regression test** before fixing — the test should fail in the current state and pass after the fix. This is verifiable by running `akua test` before and after.
-4. **Prefer `akua lint --fix`** for auto-fixable style issues rather than editing manually.
-5. **Update `akua.lock`** via `akua verify --update` if signatures or digests drifted after a dep bump.
+3. **Add a regression test** before fixing — the test should fail in the current state and pass after the fix. This is verifiable by running `akuapkg test` before and after.
+4. **Prefer `akuapkg lint --fix`** for auto-fixable style issues rather than editing manually.
+5. **Update `akua.lock`** via `akuapkg verify --update` if signatures or digests drifted after a dep bump.
 
 ## Failure modes
 
 - **`E_TEST_FILE_NOT_FOUND`** — pattern `*_test.rego` or `test_*.k` matched nothing. Probably misnamed files.
 - **`E_COVERAGE_BELOW_MIN`** (exit 1) — CI gate failed. Add tests for uncovered rules; re-run with `--coverage` to see which.
-- **`E_FMT_NEEDED`** (exit 1 under `--check`) — run `akua fmt` to auto-apply.
+- **`E_FMT_NEEDED`** (exit 1 under `--check`) — run `akuapkg fmt` to auto-apply.
 - **`E_LINT_ERROR`** — severity:error issues. Not auto-fixable; author must address.
 - **`E_BENCH_REGRESSION`** — p99 exceeded threshold. Policy added a slow rule; profile and optimize.
 
 ## Reference
 
-- [cli.md — akua test / fmt / lint / check / bench / trace / cov / repl / eval](../../docs/cli.md)
+- [cli.md — akuapkg test / fmt / lint / check / bench / trace / cov / repl / eval](../../docs/cli.md)
 - [package-format.md §11 — Testing Packages](../../docs/package-format.md)
 - [policy-format.md §11 — Testing, linting, tracing](../../docs/policy-format.md)
 - [embedded-engines.md](../../docs/embedded-engines.md) — which engines drive which verbs

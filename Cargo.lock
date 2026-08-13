@@ -50,40 +50,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "akua-cli"
-version = "0.8.20"
-dependencies = [
- "akua-core",
- "clap",
- "ctrlc",
- "engine-host-wasm",
- "helm-engine-wasm",
- "httpmock",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
- "p256",
- "pkcs8",
- "rand 0.8.6",
- "reqwest",
- "schemars",
- "serde",
- "serde_json",
- "serde_yml",
- "source-hash",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "toml 1.1.2+spec-1.1.0",
- "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
- "ts-rs",
- "wasmtime",
- "wasmtime-wasi",
-]
-
-[[package]]
 name = "akua-core"
 version = "0.8.20"
 dependencies = [
@@ -123,8 +89,8 @@ dependencies = [
 name = "akua-napi"
 version = "0.8.20"
 dependencies = [
- "akua-cli",
  "akua-core",
+ "akuapkg-cli",
  "napi",
  "napi-build",
  "napi-derive",
@@ -144,6 +110,40 @@ dependencies = [
  "serde_yml",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "akuapkg-cli"
+version = "0.8.20"
+dependencies = [
+ "akua-core",
+ "clap",
+ "ctrlc",
+ "engine-host-wasm",
+ "helm-engine-wasm",
+ "httpmock",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "p256",
+ "pkcs8",
+ "rand 0.8.6",
+ "reqwest",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_yml",
+ "source-hash",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 1.1.2+spec-1.1.0",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+ "ts-rs",
+ "wasmtime",
+ "wasmtime-wasi",
 ]
 
 [[package]]

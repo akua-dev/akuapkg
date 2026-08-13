@@ -1,6 +1,6 @@
 // Walk a workspace's declared deps + lockfile entries — what
 // charts are pinned, what digests, what (if any) fork-overrides.
-// Mirrors `akua tree --json` exactly; runs in-process via WASM.
+// Mirrors `akuapkg tree --json` exactly; runs in-process via WASM.
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

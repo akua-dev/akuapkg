@@ -13,7 +13,7 @@ which escapes the Package directory `/private/tmp/spike1/install`
 
 ## Why akua refuses
 
-`akua render` runs each Package inside a wasmtime sandbox with read-only filesystem preopens scoped to the Package directory. A path that resolves outside that root is — by construction — unreachable through the sandbox's capabilities. We surface the error early instead of letting it manifest as a confusing wasmtime open-file failure deeper in the render.
+`akuapkg render` runs each Package inside a wasmtime sandbox with read-only filesystem preopens scoped to the Package directory. A path that resolves outside that root is — by construction — unreachable through the sandbox's capabilities. We surface the error early instead of letting it manifest as a confusing wasmtime open-file failure deeper in the render.
 
 See [`docs/security-model.md`](../security-model.md) for the full threat model.
 
@@ -77,7 +77,7 @@ import upstream
 resources = upstream.resources + extras
 ```
 
-`akua lock` records the resolved digest; `akua render` reads the dep from the local cache (under `~/.cache/akua/`), and the sandbox preopens that cache root in addition to the Package directory.
+`akuapkg lock` records the resolved digest; `akuapkg render` reads the dep from the local cache (under `~/.cache/akua/`), and the sandbox preopens that cache root in addition to the Package directory.
 
 ## What NOT to do
 
