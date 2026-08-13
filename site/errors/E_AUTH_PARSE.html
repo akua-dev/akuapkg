@@ -318,7 +318,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <h1 id="eauthparse--credential-input-is-malformed"><code>E_AUTH_PARSE</code> — credential input is malformed</h1>
 <h2 id="what-happened">What happened</h2>
 <p>A CLI <code>--auth</code> flag value, or the contents of an <code>--auth-file</code> TOML payload, didn't parse into a <code>(prefix, username, password)</code> triple. Akua rejects the input before it reaches the resolver — credentials that round-trip through a malformed parser are a class of bug we don't want to ship into the lockfile or HTTP transport.</p>
-<p>This is distinct from <a href="https://github.com/akua-dev/akua/blob/main/docs/./E_INVALID_FLAG.md"><code>E_INVALID_FLAG</code></a>: that code covers structural CLI errors (<code>--timeout=5min</code>); <code>E_AUTH_PARSE</code> is specifically for credential-shape errors so agents can branch on it.</p>
+<p>This is distinct from <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/./E_INVALID_FLAG.md"><code>E_INVALID_FLAG</code></a>: that code covers structural CLI errors (<code>--timeout=5min</code>); <code>E_AUTH_PARSE</code> is specifically for credential-shape errors so agents can branch on it.</p>
 <h2 id="common-causes">Common causes</h2>
 <h3 id="--auth-value-missing-the--separator"><code>--auth</code> value missing the <code>=</code> separator</h3>
 <pre><code class="lang-sh">akuapkg vendor add upstream --auth github.com:alice:ghp_xyz   # no `=`</code></pre>
@@ -359,13 +359,13 @@ akuapkg vendor add upstream --auth github.com=alice:           # empty password<
   --auth-file ./auth.toml \
   --auth github.com/myco=alice:$ROTATED_TOKEN   # overrides the file entry</code></pre>
 <h2 id="why-akua-doesnt-auto-load-netrc--dockerconfigjson">Why akua doesn't auto-load <code>~/.netrc</code> / <code>~/.docker/config.json</code></h2>
-<p>See <a href="https://github.com/akua-dev/akua/blob/main/docs/./E_MANIFEST_GIT_USERINFO.md#why-no-netrc--dockerconfigjson-fallback"><code>E_MANIFEST_GIT_USERINFO</code></a> for the rationale. Short version: multi-tenant SDK consumers can't safely inherit ambient credentials, and the same explicit-input stance that keeps <code>akuapkg render</code> deterministic applies to credentials.</p>
+<p>See <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/./E_MANIFEST_GIT_USERINFO.md#why-no-netrc--dockerconfigjson-fallback"><code>E_MANIFEST_GIT_USERINFO</code></a> for the rationale. Short version: multi-tenant SDK consumers can't safely inherit ambient credentials, and the same explicit-input stance that keeps <code>akuapkg render</code> deterministic applies to credentials.</p>
 <h2 id="related">Related</h2>
-<ul><li><a href="https://github.com/akua-dev/akua/blob/main/docs/../cli.md#auth-flags-private-git-remotes">docs/cli.md → Auth flags</a> — full flag reference</li><li><a href="https://github.com/akua-dev/akua/blob/main/docs/../sdk.md#credentials---auth">docs/sdk.md → Credentials</a> — SDK equivalent</li><li><a href="https://github.com/akua-dev/akua/blob/main/docs/./E_MANIFEST_GIT_USERINFO.md"><code>E_MANIFEST_GIT_USERINFO</code></a> — why credentials can't live in <code>akua.toml</code></li></ul>
+<ul><li><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/../cli.md#auth-flags-private-git-remotes">docs/cli.md → Auth flags</a> — full flag reference</li><li><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/../sdk.md#credentials---auth">docs/sdk.md → Credentials</a> — SDK equivalent</li><li><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/./E_MANIFEST_GIT_USERINFO.md"><code>E_MANIFEST_GIT_USERINFO</code></a> — why credentials can't live in <code>akua.toml</code></li></ul>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
+  <a href="https://github.com/akua-dev/akuapkg">github.com/akua-dev/akuapkg</a> ·
   Apache-2.0
 </footer>
 </main>

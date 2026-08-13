@@ -5,9 +5,9 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/akua-dev/akua.git"
+    "url": "git+https://github.com/akua-dev/akuapkg.git"
   },
-  "homepage": "https://github.com/akua-dev/akua#readme",
+  "homepage": "https://github.com/akua-dev/akuapkg#readme",
   "type": "module",
   "main": "./dist/mod.js",
   "types": "./dist/mod.d.ts",

@@ -321,7 +321,7 @@ _filtered = [r for r in _patched if r.kind != &quot;PodDisruptionBudget&quot;]
 _extras = [{apiVersion = &quot;v1&quot;, kind = &quot;ConfigMap&quot;, ...}]
 
 resources = _filtered + _extras</code></pre>
-<p>The import lands a synthesized stub that owns a <code>render</code> lambda and re-exports upstream's schemas — KCL type-checks <code>upstream.Input{...}</code> at the call site (typos surface as compile errors, not as runtime worker traps). The mechanism mirrors <code>import charts.&lt;name&gt;</code> for Helm charts; see <a href="https://github.com/akua-dev/akua/blob/main/docs/package-format.md">docs/package-format.md</a> for the full shape.</p>
+<p>The import lands a synthesized stub that owns a <code>render</code> lambda and re-exports upstream's schemas — KCL type-checks <code>upstream.Input{...}</code> at the call site (typos surface as compile errors, not as runtime worker traps). The mechanism mirrors <code>import charts.&lt;name&gt;</code> for Helm charts; see <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/package-format.md">docs/package-format.md</a> for the full shape.</p>
 <h2>package.k</h2><pre><code class="lang-kcl">import akua.ctx
 import pkgs.upstream as upstream
 
@@ -415,12 +415,12 @@ data:
   upstreamApp: webapp
 </code></pre>
 <p style="margin-top: 32px; color: var(--muted); font-size: 14px;">
-  Source: <a href="https://github.com/akua-dev/akua/tree/main/examples/11-install-as-package">examples/11-install-as-package/</a>
+  Source: <a href="https://github.com/akua-dev/akuapkg/tree/main/examples/11-install-as-package">examples/11-install-as-package/</a>
 </p>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
+  <a href="https://github.com/akua-dev/akuapkg">github.com/akua-dev/akuapkg</a> ·
   Apache-2.0
 </footer>
 </main>

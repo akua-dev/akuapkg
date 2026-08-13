@@ -307,7 +307,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <p>Discovers and runs:</p>
 <ul><li><code>**/*_test.rego</code> — Rego policy tests via embedded OPA</li><li><code>**/<em>_test.k</code> / <code>test_</em>.k</code> — KCL test files via embedded KCL</li><li>Kyverno <code>test.yaml</code> bundle tests (when the bundle is imported)</li><li>Golden-output tests (<code>*.golden.yaml</code> compared against current render)</li></ul>
 <h3 id="flags">Flags</h3>
-<table><thead><tr><th>flag</th><th>description</th></tr></thead><tbody><tr><td><code>--coverage</code></td><td>emit per-rule / per-schema coverage report</td></tr><tr><td><code>--watch</code></td><td>re-run on file change</td></tr><tr><td><code>--golden</code></td><td>enable / verify golden-output comparisons</td></tr><tr><td><code>--filter=&lt;regex&gt;</code></td><td>run only matching tests</td></tr><tr><td><code>--timeout=&lt;dur&gt;</code></td><td>per-test timeout (default 30s)</td></tr><tr><td>`--engine=&lt;auto\</td><td>embedded\</td><td>shell&gt;`</td><td>engine selection (see <a href="https://github.com/akua-dev/akua/blob/main/docs/embedded-engines.md">embedded-engines.md</a>)</td></tr></tbody></table>
+<table><thead><tr><th>flag</th><th>description</th></tr></thead><tbody><tr><td><code>--coverage</code></td><td>emit per-rule / per-schema coverage report</td></tr><tr><td><code>--watch</code></td><td>re-run on file change</td></tr><tr><td><code>--golden</code></td><td>enable / verify golden-output comparisons</td></tr><tr><td><code>--filter=&lt;regex&gt;</code></td><td>run only matching tests</td></tr><tr><td><code>--timeout=&lt;dur&gt;</code></td><td>per-test timeout (default 30s)</td></tr><tr><td>`--engine=&lt;auto\</td><td>embedded\</td><td>shell&gt;`</td><td>engine selection (see <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/embedded-engines.md">embedded-engines.md</a>)</td></tr></tbody></table>
 <h3 id="exit-codes">Exit codes</h3>
 <p>0 if all pass, 1 if any fail, 2 on infrastructure error.</p>
 <h3 id="json-output">JSON output</h3>
@@ -333,7 +333,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
+  <a href="https://github.com/akua-dev/akuapkg">github.com/akua-dev/akuapkg</a> ·
   Apache-2.0
 </footer>
 </main>

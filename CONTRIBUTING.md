@@ -19,7 +19,7 @@ Prerequisites are managed via [mise](https://mise.jdx.dev/) —
 task, helmfile, wasm-pack, etc.) at pinned versions.
 
 ```bash
-git clone git@github.com:akua-dev/akua.git
+git clone git@github.com:akua-dev/akuapkg.git
 cd akua
 mise install
 

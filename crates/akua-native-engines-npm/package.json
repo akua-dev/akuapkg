@@ -5,7 +5,7 @@
 	"license": "Apache-2.0",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/akua-dev/akua.git"
+		"url": "git+https://github.com/akua-dev/akuapkg.git"
 	},
 	"main": "index.js",
 	"files": [

@@ -442,7 +442,7 @@ ${sidebarHtml}
 ${opts.body}
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
+  <a href="https://github.com/akua-dev/akuapkg">github.com/akua-dev/akuapkg</a> ·
   Apache-2.0
 </footer>
 </main>

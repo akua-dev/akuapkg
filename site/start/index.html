@@ -297,10 +297,10 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
   <h1>Get started</h1>
   <p class="tagline">Install akua, render your first Package, and ship a signed artifact — in five minutes.</p>
 </header>
-<blockquote>Pre-alpha. The path below works end-to-end on macOS / Linux. If you hit a wall, the <a href="https://github.com/akua-dev/akua/tree/main/errors">error code reference</a> and the verb's <a href="https://github.com/akua-dev/akua/tree/main/cli">CLI page</a> are the next stops.</blockquote>
+<blockquote>Pre-alpha. The path below works end-to-end on macOS / Linux. If you hit a wall, the <a href="https://github.com/akua-dev/akuapkg/tree/main/errors">error code reference</a> and the verb's <a href="https://github.com/akua-dev/akuapkg/tree/main/cli">CLI page</a> are the next stops.</blockquote>
 <h2 id="1-install">1. Install</h2>
 <pre><code>$ curl -fsSL https://cli.akua.dev/install | sh</code></pre>
-<p>Or grab a pinned binary from <a href="https://github.com/akua-dev/akua/releases">Releases</a>. Windows: <code>irm https://cli.akua.dev/install.ps1 | iex</code>.</p>
+<p>Or grab a pinned binary from <a href="https://github.com/akua-dev/akuapkg/releases">Releases</a>. Windows: <code>irm https://cli.akua.dev/install.ps1 | iex</code>.</p>
 <p>Verify the install:</p>
 <pre><code>$ akuapkg version
 akua 0.8.7</code></pre>
@@ -335,13 +335,13 @@ $ akuapkg init</code></pre>
 <pre><code>$ akuapkg verify         # akua.toml ↔ akua.lock integrity + cosign signatures
 $ akua sign           # cosign-sign the artifact
 $ akuapkg publish        # push the signed OCI artifact + SLSA attestation</code></pre>
-<p>By default <code>publish</code> refuses unless the lockfile is clean and a cosign key is configured. See <a href="https://github.com/akua-dev/akua/blob/main/concepts/security-model">Concepts → Security model</a> for the threat model and what <code>strict_signing</code> enforces.</p>
+<p>By default <code>publish</code> refuses unless the lockfile is clean and a cosign key is configured. See <a href="https://github.com/akua-dev/akuapkg/blob/main/concepts/security-model">Concepts → Security model</a> for the threat model and what <code>strict_signing</code> enforces.</p>
 <h2 id="whats-next">What's next</h2>
-<ul><li>Walk through the runnable <a href="https://github.com/akua-dev/akua/tree/main/examples">examples</a> — every one has <code>package.k</code>, <code>inputs</code>, and the rendered output side-by-side.</li><li>Read <a href="https://github.com/akua-dev/akua/blob/main/concepts/package-format">Concepts → Package format</a> for the authoring shape.</li><li>Skim the <a href="https://github.com/akua-dev/akua/tree/main/cli">CLI reference</a> to see every verb at a glance — twenty-seven shipped, more in flight.</li><li>The <a href="https://github.com/akua-dev/akua/blob/main/concepts/sdk">SDK</a> wraps the same surface for TypeScript / Bun / Deno consumers.</li></ul>
+<ul><li>Walk through the runnable <a href="https://github.com/akua-dev/akuapkg/tree/main/examples">examples</a> — every one has <code>package.k</code>, <code>inputs</code>, and the rendered output side-by-side.</li><li>Read <a href="https://github.com/akua-dev/akuapkg/blob/main/concepts/package-format">Concepts → Package format</a> for the authoring shape.</li><li>Skim the <a href="https://github.com/akua-dev/akuapkg/tree/main/cli">CLI reference</a> to see every verb at a glance — twenty-seven shipped, more in flight.</li><li>The <a href="https://github.com/akua-dev/akuapkg/blob/main/concepts/sdk">SDK</a> wraps the same surface for TypeScript / Bun / Deno consumers.</li></ul>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
+  <a href="https://github.com/akua-dev/akuapkg">github.com/akua-dev/akuapkg</a> ·
   Apache-2.0
 </footer>
 </main>

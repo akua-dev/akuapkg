@@ -301,7 +301,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
   <h1>09-kustomize-hello</h1>
   <p class="tagline">Smallest Package that exercises akua's `kustomize.build` engine callable end-to-end.</p>
 </header>
-<blockquote><strong>Renders end-to-end</strong> via the embedded <code>kustomize-engine-wasm</code>. No <code>kustomize</code> binary on <code>$PATH</code> needed or consulted. Kustomize runs inside a wasmtime WASI sandbox against an in-memory filesystem unpacked from a tar.gz sent over the WASM ABI. See <a href="https://github.com/akua-dev/akua/blob/main/docs/security-model.md"><code>docs/security-model.md</code></a> + <a href="https://github.com/akua-dev/akua/blob/main/docs/roadmap.md"><code>docs/roadmap.md</code></a> Phase 3.</blockquote>
+<blockquote><strong>Renders end-to-end</strong> via the embedded <code>kustomize-engine-wasm</code>. No <code>kustomize</code> binary on <code>$PATH</code> needed or consulted. Kustomize runs inside a wasmtime WASI sandbox against an in-memory filesystem unpacked from a tar.gz sent over the WASM ABI. See <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/security-model.md"><code>docs/security-model.md</code></a> + <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/roadmap.md"><code>docs/roadmap.md</code></a> Phase 3.</blockquote>
 <p>Smallest Package that exercises akua's <code>kustomize.build</code> engine callable end-to-end.</p>
 <h2 id="whats-here">What's here</h2>
 <table><thead><tr><th>file</th><th>purpose</th></tr></thead><tbody><tr><td><code>package.k</code></td><td>KCL Package; imports <code>akua.kustomize</code>, calls <code>kustomize.build(&quot;./overlay&quot;)</code>, wires the result into <code>resources</code>.</td></tr><tr><td><code>akua.toml</code></td><td>Manifest — no external deps.</td></tr><tr><td><code>base/</code></td><td>Base layer — a single <code>ConfigMap</code>.</td></tr><tr><td><code>overlay/</code></td><td>Overlay — adds a <code>namePrefix</code> + <code>commonLabels</code>.</td></tr></tbody></table>
@@ -310,7 +310,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 akuapkg render --package examples/09-kustomize-hello/package.k --out ./rendered</code></pre>
 <p>The rendered <code>ConfigMap</code> lands at <code>./rendered/000-configmap-prod-hello.yaml</code> — named <code>prod-hello</code> with the overlay's <code>env: prod</code> label applied. Checked in alongside the example so you can eyeball the output without running anything.</p>
 <h2 id="spec">Spec</h2>
-<p>See <a href="https://github.com/akua-dev/akua/blob/main/docs/package-format.md"><code>docs/package-format.md</code></a> for the Package shape and <a href="https://github.com/akua-dev/akua/blob/main/docs/cli.md#akua-render"><code>docs/cli.md</code> <code>akuapkg render</code></a>.</p>
+<p>See <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/package-format.md"><code>docs/package-format.md</code></a> for the Package shape and <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/cli.md#akua-render"><code>docs/cli.md</code> <code>akuapkg render</code></a>.</p>
 <h2>package.k</h2><pre><code class="lang-kcl"># Minimal Package that exercises the `kustomize.build` plugin callable.
 #
 # Wraps the adjacent `./overlay/` (which layers a namePrefix + labels
@@ -342,12 +342,12 @@ metadata:
   name: prod-hello
 </code></pre>
 <p style="margin-top: 32px; color: var(--muted); font-size: 14px;">
-  Source: <a href="https://github.com/akua-dev/akua/tree/main/examples/09-kustomize-hello">examples/09-kustomize-hello/</a>
+  Source: <a href="https://github.com/akua-dev/akuapkg/tree/main/examples/09-kustomize-hello">examples/09-kustomize-hello/</a>
 </p>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
+  <a href="https://github.com/akua-dev/akuapkg">github.com/akua-dev/akuapkg</a> ·
   Apache-2.0
 </footer>
 </main>

@@ -22,7 +22,7 @@ const md = `
 $ curl -fsSL https://cli.akua.dev/install | sh
 \`\`\`
 
-Or grab a pinned binary from [Releases](https://github.com/akua-dev/akua/releases). Windows: \`irm https://cli.akua.dev/install.ps1 | iex\`.
+Or grab a pinned binary from [Releases](https://github.com/akua-dev/akuapkg/releases). Windows: \`irm https://cli.akua.dev/install.ps1 | iex\`.
 
 Verify the install:
 

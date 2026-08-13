@@ -320,7 +320,7 @@ for manifest in \
 	crates/akua-napi/package.json \
 	crates/akua-napi/npm/*/package.json \
 	packages/sdk/package.json; do
-	if [[ "$(jq -r '.repository.url' "$manifest")" != "git+https://github.com/akua-dev/akua.git" ]]; then
+	if [[ "$(jq -r '.repository.url' "$manifest")" != "git+https://github.com/akua-dev/akuapkg.git" ]]; then
 		echo "ERROR: $manifest has stale npm repository provenance" >&2
 		exit 1
 	fi
@@ -338,7 +338,7 @@ assert_job_contains ".github/workflows/release.yml" \
 
 # The external trusted-publisher identity and the deliberately gated recovery
 # command are authoritative release contract, not tribal knowledge.
-assert_file_contains "docs/releasing.md" "akua-dev/akua"
+assert_file_contains "docs/releasing.md" "akua-dev/akuapkg"
 assert_file_contains "docs/releasing.md" "release-publish.yml"
 assert_file_contains "docs/releasing.md" "Environment: none"
 assert_file_contains "docs/releasing.md" "--ref main"

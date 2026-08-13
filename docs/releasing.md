@@ -39,7 +39,7 @@ request a GitHub OIDC token, but it cannot create or repair the trust relationsh
 An npm package administrator must confirm the following identity on all ten packages
 before any recovery dispatch:
 
-- GitHub owner/repository: `akua-dev/akua`
+- GitHub owner/repository: `akua-dev/akuapkg`
 - Workflow filename: `release-publish.yml`
 - Environment: none (leave the optional npm Environment field empty)
 - Allowed action: `npm publish`
@@ -60,7 +60,7 @@ The affected packages are:
 Change each package under npm package settings → Trusted Publisher. Do not create,
 request, or pass an npm token: the workflow has `id-token: write`, uses GitHub-hosted
 runners, and deliberately has no `NODE_AUTH_TOKEN`. Each package manifest also uses
-the exact repository URL `git+https://github.com/akua-dev/akua.git`, as required for
+the exact repository URL `git+https://github.com/akua-dev/akuapkg.git`, as required for
 trusted publishing.
 
 ## Recovering the partial v0.8.25 release
@@ -86,12 +86,12 @@ current `main` commit, and an npm administrator has confirmed the
 trusted-publisher identity above for all ten packages:
 
 ```sh
-reviewed_workflow_commit=$(gh pr view 69 --repo akua-dev/akua --json mergeCommit --jq '.mergeCommit.oid')
-main_commit=$(gh api repos/akua-dev/akua/commits/main --jq '.sha')
+reviewed_workflow_commit=$(gh pr view 69 --repo akua-dev/akuapkg --json mergeCommit --jq '.mergeCommit.oid')
+main_commit=$(gh api repos/akua-dev/akuapkg/commits/main --jq '.sha')
 test "$main_commit" = "$reviewed_workflow_commit"
 
 gh workflow run release.yml \
-  --repo akua-dev/akua \
+  --repo akua-dev/akuapkg \
   --ref main \
   -f tag=v0.8.25 \
   -f expected-source-commit=6452eb662445d2ad7c108128f93b9c55138729bb \
@@ -100,6 +100,6 @@ gh workflow run release.yml \
 ```
 
 That single deliberate dispatch rebuilds from the immutable tag, verifies the existing
-GitHub Release without changing any asset bytes, publishes `ghcr.io/akua-dev/akua`,
+GitHub Release without changing any asset bytes, publishes `ghcr.io/akua-dev/akuapkg`,
 and then dispatches the idempotent npm publish lane from that run's artifacts. It has
 no Homebrew side effects. There are no automatic recovery retries.

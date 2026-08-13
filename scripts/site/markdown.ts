@@ -9,8 +9,8 @@
 import { escape } from './layout.ts';
 
 /** Github-blob base for rewriting `../foo.md` links found in `docs/`. */
-const GITHUB_BLOB = 'https://github.com/akua-dev/akua/blob/main';
-const GITHUB_TREE = 'https://github.com/akua-dev/akua/tree/main';
+const GITHUB_BLOB = 'https://github.com/akua-dev/akuapkg/blob/main';
+const GITHUB_TREE = 'https://github.com/akua-dev/akuapkg/tree/main';
 
 /**
  * Rewrite source-tree links to URLs that resolve on the deployed

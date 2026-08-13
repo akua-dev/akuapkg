@@ -14,7 +14,7 @@
 // Why a separate file: index.js is regenerated on every `napi build`,
 // so any setup we'd inline there gets clobbered. Keeping the env-var
 // plumbing in loader.js makes it survive regen + leaves the auto-gen
-// machinery untouched. See akua-dev/akua#482.
+// machinery untouched. See akua-dev/akuapkg#482.
 
 'use strict';
 
