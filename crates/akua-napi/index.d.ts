@@ -6,6 +6,16 @@ export declare function check(args: NapiCheckArgs): any
 
 export declare function diff(args: NapiDiffArgs): any
 
+/**
+ * Execute any supported package command through the same parser and
+ * dispatcher as the standalone `akuapkg` binary.
+ *
+ * Output is intentionally written by the package command itself, preserving
+ * its documented JSON/text streams. The numeric result is the package
+ * contract's stable exit code, not a Node or shell-process exit status.
+ */
+export declare function execute(args: Array<string>): number
+
 export declare function export(args: NapiExportArgs): any
 
 export declare function fmt(args: NapiFmtArgs): any
