@@ -184,7 +184,7 @@ jobs:
         run: |
           set -eu
           version="${{ needs.detect-version.outputs.version }}"
-          repo='git+https://github.com/akua-dev/akua.git'
+          repo='git+https://github.com/akua-dev/akuapkg.git'
           jq --arg v "$version" --arg repo "$repo" \
             '.version = $v
              | .dependencies["@akua-dev/native-engines"] = $v
@@ -229,7 +229,7 @@ jobs:
         run: |
           set -eu
           version="${{ needs.detect-version.outputs.version }}"
-          repo='git+https://github.com/akua-dev/akua.git'
+          repo='git+https://github.com/akua-dev/akuapkg.git'
           cp crates/akua-napi/artifacts/wasm-bundle/crates/helm-engine-wasm/assets/helm-engine.wasm \
              crates/akua-native-engines-npm/helm-engine.wasm
           cp crates/akua-napi/artifacts/wasm-bundle/crates/kustomize-engine-wasm/assets/kustomize-engine.wasm \
