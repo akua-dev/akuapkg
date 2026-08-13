@@ -323,7 +323,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 which escapes the Package directory `/private/tmp/spike1/install`</code></pre>
 <h2 id="why-akua-refuses">Why akua refuses</h2>
 <p><code>akuapkg render</code> runs each Package inside a wasmtime sandbox with read-only filesystem preopens scoped to the Package directory. A path that resolves outside that root is — by construction — unreachable through the sandbox's capabilities. We surface the error early instead of letting it manifest as a confusing wasmtime open-file failure deeper in the render.</p>
-<p>See <a href="https://github.com/akua-dev/akua/blob/main/docs/../security-model.md"><code>docs/security-model.md</code></a> for the full threat model.</p>
+<p>See <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/../security-model.md"><code>docs/security-model.md</code></a> for the full threat model.</p>
 <h2 id="how-to-fix-it">How to fix it</h2>
 <p>Both correct paths declare the dependency in <code>akua.toml</code> and compose it by its typed alias — user code never writes a filesystem path. <code>pkg.render</code> accepts <code>package = &quot;&lt;alias&gt;&quot;</code> only; there is no <code>path = &quot;...&quot;</code> form.</p>
 <h3 id="1-vendor-the-dependency-as-a-subdirectory">1. Vendor the dependency as a subdirectory</h3>
@@ -364,11 +364,11 @@ resources = upstream.resources + extras</code></pre>
 <h2 id="what-not-to-do">What NOT to do</h2>
 <ul><li><strong>Don't pass absolute paths to plugins</strong> (<code>/var/cache/...</code>). The sandbox refuses anything outside its preopened roots, even if you <code>chmod</code> your way to readability.</li><li><strong>Don't symlink your way around it.</strong> Akua canonicalizes plugin paths before the under-Package check; a <code>./link → ../upstream</code> symlink resolves the same as <code>../upstream</code> and gets rejected the same way.</li></ul>
 <h2 id="see-also">See also</h2>
-<ul><li><a href="https://github.com/akua-dev/akua/blob/main/docs/../lockfile-format.md"><code>docs/lockfile-format.md</code></a> — <code>akua.toml</code> <code>[dependencies]</code> syntax.</li><li><a href="https://github.com/akua-dev/akua/blob/main/docs/../package-format.md"><code>docs/package-format.md</code></a> — Package authoring shape.</li><li><a href="https://github.com/akua-dev/akua/blob/main/docs/../security-model.md"><code>docs/security-model.md</code></a> — sandbox invariants.</li></ul>
+<ul><li><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/../lockfile-format.md"><code>docs/lockfile-format.md</code></a> — <code>akua.toml</code> <code>[dependencies]</code> syntax.</li><li><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/../package-format.md"><code>docs/package-format.md</code></a> — Package authoring shape.</li><li><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/../security-model.md"><code>docs/security-model.md</code></a> — sandbox invariants.</li></ul>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
+  <a href="https://github.com/akua-dev/akuapkg">github.com/akua-dev/akuapkg</a> ·
   Apache-2.0
 </footer>
 </main>

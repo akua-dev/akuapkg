@@ -337,7 +337,7 @@ nginx = { oci = &quot;oci://registry-1.docker.io/bitnamicharts/nginx&quot;, vers
 <pre><code class="lang-toml">nginx = { oci = &quot;oci://registry-1.docker.io/bitnamicharts/nginx&quot;, version = &quot;18.2.0&quot;, replace = { path = &quot;../nginx-fork&quot; } }</code></pre>
 <p><code>akua.lock</code> still records the <code>oci://</code> digest; files resolve from <code>../nginx-fork</code>. Drop the <code>replace</code> clause to switch back.</p>
 <h2 id="see-also">See also</h2>
-<ul><li><a href="https://github.com/akua-dev/akua/blob/main/docs/package-format.md">package-format.md</a> — canonical Package spec</li><li><a href="https://github.com/akua-dev/akua/blob/main/docs/cli.md">cli.md <code>render</code></a> — render verb + flags</li><li><a href="https://github.com/akua-dev/akua/blob/main/docs/roadmap.md">roadmap.md Phase 2</a> — chart dep resolver design</li><li><a href="/examples/02-webapp-postgres">02-webapp-postgres/</a> — next example: cross-source wiring</li></ul>
+<ul><li><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/package-format.md">package-format.md</a> — canonical Package spec</li><li><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/cli.md">cli.md <code>render</code></a> — render verb + flags</li><li><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/roadmap.md">roadmap.md Phase 2</a> — chart dep resolver design</li><li><a href="/examples/02-webapp-postgres">02-webapp-postgres/</a> — next example: cross-source wiring</li></ul>
 <h2>package.k</h2><pre><code class="lang-kcl"># Example 01 — hello-webapp
 #
 # Smallest useful akua Package. One local-path chart dep, a few public
@@ -425,12 +425,12 @@ spec:
   type: ClusterIP
 </code></pre>
 <p style="margin-top: 32px; color: var(--muted); font-size: 14px;">
-  Source: <a href="https://github.com/akua-dev/akua/tree/main/examples/01-hello-webapp">examples/01-hello-webapp/</a>
+  Source: <a href="https://github.com/akua-dev/akuapkg/tree/main/examples/01-hello-webapp">examples/01-hello-webapp/</a>
 </p>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
+  <a href="https://github.com/akua-dev/akuapkg">github.com/akua-dev/akuapkg</a> ·
   Apache-2.0
 </footer>
 </main>

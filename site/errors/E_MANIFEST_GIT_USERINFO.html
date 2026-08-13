@@ -327,7 +327,7 @@ Pass credentials via the SDK `auth` parameter or the CLI `--auth` flag.</code></
 <h2 id="why-akua-refuses">Why akua refuses</h2>
 <p><code>akua.toml</code> lives in version control. So does <code>akua.lock</code>, which records the canonical source URL of every resolved dep. If the manifest URL contained credentials, those credentials would be persisted into the lockfile, the git history of the project, and any artifact akua publishes — for the lifetime of the repository. Even rotating the token after the fact doesn't fully undo the leak (commit history, mirror clones, attacker forks).</p>
 <p>Akua's rule: <strong>credentials never appear in any file akua writes or reads as input.</strong> The same principle that bans secrets in <code>kubectl apply -f</code>'d manifests applies to akua's dependency declarations.</p>
-<p>The lockfile field <code>source</code> (see <a href="https://github.com/akua-dev/akua/blob/main/docs/../lockfile-format.md">lockfile-format.md</a>) canonicalizes URLs by stripping userinfo, default ports, and <code>.git</code> suffix — so even if a malformed call ever reached the lockfile-write path, the credential would not survive. This validation is the first line of defense; the canonicalization is the second.</p>
+<p>The lockfile field <code>source</code> (see <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/../lockfile-format.md">lockfile-format.md</a>) canonicalizes URLs by stripping userinfo, default ports, and <code>.git</code> suffix — so even if a malformed call ever reached the lockfile-write path, the credential would not survive. This validation is the first line of defense; the canonicalization is the second.</p>
 <h2 id="how-to-fix-it">How to fix it</h2>
 <p>Pass credentials at the call site, never in <code>akua.toml</code>.</p>
 <h3 id="from-the-sdk">From the SDK</h3>
@@ -336,7 +336,7 @@ Pass credentials via the SDK `auth` parameter or the CLI `--auth` flag.</code></
     'github.com/myco/private': { username: 'alice', password: process.env.GH_TOKEN! }
   }
 });</code></pre>
-<p>The <code>auth</code> map is keyed by URL prefix (longest-prefix wins, same rule git's credential helper / <code>.npmrc</code> URL keys use). See <a href="https://github.com/akua-dev/akua/blob/main/docs/../sdk.md#credentials---auth">sdk.md → Credentials</a> for the full resolution rules.</p>
+<p>The <code>auth</code> map is keyed by URL prefix (longest-prefix wins, same rule git's credential helper / <code>.npmrc</code> URL keys use). See <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/../sdk.md#credentials---auth">sdk.md → Credentials</a> for the full resolution rules.</p>
 <h3 id="from-the-cli">From the CLI</h3>
 <pre><code class="lang-sh">akuapkg vendor add upstream --auth github.com/myco/private=alice:$GH_TOKEN</code></pre>
 <p>Repeat <code>--auth</code> for multiple hosts. For environments where flags are awkward (CI, scripts), pass <code>--auth-file &lt;path&gt;</code> pointing at a TOML file you explicitly named:</p>
@@ -357,11 +357,11 @@ upstream = { git = &quot;https://github.com/myco/private&quot;, tag = &quot;v1&q
 <p>Akua deliberately does not auto-load ambient credential files. Two reasons:</p>
 <ul><li><strong>Multi-tenant SDK consumers.</strong> A server-side process embedding <code>@akua-dev/sdk</code> may handle requests from multiple tenants. Credentials that &quot;happen to be on disk&quot; can cross-contaminate between tenants. Explicit-only auth means each call carries exactly the credentials authorized for that call's principal.</li><li><strong>Sandbox parity.</strong> <code>akuapkg render</code> runs Packages in a wasmtime sandbox with strict capability scoping. Extending the same &quot;no implicit input&quot; stance to credentials is a coherent invariant — the SDK and CLI surface are the only places credentials enter the system.</li></ul>
 <h2 id="related">Related</h2>
-<ul><li><a href="https://github.com/akua-dev/akua/blob/main/docs/../sdk.md#credentials---auth">docs/sdk.md → Credentials</a> — full SDK auth surface</li><li><a href="https://github.com/akua-dev/akua/blob/main/docs/../cli.md#auth-flags-private-git-remotes">docs/cli.md → akuapkg vendor → Auth flags</a> — CLI flag surface</li><li><a href="https://github.com/akua-dev/akua/blob/main/docs/../security-model.md">docs/security-model.md</a> — broader explicit-input stance</li></ul>
+<ul><li><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/../sdk.md#credentials---auth">docs/sdk.md → Credentials</a> — full SDK auth surface</li><li><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/../cli.md#auth-flags-private-git-remotes">docs/cli.md → akuapkg vendor → Auth flags</a> — CLI flag surface</li><li><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/../security-model.md">docs/security-model.md</a> — broader explicit-input stance</li></ul>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
+  <a href="https://github.com/akua-dev/akuapkg">github.com/akua-dev/akuapkg</a> ·
   Apache-2.0
 </footer>
 </main>

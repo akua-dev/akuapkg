@@ -1,6 +1,6 @@
 # @akua-dev/sdk
 
-TypeScript SDK for [akua](https://github.com/akua-dev/akua). Every verb runs in-process via a bundled native addon (napi-rs) — same `akua-core` the CLI uses, no `akua` binary on `$PATH` required.
+TypeScript SDK for [Akuapkg](https://github.com/akua-dev/akuapkg). Every verb runs in-process via a bundled native addon (napi-rs) — same `akua-core` the CLI uses, no `akuapkg` binary on `$PATH` required.
 
 ## Install
 

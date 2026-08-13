@@ -304,7 +304,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 </header>
 <h1 id="akua-cli-reference">akua CLI reference</h1>
 <p>Complete reference for the <code>akua</code> binary. Every verb, every subcommand, every flag.</p>
-<p>For the universal contract every verb honors (JSON output, exit codes, idempotency, plan mode, timeouts), see <a href="https://github.com/akua-dev/akua/blob/main/docs/cli-contract.md">cli-contract.md</a>.</p>
+<p>For the universal contract every verb honors (JSON output, exit codes, idempotency, plan mode, timeouts), see <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/cli-contract.md">cli-contract.md</a>.</p>
 <blockquote><strong>Status marker.</strong> Sections marked ✅ describe verbs available in the shipping binary. Sections marked 🚧 describe verbs from the target surface that aren't wired yet. If a verb isn't marked, assume 🚧.  <strong>Shipped today (28 verbs):</strong> <code>init</code> · <code>whoami</code> · <code>version</code> · <code>verify</code> · <code>render</code> · <code>add</code> · <code>vendor</code> · <code>dev</code> · <code>test</code> · <code>tree</code> · <code>pull</code> · <code>publish</code> · <code>sign</code> · <code>update</code> · <code>lock</code> · <code>push</code> · <code>repl</code> · <code>pack</code> · <code>remove</code> · <code>diff</code> · <code>check</code> · <code>inspect</code> · <code>lint</code> · <code>fmt</code> · <code>cache</code> · <code>auth</code> · <code>export</code> · <code>api</code>  Run <code>akua --help</code> at the command line for the authoritative live list.</blockquote>
 <hr />
 <h2 id="top-level-flags">Top-level flags</h2>
@@ -319,7 +319,7 @@ $ akuapkg render
 # Agent context — auto-JSON, no flag needed
 $ CLAUDECODE=1 akuapkg render
 {&quot;format&quot;:&quot;raw-manifests&quot;,&quot;target&quot;:&quot;./deploy&quot;,&quot;manifests&quot;:3,&quot;hash&quot;:&quot;sha256:…&quot;}</code></pre>
-<p>See <a href="https://github.com/akua-dev/akua/blob/main/docs/cli-contract.md#15-agent-context-auto-detection">cli-contract.md §1.5</a> for the full detection rules, override semantics, and env-var reference.</p>
+<p>See <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/cli-contract.md#15-agent-context-auto-detection">cli-contract.md §1.5</a> for the full detection rules, override semantics, and env-var reference.</p>
 <hr />
 <h2 id="verb-index">Verb index</h2>
 <pre><code>AUTHOR              PUBLISH             DEPLOY              OPERATE
@@ -488,7 +488,7 @@ akua eval</code></pre>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
+  <a href="https://github.com/akua-dev/akuapkg">github.com/akua-dev/akuapkg</a> ·
   Apache-2.0
 </footer>
 </main>

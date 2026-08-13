@@ -39,7 +39,7 @@ main() {
 
     local base="${AKUAPKG_DOWNLOAD_BASE:-https://github.com}"
     local asset="akuapkg-${resolved_version}-${triple}.tar.gz"
-    local url="${base}/akua-dev/akua/releases/download/${resolved_version}/${asset}"
+    local url="${base}/akua-dev/akuapkg/releases/download/${resolved_version}/${asset}"
 
     local install_root="${AKUAPKG_INSTALL:-$HOME/.akuapkg}"
     local bin_dir="${install_root}/bin"
@@ -90,7 +90,7 @@ detect_triple() {
             # bail rather than give them a broken glibc binary that fails
             # at runtime with a confusing dynamic-linker error.
             if [ -f /etc/alpine-release ]; then
-                error "Alpine/musl not yet supported. Build from source:\n\n    cargo install --git https://github.com/akua-dev/akua akuapkg-cli\n"
+                error "Alpine/musl not yet supported. Build from source:\n\n    cargo install --git https://github.com/akua-dev/akuapkg akuapkg-cli\n"
             fi
             case "$machine" in
                 x86_64|amd64)  triple="x86_64-unknown-linux-gnu" ;;
@@ -137,7 +137,7 @@ resolve_version() {
     # redirect on `/releases/latest` itself.
     local location
     location="$(curl -fsSLI -o /dev/null -w '%{url_effective}\n' \
-        https://github.com/akua-dev/akua/releases/latest)"
+        https://github.com/akua-dev/akuapkg/releases/latest)"
     # URL ends with .../tag/vX.Y.Z.
     echo "$location" | sed -e 's|.*/tag/||'
 }

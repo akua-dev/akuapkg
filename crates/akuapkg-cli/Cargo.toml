@@ -37,7 +37,7 @@ precompile-engines = ["akua-core/precompile-engines"]
 # `embed-engines` (default on): include_bytes!() the helm + kustomize
 # engine wasm into the binary. Disable for the napi npm distribution
 # where the engines ship via `@akua-dev/native-engines` and the
-# loader points at them via AKUA_NATIVE_ENGINES_DIR. See akua-dev/akua#482.
+# loader points at them via AKUA_NATIVE_ENGINES_DIR. See akua-dev/akuapkg#482.
 embed-engines = ["akua-core/embed-engines"]
 # OpenTelemetry export. Default on; activates only when the runtime sees
 # OTEL_EXPORTER_OTLP_ENDPOINT (or OTEL_EXPORTER_OTLP_TRACES_ENDPOINT). Off

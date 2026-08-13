@@ -139,6 +139,6 @@ retained as an escape hatch; it's safe only for trusted packages.
 ## Reporting
 
 Please report vulnerabilities privately via GitHub Security Advisories
-at https://github.com/akua-dev/akua/security/advisories/new.
+at https://github.com/akua-dev/akuapkg/security/advisories/new.
 Fixes are prioritized ahead of feature work; we'll coordinate
 disclosure timing with you.

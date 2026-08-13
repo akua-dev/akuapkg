@@ -302,7 +302,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
   <p class="tagline">Package.k authoring shape — imports, schemas, body, and the `resources` output.</p>
 </header>
 <p>The canonical shape of an akua Package. A Package is a reusable definition authored in <strong>KCL</strong> and published as a signed OCI artifact. <code>Package.k</code> is the only shape akua itself specifies; higher-level workspace concepts (App / Environment / Cluster / PolicySet / etc.) are user-defined KCL schemas in the consumer's workspace, not akua-owned kinds.</p>
-<p>This document specifies what a <code>package.k</code> file may contain. Companion references: <a href="/concepts/lockfile-format">lockfile-format.md</a> for <code>akua.toml</code> / <code>akua.lock</code>, <a href="https://github.com/akua-dev/akua/blob/main/docs/policy-format.md">policy-format.md</a> for Rego.</p>
+<p>This document specifies what a <code>package.k</code> file may contain. Companion references: <a href="/concepts/lockfile-format">lockfile-format.md</a> for <code>akua.toml</code> / <code>akua.lock</code>, <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/policy-format.md">policy-format.md</a> for Rego.</p>
 <hr />
 <h2 id="1-anatomy">1. Anatomy</h2>
 <p>Every Package is one KCL program with three typed regions:</p>
@@ -395,7 +395,7 @@ schema HostInput:
     hostname: str
     priority: int = 0</code></pre>
 <h3 id="ui-hints-optional">UI hints (optional) ✅</h3>
-<p>When a Package is consumed through a UI (merchant install form, Package Studio, generated Swagger form), renderers benefit from hints about field ordering, labels, placeholders, grouping. akua reads UI hints from two sources, both projected into the JSON Schema / OpenAPI output of <a href="https://github.com/akua-dev/akua/blob/main/docs/cli.md#akuapkg-export"><code>akuapkg export</code></a>.</p>
+<p>When a Package is consumed through a UI (merchant install form, Package Studio, generated Swagger form), renderers benefit from hints about field ordering, labels, placeholders, grouping. akua reads UI hints from two sources, both projected into the JSON Schema / OpenAPI output of <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/cli.md#akuapkg-export"><code>akuapkg export</code></a>.</p>
 <p><strong>KCL docstrings</strong> — the field's <code>&quot;&quot;&quot;…&quot;&quot;&quot;</code> docstring becomes the schema property's <code>description</code>:</p>
 <pre><code class="lang-python">schema Input:
     &quot;&quot;&quot;Public inputs for this package.&quot;&quot;&quot;
@@ -467,7 +467,7 @@ _addons = kustomize.build(&quot;./overlays/monitoring&quot;)</code></pre>
 }
 
 resources = [*_pg, *_app, *_glue, *_addons, _servicemonitor]</code></pre>
-<p><strong>Schema-level validation via <code>check:</code> blocks</strong> — this is KCL's role in the two-layer validation model (schema → Rego for cross-resource policy, see <a href="https://github.com/akua-dev/akua/blob/main/docs/policy-format.md">policy-format.md</a>):</p>
+<p><strong>Schema-level validation via <code>check:</code> blocks</strong> — this is KCL's role in the two-layer validation model (schema → Rego for cross-resource policy, see <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/policy-format.md">policy-format.md</a>):</p>
 <pre><code class="lang-python">schema Deployment:
     spec: DeploymentSpec
     check:
@@ -512,7 +512,7 @@ resources = [*_pg, *_app, *_glue, *_addons, _servicemonitor]</code></pre>
 <hr />
 <h2 id="7-whats-disallowed">7. What's disallowed</h2>
 <p>Because determinism and the WASI sandbox are load-bearing:</p>
-<ul><li><strong>No runtime I/O.</strong> No <code>os.read</code>, <code>http.get</code>, <code>file.exists</code>, env-var lookups. KCL's sandbox enforces this.</li><li><strong>No non-determinism.</strong> No <code>random()</code>, no <code>now()</code>, no <code>uuid()</code>. Results depend only on <code>input</code> and imports.</li><li><strong>No cluster reads at render time.</strong> Use RGD output + kro for runtime late-binding; never a live query from KCL.</li><li><strong>No <code>input</code> overwrite at runtime.</strong> Inputs are provided once at render start and treated as immutable through the body.</li><li><strong>No cross-source value imports.</strong> Source A cannot reference Source B's output. Both derive from <code>input</code>. (Runtime cross-refs are the RGD case; see <a href="https://github.com/akua-dev/akua/blob/main/docs/policy-format.md">policy-format.md</a> for the broader framing.)</li></ul>
+<ul><li><strong>No runtime I/O.</strong> No <code>os.read</code>, <code>http.get</code>, <code>file.exists</code>, env-var lookups. KCL's sandbox enforces this.</li><li><strong>No non-determinism.</strong> No <code>random()</code>, no <code>now()</code>, no <code>uuid()</code>. Results depend only on <code>input</code> and imports.</li><li><strong>No cluster reads at render time.</strong> Use RGD output + kro for runtime late-binding; never a live query from KCL.</li><li><strong>No <code>input</code> overwrite at runtime.</strong> Inputs are provided once at render start and treated as immutable through the body.</li><li><strong>No cross-source value imports.</strong> Source A cannot reference Source B's output. Both derive from <code>input</code>. (Runtime cross-refs are the RGD case; see <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/policy-format.md">policy-format.md</a> for the broader framing.)</li></ul>
 <p>Violation of any of these is a compile error with a clear message.</p>
 <hr />
 <h2 id="8-rendering-model">8. Rendering model</h2>
@@ -593,15 +593,15 @@ akuapkg test --coverage            # report per-schema / per-source coverage
 akuapkg test --filter=default      # only tests matching 'default'</code></pre>
 <p>Tests run via the embedded KCL engine (see <a href="/concepts/embedded-engines">embedded-engines.md</a>) — fast, sandboxed, deterministic.</p>
 <h3 id="what-to-test">What to test</h3>
-<ul><li>Schema defaults and constraints — does <code>input.replicas = 0</code> correctly fail the <code>check:</code> block?</li><li>Rendered-output shape — does the Deployment have the right labels, the right replicaCount?</li><li>Policy compat — does rendering with a specific tier succeed? (Integration test; see <a href="https://github.com/akua-dev/akua/blob/main/docs/policy-format.md#9-authoring-workflow">policy-format.md §9</a>)</li><li>Upgrade compatibility — golden tests catch &quot;dep bump accidentally changed the rendered manifest.&quot;</li></ul>
+<ul><li>Schema defaults and constraints — does <code>input.replicas = 0</code> correctly fail the <code>check:</code> block?</li><li>Rendered-output shape — does the Deployment have the right labels, the right replicaCount?</li><li>Policy compat — does rendering with a specific tier succeed? (Integration test; see <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/policy-format.md#9-authoring-workflow">policy-format.md §9</a>)</li><li>Upgrade compatibility — golden tests catch &quot;dep bump accidentally changed the rendered manifest.&quot;</li></ul>
 <p>Packages without tests ship with a lint warning; platform teams can enforce a policy rule requiring tests for production-tier packages.</p>
 <hr />
 <h2 id="11-relationship-to-other-docs">11. Relationship to other docs</h2>
-<ul><li><strong><a href="https://github.com/akua-dev/akua/blob/main/docs/cli.md">cli.md — <code>akuapkg init</code> / <code>akuapkg add</code> / <code>akuapkg render</code> / <code>akuapkg export</code> / <code>akuapkg test</code> / <code>akuapkg publish</code></a></strong> — the verbs that operate on packages. <code>render</code> runs the program; <code>export</code> converts the canonical form to a view.</li><li><strong><a href="/concepts/lockfile-format">lockfile-format.md</a></strong> — how <code>akua.toml</code> + <code>akua.lock</code> pin imports</li><li><strong><a href="https://github.com/akua-dev/akua/blob/main/docs/policy-format.md">policy-format.md</a></strong> — how Rego policies evaluate against rendered resources (separate concern from <code>check:</code> blocks)</li><li><strong><a href="/concepts/embedded-engines">embedded-engines.md</a></strong> — which engines run your tests</li><li><strong><a href="/examples/">examples/</a></strong> — runnable Packages at increasing complexity</li></ul>
+<ul><li><strong><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/cli.md">cli.md — <code>akuapkg init</code> / <code>akuapkg add</code> / <code>akuapkg render</code> / <code>akuapkg export</code> / <code>akuapkg test</code> / <code>akuapkg publish</code></a></strong> — the verbs that operate on packages. <code>render</code> runs the program; <code>export</code> converts the canonical form to a view.</li><li><strong><a href="/concepts/lockfile-format">lockfile-format.md</a></strong> — how <code>akua.toml</code> + <code>akua.lock</code> pin imports</li><li><strong><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/policy-format.md">policy-format.md</a></strong> — how Rego policies evaluate against rendered resources (separate concern from <code>check:</code> blocks)</li><li><strong><a href="/concepts/embedded-engines">embedded-engines.md</a></strong> — which engines run your tests</li><li><strong><a href="/examples/">examples/</a></strong> — runnable Packages at increasing complexity</li></ul>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
+  <a href="https://github.com/akua-dev/akuapkg">github.com/akua-dev/akuapkg</a> ·
   Apache-2.0
 </footer>
 </main>

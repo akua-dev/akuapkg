@@ -15,7 +15,7 @@ members = [
 version = "0.8.20"
 edition = "2021"
 license = "Apache-2.0"
-repository = "https://github.com/akua-dev/akua"
+repository = "https://github.com/akua-dev/akuapkg"
 authors = ["CNAP Tech <hello@cnap.tech>"]
 
 [workspace.dependencies]

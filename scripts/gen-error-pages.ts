@@ -128,7 +128,7 @@ function renderCodePage(
 
 	const bodyHtml = richMarkdown
 		? renderMarkdown(richMarkdown)
-		: `<h2>What happened</h2>${summaryHtml}<h2>How to fix it</h2><p>This error doesn't have an extended remediation guide yet — track <a href="https://github.com/akua-dev/akua/issues">issues on GitHub</a> or open one with your <code>--json</code> output if the message above wasn't enough.</p>`;
+		: `<h2>What happened</h2>${summaryHtml}<h2>How to fix it</h2><p>This error doesn't have an extended remediation guide yet — track <a href="https://github.com/akua-dev/akuapkg/issues">issues on GitHub</a> or open one with your <code>--json</code> output if the message above wasn't enough.</p>`;
 
 	const inner = `
 <header>

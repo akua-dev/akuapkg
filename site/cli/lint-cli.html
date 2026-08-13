@@ -313,20 +313,20 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <h3 id="agent-context-env-vars-detected-never-written">Agent-context env vars (detected, never written)</h3>
 <p>These are set by agent runtimes, not by akua. akua reads them to determine whether it's running in an agent context.</p>
 <table><thead><tr><th>var</th><th>set by</th></tr></thead><tbody><tr><td><code>AGENT=&lt;name&gt;</code></td><td>Goose (<code>goose</code>), Amp (<code>amp</code>), Codex (<code>codex</code>), Cline (<code>cline</code>), OpenCode (<code>opencode</code>) — emerging standard</td></tr><tr><td><code>CLAUDECODE=1</code></td><td>Claude Code</td></tr><tr><td><code>GEMINI_CLI=1</code></td><td>Gemini CLI</td></tr><tr><td><code>CURSOR_CLI=1</code></td><td>Cursor CLI</td></tr><tr><td><code>GOOSE_TERMINAL=1</code>, <code>AMP_THREAD_ID=&lt;id&gt;</code>, <code>CODEX_SANDBOX=&lt;id&gt;</code>, <code>CLINE_ACTIVE=true</code></td><td>secondary identifiers per agent — recorded as context</td></tr></tbody></table>
-<p>See <a href="https://github.com/akua-dev/akua/blob/main/docs/cli-contract.md#15-agent-context-auto-detection">cli-contract.md §1.5</a> for detection rules and precedence.</p>
+<p>See <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/cli-contract.md#15-agent-context-auto-detection">cli-contract.md §1.5</a> for detection rules and precedence.</p>
 <h2 id="exit-code-reference-summary">Exit code reference (summary)</h2>
-<p>From <a href="https://github.com/akua-dev/akua/blob/main/docs/cli-contract.md">cli-contract.md</a>:</p>
+<p>From <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/cli-contract.md">cli-contract.md</a>:</p>
 <table><thead><tr><th>code</th><th>meaning</th></tr></thead><tbody><tr><td>0</td><td>success</td></tr><tr><td>1</td><td>user error</td></tr><tr><td>2</td><td>system error</td></tr><tr><td>3</td><td>policy deny</td></tr><tr><td>4</td><td>rate limited</td></tr><tr><td>5</td><td>needs approval</td></tr><tr><td>6</td><td>timeout</td></tr></tbody></table>
 <h2 id="stability-and-versioning">Stability and versioning</h2>
 <ul><li>Pre-v1.0: breaking changes require a minor version bump + changelog entry.</li><li>v1.0 onward: flag removal requires 6-month deprecation; exit code semantics never change.</li><li>JSON output keys are part of the stability contract.</li><li>New verbs can be added without bumping major.</li></ul>
 <h2 id="whats-not-in-this-reference">What's not in this reference</h2>
-<ul><li>Implementation details (Rust crate structure, KCL plugin ABI).</li><li>The TypeScript SDK (see <a href="https://github.com/akua-dev/akua/blob/main/docs/sdk.md">sdk.md</a>).</li><li>The CLI contract (see <a href="https://github.com/akua-dev/akua/blob/main/docs/cli-contract.md">cli-contract.md</a>).</li><li>Examples of usage (see <a href="https://github.com/akua-dev/akua/tree/main/examples">examples/</a>).</li><li>Architecture (see <a href="https://github.com/akua-dev/akua/blob/main/docs/architecture.md">architecture.md</a>).</li></ul>
+<ul><li>Implementation details (Rust crate structure, KCL plugin ABI).</li><li>The TypeScript SDK (see <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/sdk.md">sdk.md</a>).</li><li>The CLI contract (see <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/cli-contract.md">cli-contract.md</a>).</li><li>Examples of usage (see <a href="https://github.com/akua-dev/akuapkg/tree/main/examples">examples/</a>).</li><li>Architecture (see <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/architecture.md">architecture.md</a>).</li></ul>
 <h2 id="spec-cross-references">Spec cross-references</h2>
-<ul><li><strong>Package format</strong> — <a href="https://github.com/akua-dev/akua/blob/main/docs/package-format.md">package-format.md</a> (KCL Package, four regions, engine callables)</li><li><strong>Policy format</strong> — <a href="https://github.com/akua-dev/akua/blob/main/docs/policy-format.md">policy-format.md</a> (Rego as host, compile-resolved imports, custom builtins)</li><li><strong>Lockfile</strong> — <a href="https://github.com/akua-dev/akua/blob/main/docs/lockfile-format.md">lockfile-format.md</a> (<code>akua.toml</code> + <code>akua.lock</code>)</li></ul>
+<ul><li><strong>Package format</strong> — <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/package-format.md">package-format.md</a> (KCL Package, four regions, engine callables)</li><li><strong>Policy format</strong> — <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/policy-format.md">policy-format.md</a> (Rego as host, compile-resolved imports, custom builtins)</li><li><strong>Lockfile</strong> — <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/lockfile-format.md">lockfile-format.md</a> (<code>akua.toml</code> + <code>akua.lock</code>)</li></ul>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
+  <a href="https://github.com/akua-dev/akuapkg">github.com/akua-dev/akuapkg</a> ·
   Apache-2.0
 </footer>
 </main>

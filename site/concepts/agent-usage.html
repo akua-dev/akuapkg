@@ -304,7 +304,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <p>akua is designed agent-first. This doc covers how agents discover akua's capabilities, what ships out of the box, and why the architecture is the way it is.</p>
 <hr />
 <h2 id="the-short-version">The short version</h2>
-<ul><li>akua auto-detects agent sessions from standard env vars (<code>AGENT=…</code>, <code>CLAUDECODE=1</code>, etc.) and silently enables JSON output, structured errors, no-interactive, no-color. See <a href="/concepts/cli-contract#15-agent-context-auto-detection">cli-contract.md §1.5</a>.</li><li>The akua CLI surface follows a strict contract (JSON-first, typed exit codes, idempotent writes, plan mode, time-bounded) — the CLI is the agent API. See <a href="/concepts/cli-contract">cli-contract.md</a>.</li><li>Agent-ready workflows ship as skills in <a href="https://github.com/akua-dev/akua/tree/main/skills"><code>skills/</code></a> following the open <a href="https://agentskills.io">Agent Skills Specification</a>. Install them into Claude Code, Cursor, Codex, Gemini CLI, Goose, Amp, OpenCode, or any of the 35+ supported agents.</li><li>No MCP server. Shell + skills is structurally more efficient than MCP for operational tools (token cost, composability).</li></ul>
+<ul><li>akua auto-detects agent sessions from standard env vars (<code>AGENT=…</code>, <code>CLAUDECODE=1</code>, etc.) and silently enables JSON output, structured errors, no-interactive, no-color. See <a href="/concepts/cli-contract#15-agent-context-auto-detection">cli-contract.md §1.5</a>.</li><li>The akua CLI surface follows a strict contract (JSON-first, typed exit codes, idempotent writes, plan mode, time-bounded) — the CLI is the agent API. See <a href="/concepts/cli-contract">cli-contract.md</a>.</li><li>Agent-ready workflows ship as skills in <a href="https://github.com/akua-dev/akuapkg/tree/main/skills"><code>skills/</code></a> following the open <a href="https://agentskills.io">Agent Skills Specification</a>. Install them into Claude Code, Cursor, Codex, Gemini CLI, Goose, Amp, OpenCode, or any of the 35+ supported agents.</li><li>No MCP server. Shell + skills is structurally more efficient than MCP for operational tools (token cost, composability).</li></ul>
 <hr />
 <h2 id="why-no-mcp-server">Why no MCP server?</h2>
 <p>MCP tool definitions consume 30k–90k tokens of agent context per connection before any reasoning starts. For a CLI with 20 verbs and 100+ subcommands, that's catastrophic.</p>
@@ -324,7 +324,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <pre><code class="lang-sh">cp -r path/to/akua/skills/* ~/.claude/skills/</code></pre>
 <h3 id="openai-codex">OpenAI Codex</h3>
 <p>Install via the Codex skills manager:</p>
-<pre><code class="lang-sh">codex skills install github:akua-dev/akua/skills</code></pre>
+<pre><code class="lang-sh">codex skills install github:akua-dev/akuapkg/skills</code></pre>
 <h3 id="cursor">Cursor</h3>
 <p>Add <code>skills/</code> to Cursor's skill paths in <code>.cursor/config.json</code>:</p>
 <pre><code class="lang-json">{ &quot;skills&quot;: { &quot;paths&quot;: [&quot;./skills&quot;] } }</code></pre>
@@ -333,16 +333,16 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <pre><code class="lang-sh">gemini extensions install @akua/skills</code></pre>
 <h3 id="goose-amp-opencode-cline-roo-code-amp-command-code-kiro-factory-and-25-others">Goose, Amp, OpenCode, Cline, Roo Code, Amp, Command Code, Kiro, Factory, and 25+ others</h3>
 <p>All support the open <a href="https://agentskills.io">Agent Skills Specification</a>. Any of:</p>
-<ul><li>Symlink <code>skills/</code> into the agent's expected location</li><li>Use <code>npx skills install github:akua-dev/akua/skills</code></li><li>Follow each agent's skill-installation instructions (linked from <a href="https://agentskills.io/">agentskills.io/overview</a>)</li></ul>
+<ul><li>Symlink <code>skills/</code> into the agent's expected location</li><li>Use <code>npx skills install github:akua-dev/akuapkg/skills</code></li><li>Follow each agent's skill-installation instructions (linked from <a href="https://agentskills.io/">agentskills.io/overview</a>)</li></ul>
 <h3 id="universal-npx-skills">Universal: <code>npx skills</code></h3>
 <p>The <a href="https://github.com/vercel-labs/skills">Vercel Labs skills manager</a> works across all Agent Skills compatible agents:</p>
-<pre><code class="lang-sh">npx skills install github:akua-dev/akua/skills
+<pre><code class="lang-sh">npx skills install github:akua-dev/akuapkg/skills
 npx skills list
 npx skills remove akua-*</code></pre>
 <hr />
 <h2 id="shipped-skills">Shipped skills</h2>
-<p>Eight initial skills covering the most common akua workflows. See <a href="https://github.com/akua-dev/akua/tree/main/skills"><code>skills/</code></a> for details.</p>
-<table><thead><tr><th>skill</th><th>use when</th></tr></thead><tbody><tr><td><a href="https://github.com/akua-dev/akua/tree/main/skills/new-package">new-package</a></td><td>user wants to start a new akua Package</td></tr><tr><td><a href="https://github.com/akua-dev/akua/tree/main/skills/inspect-package">inspect-package</a></td><td>auditing a third-party Package before use</td></tr><tr><td><a href="https://github.com/akua-dev/akua/tree/main/skills/diff-gate">diff-gate</a></td><td>setting up CI to block breaking upgrades</td></tr><tr><td><a href="https://github.com/akua-dev/akua/tree/main/skills/dev-loop">dev-loop</a></td><td>iterating on a Package with hot-reload</td></tr><tr><td><a href="https://github.com/akua-dev/akua/tree/main/skills/migrate-helmfile">migrate-helmfile</a></td><td>converting Helmfile to akua</td></tr><tr><td><a href="https://github.com/akua-dev/akua/tree/main/skills/rotate-secret">rotate-secret</a></td><td>rotating a shared secret across installs</td></tr><tr><td><a href="https://github.com/akua-dev/akua/tree/main/skills/publish-signed">publish-signed</a></td><td>releasing a signed + attested Package</td></tr><tr><td><a href="https://github.com/akua-dev/akua/tree/main/skills/apply-policy-tier">apply-policy-tier</a></td><td>subscribing to a compliance / production tier</td></tr></tbody></table>
+<p>Eight initial skills covering the most common akua workflows. See <a href="https://github.com/akua-dev/akuapkg/tree/main/skills"><code>skills/</code></a> for details.</p>
+<table><thead><tr><th>skill</th><th>use when</th></tr></thead><tbody><tr><td><a href="https://github.com/akua-dev/akuapkg/tree/main/skills/new-package">new-package</a></td><td>user wants to start a new akua Package</td></tr><tr><td><a href="https://github.com/akua-dev/akuapkg/tree/main/skills/inspect-package">inspect-package</a></td><td>auditing a third-party Package before use</td></tr><tr><td><a href="https://github.com/akua-dev/akuapkg/tree/main/skills/diff-gate">diff-gate</a></td><td>setting up CI to block breaking upgrades</td></tr><tr><td><a href="https://github.com/akua-dev/akuapkg/tree/main/skills/dev-loop">dev-loop</a></td><td>iterating on a Package with hot-reload</td></tr><tr><td><a href="https://github.com/akua-dev/akuapkg/tree/main/skills/migrate-helmfile">migrate-helmfile</a></td><td>converting Helmfile to akua</td></tr><tr><td><a href="https://github.com/akua-dev/akuapkg/tree/main/skills/rotate-secret">rotate-secret</a></td><td>rotating a shared secret across installs</td></tr><tr><td><a href="https://github.com/akua-dev/akuapkg/tree/main/skills/publish-signed">publish-signed</a></td><td>releasing a signed + attested Package</td></tr><tr><td><a href="https://github.com/akua-dev/akuapkg/tree/main/skills/apply-policy-tier">apply-policy-tier</a></td><td>subscribing to a compliance / production tier</td></tr></tbody></table>
 <hr />
 <h2 id="writing-your-own-skill">Writing your own skill</h2>
 <p>Follow <a href="https://agentskills.io/specification">the spec</a>:</p>
@@ -362,7 +362,7 @@ description: What this does and when to use it.
 Step-by-step instructions...</code></pre>
 <p>Validation: <code>npx skills-ref validate ./skills/my-skill</code></p>
 <p>Good descriptions include trigger keywords agents would recognize. Agents load metadata for all skills (~100 tokens each) at startup; they load the full body only when they decide a skill applies.</p>
-<p>See the <a href="https://github.com/akua-dev/akua/tree/main/skills">shipped skills</a> for canonical examples.</p>
+<p>See the <a href="https://github.com/akua-dev/akuapkg/tree/main/skills">shipped skills</a> for canonical examples.</p>
 <hr />
 <h2 id="running-agents-against-akua--example-loop">Running agents against akua — example loop</h2>
 <pre><code>agent receives user intent:
@@ -397,11 +397,11 @@ deploy repo auto-updates; ArgoCD syncs</code></pre>
 <p>The whole loop: ~300 tokens of agent context for metadata, ~1000-2000 for the activated skill, plus primary task context. No MCP, no separate protocol, no magic — shell + git + markdown.</p>
 <hr />
 <h2 id="related-reading">Related reading</h2>
-<ul><li><a href="/concepts/cli-contract">cli-contract.md</a> — the CLI invariants agents rely on</li><li><a href="https://github.com/akua-dev/akua/blob/main/docs/cli.md">cli.md</a> — full verb reference</li><li><a href="/concepts/sdk">sdk.md</a> — programmatic access if you prefer SDK over CLI</li><li><a href="https://agentskills.io">agentskills.io</a> — the skill-format standard</li><li><a href="https://blog.cloudflare.com/code-mode-the-better-way-to-use-mcp/">Cloudflare: code execution &gt; MCP tools for agent ops</a> — the research that shifted the ecosystem</li></ul>
+<ul><li><a href="/concepts/cli-contract">cli-contract.md</a> — the CLI invariants agents rely on</li><li><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/cli.md">cli.md</a> — full verb reference</li><li><a href="/concepts/sdk">sdk.md</a> — programmatic access if you prefer SDK over CLI</li><li><a href="https://agentskills.io">agentskills.io</a> — the skill-format standard</li><li><a href="https://blog.cloudflare.com/code-mode-the-better-way-to-use-mcp/">Cloudflare: code execution &gt; MCP tools for agent ops</a> — the research that shifted the ecosystem</li></ul>
 
 <footer>
   <a href="/">akua.dev</a> ·
-  <a href="https://github.com/akua-dev/akua">github.com/akua-dev/akua</a> ·
+  <a href="https://github.com/akua-dev/akuapkg">github.com/akua-dev/akuapkg</a> ·
   Apache-2.0
 </footer>
 </main>
