@@ -13,7 +13,7 @@ Use `akuapkg <command> --help` for the authoritative flags in the checked-out so
 
 For the universal contract every verb honors (JSON output, exit codes, idempotency, plan mode, timeouts), see [cli-contract.md](cli-contract.md).
 
-> **Status marker.** Sections marked ✅ describe verbs available in the shipping binary. Sections marked 🚧 describe verbs from the target surface that aren't wired yet. If a verb isn't marked, assume 🚧.
+> This reference includes commands implemented by the current source. Run `akuapkg --help` against your installed version for its authoritative command list.
 >
 > **Shipped today (28 verbs):**
 > `init` · `whoami` · `version` · `verify` · `render` · `add` · `vendor` · `dev` · `test` · `tree` · `pull` · `publish` · `sign` · `update` · `lock` · `push` · `repl` · `pack` · `remove` · `diff` · `check` · `inspect` · `lint` · `fmt` · `cache` · `auth` · `export` · `api`
@@ -56,47 +56,6 @@ CLAUDECODE=1 akuapkg render
 ```
 
 See [cli-contract.md §1.5](cli-contract.md#15-agent-context-auto-detection) for the full detection rules, override semantics, and env-var reference.
-
----
-
-## Verb index
-
-```
-AUTHOR              PUBLISH             DEPLOY              OPERATE
-------              -------             ------              -------
-akuapkg init         akuapkg attest       akuapkg deploy       akuapkg secret
-akuapkg add          akuapkg publish      akuapkg rollout      akuapkg policy
-akuapkg vendor       akuapkg pull         akuapkg dev          akuapkg audit
-akuapkg render       akuapkg inspect                           akuapkg query
-akuapkg diff         akuapkg export                            akuapkg infra
-
-DEVELOP             SESSION             META
--------             -------             ----
-akuapkg test         akuapkg login        akuapkg help
-akuapkg fmt          akuapkg logout       akuapkg version
-akuapkg lint                              akuapkg whoami
-akuapkg check                             akuapkg api
-                                         akuapkg telemetry
-                                         akuapkg lint-cli
-akuapkg bench
-akuapkg trace
-akuapkg cov
-akuapkg repl
-akuapkg eval
-```
-
-Thirty-five verbs. Grouped by purpose. Each covered below.
-
-> **Quick disambiguation — `render` vs `export` vs `inspect` vs `diff`:**
->
-> | verb | takes | produces | invokes engines? |
-> |---|---|---|---|
-> | `render` | Package + inputs | deploy-ready manifests | yes |
-> | `export` | any canonical artifact | format view (JSON Schema, YAML, OpenAPI, Rego bundle) | no |
-> | `inspect` | local `package.k` or package tarball | package metadata and input surface | no |
-> | `diff` | two package refs | structural diff between them | no |
->
-> When in doubt: `render` = "run the program"; `export` = "convert the format"; `inspect` = "audit what's there"; `diff` = "compare two versions."
 
 ---
 
@@ -409,41 +368,7 @@ akuapkg diff <ref>                    # diff local HEAD against published ref
 
 ---
 
-## `akuapkg attest` 🚧
-
-Emit a SLSA v1 provenance predicate for the current package or a built artifact.
-
-```
-akua attest [path] [flags]
-```
-
-### Flags
-
-| flag | description |
-|---|---|
-| `--key=<cosign-key-ref>` | cosign signing key |
-| `--oci=<ref>` | attest a remote OCI artifact instead of local build |
-| `--out=<file>` | where to write the predicate (default: `<target>.attestation.json`) |
-| `--format=<slsa-v1\|in-toto>` | predicate format (default: slsa-v1) |
-
-### JSON output
-
-```json
-{
-  "subject": {
-    "name": "pkg.akua.dev/payments-api",
-    "digest": "sha256:…"
-  },
-  "predicateType": "https://slsa.dev/provenance/v1",
-  "predicate": { /* SLSA v1 predicate */ },
-  "signed": true,
-  "signature": "./attestation.sig"
-}
-```
-
----
-
-## `akuapkg publish` 🚧
+## `akuapkg publish` ✅
 
 Push a signed package to an OCI registry.
 
@@ -481,7 +406,7 @@ akuapkg publish [path] [flags]
 
 ---
 
-## `akuapkg pull` 🚧
+## `akuapkg pull` ✅
 
 Fetch a package from an OCI registry into the local cache.
 
@@ -759,318 +684,6 @@ Useful for agents that want to drive `akuapkg dev` programmatically.
 
 ---
 
-## `akuapkg deploy` 🚧
-
-Deploy rendered output to a reconciler target.
-
-```
-akua deploy [path] [flags]
-```
-
-Depending on `--to=<target>`:
-
-- `--to=argo` — render, open a PR against the deploy repo, Argo picks up
-- `--to=flux` — same with Flux
-- `--to=kro` — deploy the RGD output to kro
-- `--to=helm` — `helm upgrade --install`
-- `--to=kubectl` — `kubectl apply` directly
-- `--to=<custom-driver>` — configured driver
-
-### Subcommands
-
-```
-akua deploy status   --handle=<h>
-akua deploy wait     --handle=<h> [--timeout=<d>]
-akua deploy rollback --change=<id>
-akua deploy history  [--service=<name>] [--last=<n>]
-akua deploy cancel   --handle=<h>
-```
-
-### JSON output (main verb)
-
-```json
-{
-  "handle": "r-4f2c9a",
-  "target": "argo",
-  "status": "pending",
-  "resources_planned": 12,
-  "pr_url": "https://github.com/acme/deploy-repo/pull/48",
-  "policy": { "verdict": "allow" }
-}
-```
-
-### JSON output (status)
-
-```json
-{
-  "handle": "r-4f2c9a",
-  "phase": "reconciling",
-  "health": "degraded",
-  "ready": 2,
-  "total": 3,
-  "started_at": "2026-04-20T14:03:00Z",
-  "last_event": "Deployment/api: 2/3 replicas ready"
-}
-```
-
----
-
-## `akuapkg rollout` 🚧
-
-Cross-repo / cross-service staged rollout orchestration.
-
-```
-akua rollout <spec> [flags]
-```
-
-Where `<spec>` is a user-authored rollout document (KCL or YAML view) or OCI ref.
-
-### Subcommands
-
-```
-akua rollout plan    <spec>           # show planned stages without executing
-akua rollout apply   <spec>           # execute the rollout
-akua rollout status  --handle=<h>
-akua rollout pause   --handle=<h>
-akua rollout resume  --handle=<h>
-akua rollout abort   --handle=<h>     # triggers rollback
-```
-
-### Flags
-
-| flag | description |
-|---|---|
-| `--strategy=<parallel\|staged\|canary>` | override rollout strategy |
-| `--batch-size=<n>` | override parallel batch size |
-| `--soak=<duration>` | soak time between stages |
-
----
-
-## `akuapkg secret` 🚧
-
-Typed secret operations. Secrets move as refs, never raw bytes.
-
-```
-akua secret <sub> [args]
-```
-
-### Subcommands
-
-```
-akua secret add     <name> --from-env=<var> --store=<vault|infisical|sops>
-akua secret get     <name> --format=ref       # returns a ref; never raw value
-akua secret rotate  <name>
-akua secret grant   <name> --to=<service> --scope=<read|write>
-akua secret revoke  <name> --from=<service>
-akua secret trace   <name>                    # who has access, who's used it
-akua secret list    [--store=<name>]
-akua secret delete  <name>                    # soft delete; needs approval
-```
-
-### JSON output (trace)
-
-```json
-{
-  "name": "stripe-api-key",
-  "store": "vault",
-  "ref": "vault://secrets/stripe/api-key",
-  "grants": [
-    {"service": "checkout", "scope": "read", "granted_at": "2026-01-15"}
-  ],
-  "last_access": "2026-04-20T14:03:00Z",
-  "rotation": {
-    "policy": "30d",
-    "last_rotated": "2026-04-15",
-    "next_due": "2026-05-15"
-  }
-}
-```
-
----
-
-## `akuapkg policy` 🚧
-
-Policy tier operations.
-
-```
-akua policy <sub> [args]
-```
-
-### Subcommands
-
-```
-akua policy check   [--tier=<name>] [--target=<file-or-dir>]
-akua policy tiers                                     # list available tiers
-akua policy show    <tier>                            # display a tier's rules
-akua policy diff    <tier-a> <tier-b>
-akua policy install <tier> [--from=<oci-ref>]
-akua policy fork    <tier> --as=<new-name>
-akua policy publish <tier>                            # publish custom tier to OCI
-```
-
-### JSON output (check)
-
-```json
-{
-  "tier": "tier/production",
-  "verdict": "allow" | "deny" | "needs-approval",
-  "checks": {
-    "resource_limits":    "pass",
-    "non_privileged":     "pass",
-    "readiness_probes":   "pass",
-    "budget_caps":        "warn"
-  },
-  "failing": [
-    {
-      "rule": "budget_cap",
-      "resource": "Deployment/api",
-      "reason": "replicas * resources.requests.cpu exceeds team budget",
-      "suggested_fix": "reduce replicas to 3 or increase budget to $500/mo"
-    }
-  ],
-  "approvers": ["@team/platform"]
-}
-```
-
----
-
-## `akuapkg audit` 🚧
-
-Causality spine. Trace changes, explain incidents, query the audit trail.
-
-```
-akua audit <sub> [args]
-```
-
-### Subcommands
-
-```
-akua audit explain   <change-id-or-incident-id>
-akua audit trace     --resource=<name> [--since=<duration>]
-akua audit search    --actor=<name> [--action=<verb>]
-akua audit export    --format=<json|csv> --since=<time> --until=<time>
-akua audit who       <resource>                       # who has permission to modify
-```
-
-### JSON output (explain)
-
-```json
-{
-  "incident_id": "i-47",
-  "trigger": {
-    "type": "error_rate_spike",
-    "service": "checkout",
-    "at": "2026-04-20T14:08:00Z"
-  },
-  "root_cause": {
-    "change_id": "c-4f2c9a",
-    "actor": "agent-experiments-4",
-    "reason": "enabled new flag X",
-    "committed_at": "2026-04-20T14:03:00Z"
-  },
-  "resolution": {
-    "action": "rollback",
-    "change_id": "c-9b3",
-    "actor": "agent-incident-responder",
-    "completed_at": "2026-04-20T14:10:00Z"
-  },
-  "duration_minutes": 7,
-  "learned": "experiment should gate on p99 budget; see policy-template/experiment-v2"
-}
-```
-
----
-
-## `akuapkg query` 🚧
-
-Structured queries against observability stores.
-
-```
-akua query <expr> [flags]
-```
-
-Query syntax: promql-like for metrics, logql-like for logs, tempoql for traces. Returns JSON.
-
-### Flags
-
-| flag | description |
-|---|---|
-| `--backend=<prometheus\|loki\|tempo\|auto>` | which store |
-| `--since=<duration>` | time window (default: 1h) |
-| `--format=<json\|table\|chart>` | output shape |
-
-### Example
-
-```sh
-akua query "error_rate p99 last 1h service=checkout" --json
-```
-
-```json
-{
-  "query": "error_rate p99 last 1h service=checkout",
-  "backend": "prometheus",
-  "result": {
-    "value": 0.023,
-    "baseline": 0.001,
-    "change_pct": 2200,
-    "samples": 60
-  }
-}
-```
-
----
-
-## `akuapkg infra` 🚧
-
-Cluster, network, DNS, cert primitives. Wraps Crossplane or Terraform under the hood.
-
-```
-akua infra <sub> [args]
-```
-
-### Subcommands
-
-```
-akua infra plan   <file>
-akua infra apply  <file>
-akua infra status
-akua infra drift                    # show drift between desired and observed
-akua infra import <resource>        # bring external resource under management
-```
-
----
-
-## `akuapkg login` 🚧
-
-Authenticate to OCI registries and signing providers.
-
-```
-akua login [registry] [flags]
-```
-
-### Examples
-
-```sh
-akua login                              # interactive; logs into akua.dev
-akua login ghcr.io                      # interactive; token prompt
-akua login ghcr.io --token=$GITHUB_PAT  # scripted
-```
-
-Credentials are stored in the system credential store (Keychain, libsecret, Credential Manager). Never plaintext.
-
----
-
-## `akuapkg logout` 🚧
-
-Remove stored credentials.
-
-```
-akua logout [registry]
-akua logout --all
-```
-
----
-
 ## `akuapkg whoami` ✅
 
 Display current identity, logged-in registries, and scopes.
@@ -1101,7 +714,7 @@ akuapkg whoami [flags]
 
 ---
 
-## `akuapkg test` 🚧
+## `akuapkg test` ✅
 
 Run unit tests for packages, policies, or both. Unified test runner across engines — detects target types by file extension.
 
@@ -1218,96 +831,6 @@ On error:
 
 ---
 
-## `akuapkg bench` 🚧
-
-Benchmark policy evaluation and package render latency.
-
-```
-akua bench [path] [flags]
-```
-
-Uses OPA partial evaluation for policy benchmarks; the KCL interpreter's own timing for package render. Intended for high-throughput evaluators (admission webhooks, CI gates at scale).
-
-### Flags
-
-| flag | description |
-|---|---|
-| `--iterations=<n>` | run each benchmark N times (default 1000) |
-| `--input=<file>` | use this input for the benchmark (default: workspace defaults) |
-| `--engine=<auto\|embedded\|shell>` | engine selection |
-
-### JSON output
-
-```json
-{
-  "benchmarks": [
-    {
-      "name":            "tier/production:deny",
-      "iterations":      1000,
-      "total_ms":        47,
-      "mean_us":         47,
-      "p99_us":          82,
-      "rules_evaluated": 47
-    }
-  ]
-}
-```
-
----
-
-## `akuapkg trace` 🚧
-
-Explain the evaluation path of a policy query. Useful for debugging "why did this rule deny?" or "why didn't this rule fire?"
-
-```
-akua trace <query> [flags]
-```
-
-Passes through OPA's `--explain` with structured output.
-
-### Flags
-
-| flag | description |
-|---|---|
-| `--input=<file>` | input document for the query |
-| `--depth=<notes\|fails\|full\|debug>` | trace verbosity (default fails) |
-| `--data=<dir>` | policy bundle directory (default: current workspace) |
-
-### Example
-
-```sh
-$ akua trace 'data.akua.policies.production.deny' --input=./deploy/api.yaml
-```
-
-```
-EVAL  data.akua.policies.production.deny
-  EVAL  input.resource.kind == "Deployment"            TRUE
-  EVAL  not input.resource.metadata.labels["team"]      TRUE
-  EVAL  msg := "production Deployments must have a team label"
-ALLOW deny[msg] evaluated to {"production Deployments must have a team label"}
-```
-
----
-
-## `akuapkg cov` 🚧
-
-Generate a test coverage report across rules (Rego) and schemas (KCL).
-
-```
-akua cov [path] [flags]
-```
-
-Equivalent to `akuapkg test --coverage` but produces a standalone report. Useful for CI gates that enforce a minimum coverage percentage.
-
-### Flags
-
-| flag | description |
-|---|---|
-| `--min=<percentage>` | fail if coverage is below threshold (e.g. `--min=80`) |
-| `--format=<json\|html\|lcov>` | report format (default json) |
-
----
-
 ## `akuapkg repl` ✅
 
 Interactive REPL for exploring policies and packages.
@@ -1325,46 +848,14 @@ Useful for experimenting before committing to a rule or package change.
 
 ---
 
-## `akuapkg eval` 🚧
+## `akuapkg help` ✅
 
-One-shot evaluator — cheap, scriptable. For Rego queries and KCL expressions without entering the REPL.
+Print the top-level help or help for one command:
 
+```sh
+akuapkg help
+akuapkg help render
 ```
-akua eval <query> [flags]
-akua eval --lang=rego 'data.akua.policies.production.deny'
-akua eval --lang=kcl  'schema Input; input = Input {...}; input.replicas * 2'
-```
-
-### Flags
-
-| flag | description |
-|---|---|
-| `--lang=<rego\|kcl>` | expression language (default: inferred from query syntax) |
-| `--input=<file>` | input document (Rego) or values file (KCL) |
-| `--data=<dir>` | policy / package bundle |
-
-### JSON output
-
-```json
-{
-  "lang": "rego",
-  "query": "data.akua.policies.production.deny",
-  "result": ["production Deployments must have a team label"],
-  "duration_ms": 5
-}
-```
-
----
-
-## `akuapkg help` 🚧
-
-```
-akua help                    # list all verbs
-akua help <verb>             # detailed help for one verb
-akua help --json             # machine-readable command tree
-```
-
-The `--json` form is the agent-discovery surface.
 
 ---
 
@@ -1385,33 +876,6 @@ akuapkg version --json
   "kcl_plugin_version": "0.1.0"
 }
 ```
-
----
-
-## `akuapkg telemetry` 🚧
-
-Opt-in, anonymized usage data.
-
-```
-akua telemetry status
-akua telemetry enable
-akua telemetry disable
-akua telemetry show              # print last 100 records that WOULD be sent
-```
-
-Default: disabled. Agents enable explicitly if desired.
-
----
-
-## `akuapkg lint-cli` (internal, advanced) 🚧
-
-Validate that the current binary honors the CLI contract.
-
-```
-akuapkg lint-cli
-```
-
-Used in CI to catch contract violations before release.
 
 ---
 
