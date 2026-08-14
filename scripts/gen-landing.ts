@@ -27,7 +27,7 @@ const body = `
 <pre><code><span style="color: var(--accent); user-select: none;">$</span> curl -fsSL https://cli.akua.dev/install | sh</code></pre>
 
 <h2>Homebrew</h2>
-<pre><code><span style="color: var(--accent); user-select: none;">$</span> brew install cnap-tech/tap/akua</code></pre>
+<pre><code><span style="color: var(--accent); user-select: none;">$</span> brew install akua-dev/tap/akuapkg</code></pre>
 
 <h2>Install (Windows)</h2>
 <pre><code><span style="color: var(--accent); user-select: none;">&gt;</span> irm https://cli.akua.dev/install.ps1 | iex</code></pre>
