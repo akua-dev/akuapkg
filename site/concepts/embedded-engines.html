@@ -301,64 +301,55 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
   <h1>Embedded engines</h1>
   <p class="tagline">How KCL, Helm, OPA, Regal, Kustomize, kro, and the Kyverno→Rego converter ship as wasip1 modules inside akua.</p>
 </header>
-<p>akua bundles every engine it dispatches to — KCL, OPA (Rego), Kyverno, CEL, Helm, kro, Kustomize, Regal — into the <code>akua</code> binary itself. No <code>$PATH</code> dependencies. No <code>helm</code> or <code>opa</code> or <code>kcl</code> required to be installed separately. One binary, everything works out of the box.</p>
-<p>This doc covers the embedding strategy, per-engine status, and what it means for agents and CI. No shell-out escape hatch anywhere in the render pipeline — see <a href="https://github.com/akua-dev/akuapkg/blob/main/CLAUDE.md">CLAUDE.md</a>'s &quot;No shell-out, ever&quot; invariant and <a href="/concepts/security-model">security-model.md</a> for the threat model.</p>
+<p>Akuapkg embeds its KCL runtime and the supported Helm and Kustomize engines in the standalone <code>akuapkg</code> binary. Package commands do not look up <code>kcl</code>, <code>helm</code>, or <code>kustomize</code> on <code>$PATH</code>.</p>
+<p>The Akua platform CLI can expose the same package dispatcher under <code>akua pkg</code>. This page uses Akuapkg and <code>akuapkg</code> for the package tool unless it is describing that outer invocation.</p>
+<p>This page explains how the engines are embedded and what the design means for package authors, agents, and CI. See <a href="/concepts/security-model">security-model.md</a> for the render sandbox threat model.</p>
 <hr />
 <h2 id="why-embed">Why embed</h2>
-<p>Three reasons, same as the helm-engine-wasm decision:</p>
-<ol><li><strong>Single binary UX.</strong> <code>curl -fsSL https://cli.akua.dev/install | sh</code> gives you everything. No &quot;now install helm 4.1.4&quot; followed by &quot;now install opa 0.60&quot; followed by &quot;now install KCL 0.12.&quot;</li><li><strong>Version determinism.</strong> akua ships with a known-good engine version. No &quot;works on my machine&quot; where my <code>opa</code> is 0.55 and yours is 0.62 and we get different verdicts.</li><li><strong>Air-gap friendly.</strong> Environments where customers can't install arbitrary binaries (FedRAMP, certain enterprise networks) still work because akua is self-contained.</li></ol>
-<p>Plus the agent case: agents can't install binaries. If <code>akuapkg test</code> needs <code>opa</code> and there's no <code>opa</code> in the sandbox, the agent is stuck. Embedded means the agent gets the full toolkit from one install.</p>
+<p>Akuapkg embeds engines for two reasons:</p>
+<ol><li><strong>Single binary workflow.</strong> A published Akuapkg binary includes the supported package engines. You do not need separate KCL, Helm, or Kustomize installations.</li><li><strong>Version determinism.</strong> An Akuapkg version uses the engine versions built with that release instead of whichever executables happen to be on <code>$PATH</code>.</li></ol>
+<p>Agents and CI jobs can therefore run package commands without installing engine-specific binaries.</p>
 <hr />
 <h2 id="embedding-strategy">Embedding strategy</h2>
-<p>Every engine reaches akua through the same architecture as <code>helm-engine-wasm</code>:</p>
-<pre><code>engine source (Go / Rust / C++)
+<p>The default standalone build packages the render worker and engine modules with the <code>akuapkg</code> executable:</p>
+<pre><code class="lang-text">engine source (Go or Rust)
         │
         ▼
-compiled to wasip1 WASM module
+compiled or linked into the render runtime
         │
         ▼
-shipped inside the akua binary via include_bytes!
+packaged with the akuapkg binary
         │
         ▼
-hosted at runtime by the shared wasmtime Engine
-(one Engine per process; one Store per invocation)
-        │
-        ▼
-typed FFI: Rust host ↔ WASM guest</code></pre>
-<p><strong>Shared Engine, many Stores.</strong> akua follows wasmtime's canonical pattern. One <code>engine_host_wasm::shared_engine()</code> singleton hosts:</p>
-<ul><li>the <code>akua-render-worker</code> (per-render Store with the tenant's preopens + memory cap + epoch deadline);</li><li>every engine plugin (helm, kustomize, future kro/CEL/kyverno) — each call gets its own Store on the same Engine.</li></ul>
-<p>Plugin callouts from sandboxed KCL cross the boundary once — through a single host-function import, <code>env::kcl_plugin_invoke_json_wasm</code>, that reads arguments from guest memory and dispatches to handlers registered against akua-core's plugin registry. The handler's engine Store runs, produces bytes, the bridge writes them back into the worker's linear memory. See <a href="/concepts/security-model#one-engine-many-stores--with-a-plugin-bridge">docs/security-model.md — one Engine, many Stores — with a plugin bridge</a> for the full picture + <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/spikes/wasmtime-multi-engine.md">docs/spikes/wasmtime-multi-engine.md</a> for the architecture decision.</p>
-<p>Precompilation: each engine's <code>build.rs</code> calls <code>engine_host_wasm::precompile(...)</code> against <code>shared_config()</code> at akua build time, producing a <code>.cwasm</code> deserialized in ~microseconds on first use.</p>
+hosted by a shared Wasmtime Engine
+(one Engine per process; separate Stores per invocation)</code></pre>
+<p>Akuapkg uses one process-wide <code>engine_host_wasm::shared_engine()</code> instance. Each render worker and engine call receives a separate Wasmtime Store on that Engine.</p>
+<p>Sandboxed KCL calls a single host import, <code>env::kcl_plugin_invoke_json_wasm</code>, to reach the registered <code>akua-core</code> plugin handler. The handler runs the requested engine, returns the result bytes, and resumes the render worker. See <a href="/concepts/security-model#one-engine-many-stores--with-a-plugin-bridge">the shared-engine architecture</a> for the boundary details.</p>
+<p>Build scripts precompile the render worker and supported WASM engines against the shared Wasmtime configuration. The standalone binary embeds those artifacts by default.</p>
 <hr />
 <h2 id="engine-inventory">Engine inventory</h2>
-<table><thead><tr><th>engine</th><th>source language</th><th>embedding method</th><th>v0 status</th></tr></thead><tbody><tr><td><strong>KCL</strong> (package authoring)</td><td>Rust (<code>kclvm-rs</code>)</td><td>direct link</td><td>shipped</td></tr><tr><td><strong>Helm v4 template engine</strong></td><td>Go → wasip1</td><td>wasmtime-hosted</td><td>shipped (forked to strip client-go; ~20 MB WASM)</td></tr><tr><td><strong>OPA</strong> (Rego)</td><td>Go → wasip1 or OPA-native WASM</td><td>wasmtime-hosted</td><td>v0.2</td></tr><tr><td><strong>Regal</strong> (Rego linter)</td><td>Go → wasip1</td><td>wasmtime-hosted</td><td>v0.2</td></tr><tr><td><strong>Kyverno-to-Rego converter</strong></td><td>Go → wasip1</td><td>wasmtime-hosted; runs at <code>akuapkg add</code> time</td><td>v0.3</td></tr><tr><td><strong>CEL</strong> (<code>cel-go</code>)</td><td>Go → wasip1</td><td>wasmtime-hosted</td><td>v0.3</td></tr><tr><td><strong>kustomize</strong></td><td>Go → wasip1</td><td>wasmtime-hosted</td><td>v0.3</td></tr><tr><td><strong>kro RGD instantiator</strong></td><td>Go → wasip1 (offline path)</td><td>wasmtime-hosted</td><td>v0.2</td></tr></tbody></table>
-<p>All compiled to wasip1 where practical. When upstream projects ship optimized WASM artifacts (OPA has <code>opa build -t wasm</code>), we use theirs; otherwise we compile from source in our CI and ship the artifact with akua.</p>
-<p>Binary size impact per engine: KCL ~8 MB, Helm (stripped fork) ~20 MB, OPA (with Regal) ~15 MB, Kyverno converter ~18 MB, CEL ~5 MB, Kustomize ~12 MB, kro instantiator ~6 MB. Total overhead versus a bare akua: ~85 MB. We consider this acceptable for &quot;everything just works&quot; — same order of magnitude as Bun (~45 MB) or Deno (~110 MB).</p>
+<p>The current standalone source enables these engines:</p>
+<table><thead><tr><th>engine</th><th>implementation</th><th>status</th></tr></thead><tbody><tr><td>KCL</td><td>Rust runtime linked into the render worker</td><td>shipped</td></tr><tr><td>Helm</td><td>Go engine compiled to <code>wasip1</code> and hosted by Wasmtime</td><td>shipped</td></tr><tr><td>Kustomize</td><td>Go engine compiled to <code>wasip1</code> and hosted by Wasmtime</td><td>shipped</td></tr></tbody></table>
+<p>Akuapkg does not fall back to shelling out when an engine is unavailable.</p>
 <hr />
-<h2 id="per-verb-engine-routing">Per-verb engine routing</h2>
-<p>Each verb that invokes engines documents which ones. From <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/cli.md">cli.md</a>:</p>
-<table><thead><tr><th>verb</th><th>engines used</th></tr></thead><tbody><tr><td><code>akuapkg init</code></td><td>KCL (scaffold)</td></tr><tr><td><code>akuapkg add</code></td><td>(fetch/convert) Kyverno-to-Rego converter, KCL schema generator</td></tr><tr><td><code>akuapkg render</code></td><td>KCL + Helm + kro offline instantiator + Kustomize + output emitters</td></tr><tr><td><code>akuapkg lint</code></td><td>KCL + Regal</td></tr><tr><td><code>akuapkg fmt</code></td><td>KCL + opa fmt</td></tr><tr><td><code>akuapkg check</code></td><td>KCL + OPA (parse-only)</td></tr><tr><td><code>akuapkg test</code></td><td>KCL + OPA</td></tr><tr><td><code>akua trace</code></td><td>OPA (<code>--explain</code>)</td></tr><tr><td><code>akua bench</code></td><td>OPA partial evaluation, KCL interpreter timing</td></tr><tr><td><code>akua policy check</code></td><td>OPA + CEL (via Rego runtime)</td></tr><tr><td><code>akuapkg repl</code></td><td>KCL + OPA</td></tr><tr><td><code>akua eval</code></td><td>KCL or OPA per <code>--lang</code></td></tr><tr><td><code>akua attest</code></td><td>(no engines; just signing + SLSA predicate generation)</td></tr><tr><td><code>akuapkg diff</code></td><td>KCL + OPA (for policy compat diff)</td></tr></tbody></table>
+<h2 id="command-routing">Command routing</h2>
+<p>Current package commands use the embedded runtime as follows:</p>
+<table><thead><tr><th>command</th><th>runtime used</th></tr></thead><tbody><tr><td><code>akuapkg render</code></td><td>KCL, plus Helm or Kustomize when the package calls those plugins</td></tr><tr><td><code>akuapkg check</code></td><td>KCL package checks</td></tr><tr><td><code>akuapkg lint</code></td><td>KCL parsing and import checks</td></tr><tr><td><code>akuapkg fmt</code></td><td>KCL formatter</td></tr><tr><td><code>akuapkg test</code></td><td>KCL test programs</td></tr><tr><td><code>akuapkg repl</code></td><td>KCL evaluator</td></tr></tbody></table>
+<p>Run <code>akuapkg --help</code> for the current standalone command list.</p>
 <hr />
 <h2 id="determinism-guarantees">Determinism guarantees</h2>
-<ul><li>Embedded engines are version-pinned to the akua release. Two runs of <code>akuapkg render</code> at the same akuapkg version produce byte-identical output (the <a href="/concepts/cli-contract#13-determinism">CLI contract §1.3</a>).</li><li>An <code>akua bundle lock</code> manifest (forthcoming) will record the exact embedded engine versions for the workspace; <code>akua bundle verify</code> confirms a CI runner has the same akuapkg version as the last known-good.</li></ul>
+<p>Embedded engines are pinned to the Akuapkg build. Two <code>akuapkg render</code> runs with the same package source, inputs, lockfile, and Akuapkg version produce byte-identical output. See <a href="/concepts/cli-contract#13-determinism">the CLI determinism contract</a>.</p>
 <hr />
 <h2 id="security-posture">Security posture</h2>
-<p>Every embedded engine runs inside the wasmtime WASI sandbox:</p>
-<ul><li>No filesystem access beyond what akua-core explicitly mounts.</li><li>No network access.</li><li>No environment variable read-through.</li><li>No syscall access.</li></ul>
-<p>This is stronger than shell-out — which would let binaries inherit the invoking shell's full privileges — and is why the shell-out fallback some other toolchains keep for convenience doesn't exist here. Agents operating akua in a sandbox can rely on the fact that no engine can escape to touch the rest of the system.</p>
-<p>System integrations are a separate category from engines. <code>akua deploy</code> calls <code>kubectl</code> (or similar) because it genuinely does need cluster access; those verbs live outside the render pipeline, and the binaries they invoke are external tools the user already trusts on their path. The render pipeline itself — everything that transforms inputs into deploy-ready artifacts — never shells out.</p>
-<hr />
-<h2 id="whats-not-embedded">What's NOT embedded</h2>
-<ul><li><strong><code>kubectl</code></strong> — used only by <code>akua deploy --to=kubectl</code>. Too specific to a user's cluster context; we rely on the system version.</li><li><strong><code>git</code></strong> — used for <code>akuapkg publish</code> and workspace operations. Extremely stable and universally available.</li><li><strong><code>cosign</code></strong> — used for signing. We embed the verification path (cryptographic primitives are in akua-core) but use <code>cosign</code> CLI for signing operations that need hardware keys.</li><li><strong><code>docker</code> / <code>podman</code></strong> — used only if a user opts into a Dockerfile-based build. Rare for akua workflows.</li></ul>
-<hr />
-<h2 id="performance-notes">Performance notes</h2>
-<ul><li>Cold-start overhead for a wasmtime-hosted engine: ~5-30 ms per engine, once per <code>akua</code> invocation. With precompile cache: ~2-5 ms.</li><li><code>akuapkg dev</code> keeps engines warm for the session. Subsequent renders skip cold-start entirely.</li><li>Benchmarks at <a href="https://github.com/akua-dev/akuapkg/tree/main/docs/bench">docs/bench/</a> (forthcoming) show akua's embedded OPA within 5% of native <code>opa eval</code> for realistic policy workloads.</li></ul>
+<p>The render worker and embedded engine modules run inside Wasmtime stores with explicit resource and capability limits:</p>
+<ul><li>Package code can access only explicitly preopened paths.</li><li>Package code cannot make network requests.</li><li>Package code cannot read host environment variables.</li><li>Package code cannot start subprocesses.</li></ul>
+<p>Akuapkg does not include a shell-out fallback for the render pipeline. Package paths also pass through <code>akua-core</code> guards before an engine receives them.</p>
 <hr />
 <h2 id="for-agents">For agents</h2>
-<p>Agents get the full engine toolkit from one install with zero PATH management. When writing skills that invoke <code>akuapkg test</code>, <code>akuapkg fmt</code>, <code>akua bench</code>, they never need to check <code>which opa</code>. Skills remain portable across fresh sandboxes, CI runners, and developer laptops without setup instructions beyond <code>curl -fsSL https://cli.akua.dev/install | sh</code>.</p>
+<p>An agent can use <code>akuapkg render</code>, <code>akuapkg test</code>, and <code>akuapkg fmt</code> without checking for separate KCL, Helm, or Kustomize executables. The command's structured output and exit codes remain the agent-facing interface.</p>
 <hr />
 <h2 id="relationship-to-other-docs">Relationship to other docs</h2>
-<ul><li><strong><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/cli.md">cli.md</a></strong> — the verbs that use these engines</li><li><strong><a href="/concepts/package-format">package-format.md</a></strong> — KCL (the primary host)</li><li><strong><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/policy-format.md">policy-format.md</a></strong> — OPA / Rego / Kyverno / CEL (the policy host + pluggable guests)</li><li><strong><a href="/concepts/cli-contract#13-determinism">cli-contract.md §1.3 determinism</a></strong> — why embedding matters for reproducibility</li></ul>
+<ul><li><a href="https://github.com/akua-dev/akuapkg/blob/main/docs/cli.md">CLI reference</a> lists the standalone package commands.</li><li><a href="/concepts/package-format">Package format</a> explains KCL package source.</li><li><a href="/concepts/security-model">Security model</a> defines the sandbox boundary.</li><li><a href="/concepts/cli-contract#13-determinism">CLI determinism contract</a> defines reproducibility.</li></ul>
 
 <footer>
   <a href="/">akua.dev</a> ·

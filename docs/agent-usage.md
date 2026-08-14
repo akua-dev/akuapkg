@@ -1,35 +1,40 @@
-# Using akua with AI agents
+# Using Akuapkg with AI agents
 
-akua is designed agent-first. This doc covers how agents discover akua's capabilities, what ships out of the box, and why the architecture is the way it is.
+Akuapkg is the package-authoring tool. Agents can invoke it through the standalone `akuapkg` binary or through the Akua platform CLI as `akua pkg`. This page covers package workflows only; platform commands outside `akua pkg` belong to the separate `akua` CLI.
 
 ---
 
 ## The short version
 
-- akua auto-detects agent sessions from standard env vars (`AGENT=…`, `CLAUDECODE=1`, etc.) and silently enables JSON output, structured errors, no-interactive, no-color. See [cli-contract.md §1.5](cli-contract.md#15-agent-context-auto-detection).
-- The akua CLI surface follows a strict contract (JSON-first, typed exit codes, idempotent writes, plan mode, time-bounded) — the CLI is the agent API. See [cli-contract.md](cli-contract.md).
-- Agent-ready workflows ship as skills in [`skills/`](../skills/) following the open [Agent Skills Specification](https://agentskills.io). Install them into Claude Code, Cursor, Codex, Gemini CLI, Goose, Amp, OpenCode, or any of the 35+ supported agents.
-- No MCP server. Shell + skills is structurally more efficient than MCP for operational tools (token cost, composability).
+- Akuapkg auto-detects agent sessions from standard environment variables (`AGENT=…`, `CLAUDECODE=1`, and others) and enables JSON output, structured errors, non-interactive mode, and no color. See [cli-contract.md §1.5](cli-contract.md#15-agent-context-auto-detection).
+- The package command surface follows a strict contract: JSON output, typed exit codes, idempotent writes, plan mode, and time bounds. See [cli-contract.md](cli-contract.md).
+- Agent-ready workflows ship as skills in [`skills/`](../skills/) following the open [Agent Skills Specification](https://agentskills.io).
+- Akuapkg does not ship an MCP server. Agents use the CLI's structured output and load task-specific skills as needed.
 
 ---
 
 ## Why no MCP server?
 
-MCP tool definitions consume 30k–90k tokens of agent context per connection before any reasoning starts. For a CLI with 20 verbs and 100+ subcommands, that's catastrophic.
-
-The alternative the ecosystem is converging on — pioneered by Cloudflare, validated by Google Workspace CLI — is:
+Akuapkg exposes its complete package workflow through commands that work in a shell and return structured output. Repository skills add task guidance without duplicating the command surface in a second protocol:
 
 1. **CLI surface with JSON-first output** (structured data for the agent; legible for humans).
-2. **Skills in the repository** (natural-language task descriptions the agent loads on-demand; ~100 tokens of metadata at startup, full body only when needed).
+2. **Skills in the repository** (natural-language task descriptions the agent loads on demand).
 3. **Auto-detection of agent context** so the agent never has to remember `--json` or similar agent-specific flags.
 
-This combination matches how agents already work. Agents compose through shell pipes; they read markdown. They don't need a separate protocol for each CLI.
+This combination keeps package commands usable by both agents and people. Embedders can expose the same parser under a parent command without changing the contract.
+
+For example, an agent can render directly or through the platform CLI:
+
+```sh
+akuapkg render --inputs inputs.yaml --out ./rendered
+akua pkg render --inputs inputs.yaml --out ./rendered
+```
 
 ---
 
-## How akua auto-detects agent context
+## How Akuapkg auto-detects agent context
 
-At process start, akua checks environment variables in this order:
+At process start, Akuapkg checks environment variables in this order:
 
 | env var | agent |
 |---|---|
@@ -37,71 +42,23 @@ At process start, akua checks environment variables in this order:
 | `CLAUDECODE=1` | Claude Code |
 | `GEMINI_CLI=1` | Gemini CLI |
 | `CURSOR_CLI=1` | Cursor CLI |
-| `AKUA_AGENT=<name>` | akua-specific fallback |
+| `AKUA_AGENT=<name>` | Akuapkg-specific fallback |
 
-If any matches, akua silently enables `--json`, `--log=json`, `--no-color`, `--no-progress`, `--no-interactive`. Explicit flags always win (user can force text output with `--no-json` or `--format=text`).
+If any matches, Akuapkg silently enables `--json`, `--log=json`, `--no-color`, `--no-progress`, and `--no-interactive`. Explicit flags always win; use `--no-json` to force text output.
 
 No stderr announcement. No prelude on stdout. Detection is observable via `akuapkg whoami --json` (reveals the `agent_context` field) or at `--log-level=debug`. Otherwise invisible.
 
 ---
 
-## How to install akua skills into your agent
+## Load Akuapkg skills
 
-### Claude Code
-
-Skills under `skills/` in any project Claude Code opens are discovered automatically. No installation needed. Alternatively for global access:
-
-```sh
-cp -r path/to/akua/skills/* ~/.claude/skills/
-```
-
-### OpenAI Codex
-
-Install via the Codex skills manager:
-
-```sh
-codex skills install github:akua-dev/akuapkg/skills
-```
-
-### Cursor
-
-Add `skills/` to Cursor's skill paths in `.cursor/config.json`:
-
-```json
-{ "skills": { "paths": ["./skills"] } }
-```
-
-### Gemini CLI
-
-Install as a Gemini CLI extension:
-
-```sh
-gemini extensions install @akua/skills
-```
-
-### Goose, Amp, OpenCode, Cline, Roo Code, Amp, Command Code, Kiro, Factory, and 25+ others
-
-All support the open [Agent Skills Specification](https://agentskills.io). Any of:
-
-- Symlink `skills/` into the agent's expected location
-- Use `npx skills install github:akua-dev/akuapkg/skills`
-- Follow each agent's skill-installation instructions (linked from [agentskills.io/overview](https://agentskills.io/))
-
-### Universal: `npx skills`
-
-The [Vercel Labs skills manager](https://github.com/vercel-labs/skills) works across all Agent Skills compatible agents:
-
-```sh
-npx skills install github:akua-dev/akuapkg/skills
-npx skills list
-npx skills remove akua-*
-```
+The repository stores skills under [`skills/`](../skills/). Agents that discover repository-local Agent Skills can load them directly from a checkout. For global installation, follow the current instructions for your agent rather than assuming one command works across every client.
 
 ---
 
 ## Shipped skills
 
-Eight initial skills covering the most common akua workflows. See [`skills/`](../skills/) for details.
+Nine skills cover common Akuapkg workflows. See [`skills/`](../skills/) for details.
 
 | skill | use when |
 |---|---|
@@ -113,6 +70,7 @@ Eight initial skills covering the most common akua workflows. See [`skills/`](..
 | [rotate-secret](../skills/rotate-secret/) | rotating a shared secret across installs |
 | [publish-signed](../skills/publish-signed/) | releasing a signed + attested Package |
 | [apply-policy-tier](../skills/apply-policy-tier/) | subscribing to a compliance / production tier |
+| [test-and-lint](../skills/test-and-lint/) | checking package source and tests before review |
 
 ---
 
@@ -143,47 +101,47 @@ Step-by-step instructions...
 
 Validation: `npx skills-ref validate ./skills/my-skill`
 
-Good descriptions include trigger keywords agents would recognize. Agents load metadata for all skills (~100 tokens each) at startup; they load the full body only when they decide a skill applies.
+Good descriptions include trigger keywords agents would recognize. Agents load the full body when they decide a skill applies.
 
 See the [shipped skills](../skills/) for canonical examples.
 
 ---
 
-## Running agents against akua — example loop
+## Running agents against Akuapkg — example loop
 
 ```
 agent receives user intent:
   "add a Redis to my checkout service"
 
 agent loads skills metadata:
-  reads ~100 tokens per skill, selects new-package + inspect-package
+  selects new-package + inspect-package
 
 agent loads new-package SKILL.md fully:
   now has full procedure for scaffolding + adding sources
 
 agent executes:
-  $ akuapkg add chart oci://ghcr.io/bitnami/charts/redis --version 21.0.0
-  $ edit package.k to wire redis values to existing schema
-  $ akuapkg lint
-  $ akuapkg render --inputs inputs.yaml --out ./rendered
+  akuapkg add redis --oci oci://registry-1.docker.io/bitnamicharts/redis --version 21.0.0
+  edit package.k to wire redis values to existing schema
+  akuapkg lint
+  akuapkg render --inputs inputs.yaml --out ./rendered
 
 agent verifies:
-  $ akuapkg diff previous:v1.2 ./rendered --json
-  (structural diff shows: new source redis, new schema field redis.replicas)
+  akuapkg check
+  akuapkg test
 
 agent commits + opens PR:
-  $ git commit -am "feat: add redis to checkout"
-  $ gh pr create
+  git commit -am "feat: add redis to checkout"
+  gh pr create
 
 CI runs:
-  akuapkg lint + diff-gate + policy check → attached to PR as comments
+  repository package checks
 
 human reviews + approves + merges
 
 deploy repo auto-updates; ArgoCD syncs
 ```
 
-The whole loop: ~300 tokens of agent context for metadata, ~1000-2000 for the activated skill, plus primary task context. No MCP, no separate protocol, no magic — shell + git + markdown.
+The workflow uses the package CLI, Git, and Markdown skills. The agent loads only the skill needed for the task.
 
 ---
 

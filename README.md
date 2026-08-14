@@ -1,8 +1,8 @@
 <div align="center">
   <!-- Large Hero Image -->
-  <img src="assets/logo.png" height="300" alt="akua" />
+  <img src="assets/logo.png" height="300" alt="Akuapkg" />
   
-  <h1>akua</h1>
+  <h1>Akuapkg</h1>
 
   <!-- Airy Technical Description -->
   <p>
@@ -21,16 +21,6 @@
     <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square"></a>
   </p>
   
-  <br>
-
-  <!-- High-Energy Quote -->
-  <p>
-    <font size="4">
-      <strong><em>
-        "Innovative teams eventually notice how much more sense cloud-native makes once they replace the bureaucratic mass of drifting YAML with high-energy, deterministic contracts."
-      </em></strong>
-    </font>
-  </p>
 </div>
 
 
@@ -44,15 +34,19 @@
 
 ---
 
-`akua` is a single Rust binary that does for cloud-native what `bun` and `deno` do for JavaScript: package manager, runtime, formatter, linter, test runner, REPL, dev loop, and signed-OCI publisher — one CLI, one contract, no `$PATH` dependency. Packages are authored in [KCL](https://kcl-lang.io) (typed configuration language); existing Helm charts and Kustomize bases are callable inside KCL programs (`helm.template(...)`, `kustomize.build(...)`); every render runs in a wasmtime WASI sandbox.
+Akuapkg is the Rust package-authoring tool for cloud-native application packages. Its standalone binary is `akuapkg`. The Akua platform CLI is a separate binary named `akua`; it embeds the same package command surface under `akua pkg`.
+
+Packages are authored in [KCL](https://kcl-lang.io). Existing Helm charts and Kustomize bases are callable inside KCL programs, and renders run in a Wasmtime WASI sandbox.
 
 ```sh
-# install (macOS / Linux)
-curl -fsSL https://cli.akua.dev/install | sh
-
-# render anywhere
+# Standalone package tool
 akuapkg render --inputs inputs.yaml --out ./deploy
+
+# The same operation through the Akua platform CLI
+akua pkg render --inputs inputs.yaml --out ./deploy
 ```
+
+> **Release availability:** `v0.9.3` is tagged in source but does not yet have published GitHub Release artifacts. Check [Akuapkg releases](https://github.com/akua-dev/akuapkg/releases) before relying on a version-specific binary or package-manager install.
 
 ## Quick start
 
@@ -105,9 +99,9 @@ akuapkg render --inputs prod.yaml --out ./deploy   # sandboxed render → raw ma
 akuapkg publish .                                  # cosign-signed OCI artifact + SLSA attestation
 ```
 
-For cross-Package composition (install one Akua package on top of another, with overlays / filters / extras), see [`examples/11-install-as-package/`](examples/11-install-as-package/). Twelve worked examples — Helm, Kustomize, multi-engine, package composition, KCL ecosystem, install-as-Package — each commit `rendered/` goldens byte-checked in CI.
+For cross-Package composition (install one Akua package on top of another, with overlays, filters, and extras), see [`examples/11-install-as-package/`](examples/11-install-as-package/). The [`examples/`](examples/) directory covers Helm, Kustomize, multi-engine, package composition, and the KCL ecosystem.
 
-## Why akua
+## Why Akuapkg
 
 - **Sandboxed by default.** Every render runs in a wasmtime WASI sandbox with memory / CPU / wall-clock caps. No shell-out, no `$PATH` lookup, no ambient filesystem. Untrusted Packages are safe to render on shared hosts. Adversarial test suite proves each invariant. See [`docs/security-model.md`](docs/security-model.md).
 - **Typed packages, not YAML templates.** KCL has real schemas, real types, real imports. Drift between the value the operator wrote and the value the chart consumed becomes a compile error, not a 3am incident.
@@ -115,30 +109,18 @@ For cross-Package composition (install one Akua package on top of another, with 
 - **Signed + attested.** `akuapkg publish` emits cosign signatures and SLSA v1 attestations by default. On pull, the `akua.lock` digest is always verified; cosign + SLSA verification engages, fail-closed, when a `[signing] cosign_public_key` is configured. ECDSA P-256 keyed cosign today; keyless on the v0.3 roadmap.
 - **Deterministic.** Same inputs + same lockfile + same akuapkg version → byte-identical output. No `now()`, no `random()`, no env reads in the render pipeline.
 - **Compose with the ecosystem.** kpm-published KCL packages (`oci://ghcr.io/kcl-lang/*`) drop straight into `[dependencies]` — `import k8s.api.apps.v1` resolves against the upstream schema bundle. See [`examples/10-kcl-ecosystem/`](examples/10-kcl-ecosystem/).
-- **Agent-first.** Auto-detects Claude Code, Cursor, Codex, Gemini CLI, Goose, Amp, OpenCode, Cline, and 25+ other agents. Every verb emits `--json`, uses typed exit codes, and ships skill manifests under [`skills/`](skills/) conforming to the [Agent Skills Specification](https://agentskills.io). See [`docs/agent-usage.md`](docs/agent-usage.md).
+- **Agent-aware.** Auto-detects supported agent environments, emits `--json`, uses typed exit codes, and ships skill manifests under [`skills/`](skills/) conforming to the [Agent Skills Specification](https://agentskills.io). See [`docs/agent-usage.md`](docs/agent-usage.md).
 
-## Install
+## Distribution
 
-```sh
-# macOS / Linux
-curl -fsSL https://cli.akua.dev/install | sh
-
-# Windows
-irm https://cli.akua.dev/install.ps1 | iex
-
-# From source
-cargo install --git https://github.com/akua-dev/akuapkg akuapkg-cli
-```
+Published binaries belong to [Akuapkg releases](https://github.com/akua-dev/akuapkg/releases). Verify that the version you need is published before relying on release assets; a source tag alone does not publish them.
 
 ```sh
-# TypeScript SDK — in-process via napi, no `akua` binary on PATH
+# TypeScript SDK — in-process via napi, no `akuapkg` binary on PATH
 bun add @akua-dev/sdk
-
-# Agent skills (universal — works across 25+ agents)
-npx skills install github:akua-dev/akuapkg/skills
 ```
 
-Prebuilt binaries: [Releases](https://github.com/akua-dev/akuapkg/releases). Container image: `ghcr.io/akua-dev/akuapkg`. Agent-specific setup: [`docs/agent-usage.md`](docs/agent-usage.md).
+Agent-specific setup: [`docs/agent-usage.md`](docs/agent-usage.md).
 
 ## Documentation
 
@@ -151,7 +133,7 @@ Prebuilt binaries: [Releases](https://github.com/akua-dev/akuapkg/releases). Con
 
 ## Status
 
-**Alpha.** Stable contracts: the 26-verb CLI surface, the universal flag/exit-code contract, the WASM-backed SDK methods, the sandbox invariant. Anything in [`docs/roadmap.md`](docs/roadmap.md) under Phase 5+ may change before v1.0. Safe for CI and agent workflows today; pin akua versions for production rollouts.
+**Alpha.** Interfaces may change before v1.0. The live command surface is authoritative in `akuapkg --help`; planned work remains in [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Security
 
@@ -164,5 +146,3 @@ Issues and small focused PRs are welcome — typos, doc clarity, test coverage, 
 ## License
 
 [Apache-2.0](LICENSE).
-
-<sub><em>Akua</em> — Hawaiian for *divine spirit*; echoes <em>aqua</em>, water. Cloud-native naming tradition: Docker loads the cargo, Helm steers the ship, Harbor stores what's shipped, Kubernetes (Greek <em>kubernḗtēs</em>, "helmsman") pilots the fleet. Akua is the current underneath.</sub>

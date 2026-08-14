@@ -1,145 +1,109 @@
 # Embedded engines
 
-akua bundles every engine it dispatches to — KCL, OPA (Rego), Kyverno, CEL, Helm, kro, Kustomize, Regal — into the `akua` binary itself. No `$PATH` dependencies. No `helm` or `opa` or `kcl` required to be installed separately. One binary, everything works out of the box.
+Akuapkg embeds its KCL runtime and the supported Helm and Kustomize engines in the standalone `akuapkg` binary. Package commands do not look up `kcl`, `helm`, or `kustomize` on `$PATH`.
 
-This doc covers the embedding strategy, per-engine status, and what it means for agents and CI. No shell-out escape hatch anywhere in the render pipeline — see [CLAUDE.md](../CLAUDE.md)'s "No shell-out, ever" invariant and [security-model.md](security-model.md) for the threat model.
+The Akua platform CLI can expose the same package dispatcher under `akua pkg`. This page uses Akuapkg and `akuapkg` for the package tool unless it is describing that outer invocation.
+
+This page explains how the engines are embedded and what the design means for package authors, agents, and CI. See [security-model.md](security-model.md) for the render sandbox threat model.
 
 ---
 
 ## Why embed
 
-Three reasons, same as the helm-engine-wasm decision:
+Akuapkg embeds engines for two reasons:
 
-1. **Single binary UX.** `curl -fsSL https://cli.akua.dev/install | sh` gives you everything. No "now install helm 4.1.4" followed by "now install opa 0.60" followed by "now install KCL 0.12."
-2. **Version determinism.** akua ships with a known-good engine version. No "works on my machine" where my `opa` is 0.55 and yours is 0.62 and we get different verdicts.
-3. **Air-gap friendly.** Environments where customers can't install arbitrary binaries (FedRAMP, certain enterprise networks) still work because akua is self-contained.
+1. **Single binary workflow.** A published Akuapkg binary includes the supported package engines. You do not need separate KCL, Helm, or Kustomize installations.
+2. **Version determinism.** An Akuapkg version uses the engine versions built with that release instead of whichever executables happen to be on `$PATH`.
 
-Plus the agent case: agents can't install binaries. If `akuapkg test` needs `opa` and there's no `opa` in the sandbox, the agent is stuck. Embedded means the agent gets the full toolkit from one install.
+Agents and CI jobs can therefore run package commands without installing engine-specific binaries.
 
 ---
 
 ## Embedding strategy
 
-Every engine reaches akua through the same architecture as `helm-engine-wasm`:
+The default standalone build packages the render worker and engine modules with the `akuapkg` executable:
 
-```
-engine source (Go / Rust / C++)
+```text
+engine source (Go or Rust)
         │
         ▼
-compiled to wasip1 WASM module
+compiled or linked into the render runtime
         │
         ▼
-shipped inside the akua binary via include_bytes!
+packaged with the akuapkg binary
         │
         ▼
-hosted at runtime by the shared wasmtime Engine
-(one Engine per process; one Store per invocation)
-        │
-        ▼
-typed FFI: Rust host ↔ WASM guest
+hosted by a shared Wasmtime Engine
+(one Engine per process; separate Stores per invocation)
 ```
 
-**Shared Engine, many Stores.** akua follows wasmtime's canonical pattern. One `engine_host_wasm::shared_engine()` singleton hosts:
+Akuapkg uses one process-wide `engine_host_wasm::shared_engine()` instance. Each render worker and engine call receives a separate Wasmtime Store on that Engine.
 
-- the `akua-render-worker` (per-render Store with the tenant's preopens + memory cap + epoch deadline);
-- every engine plugin (helm, kustomize, future kro/CEL/kyverno) — each call gets its own Store on the same Engine.
+Sandboxed KCL calls a single host import, `env::kcl_plugin_invoke_json_wasm`, to reach the registered `akua-core` plugin handler. The handler runs the requested engine, returns the result bytes, and resumes the render worker. See [the shared-engine architecture](security-model.md#one-engine-many-stores--with-a-plugin-bridge) for the boundary details.
 
-Plugin callouts from sandboxed KCL cross the boundary once — through a single host-function import, `env::kcl_plugin_invoke_json_wasm`, that reads arguments from guest memory and dispatches to handlers registered against akua-core's plugin registry. The handler's engine Store runs, produces bytes, the bridge writes them back into the worker's linear memory. See [docs/security-model.md — one Engine, many Stores — with a plugin bridge](security-model.md#one-engine-many-stores--with-a-plugin-bridge) for the full picture + [docs/spikes/wasmtime-multi-engine.md](spikes/wasmtime-multi-engine.md) for the architecture decision.
-
-Precompilation: each engine's `build.rs` calls `engine_host_wasm::precompile(...)` against `shared_config()` at akua build time, producing a `.cwasm` deserialized in ~microseconds on first use.
+Build scripts precompile the render worker and supported WASM engines against the shared Wasmtime configuration. The standalone binary embeds those artifacts by default.
 
 ---
 
 ## Engine inventory
 
-| engine | source language | embedding method | v0 status |
-|---|---|---|---|
-| **KCL** (package authoring) | Rust (`kclvm-rs`) | direct link | shipped |
-| **Helm v4 template engine** | Go → wasip1 | wasmtime-hosted | shipped (forked to strip client-go; ~20 MB WASM) |
-| **OPA** (Rego) | Go → wasip1 or OPA-native WASM | wasmtime-hosted | v0.2 |
-| **Regal** (Rego linter) | Go → wasip1 | wasmtime-hosted | v0.2 |
-| **Kyverno-to-Rego converter** | Go → wasip1 | wasmtime-hosted; runs at `akuapkg add` time | v0.3 |
-| **CEL** (`cel-go`) | Go → wasip1 | wasmtime-hosted | v0.3 |
-| **kustomize** | Go → wasip1 | wasmtime-hosted | v0.3 |
-| **kro RGD instantiator** | Go → wasip1 (offline path) | wasmtime-hosted | v0.2 |
+The current standalone source enables these engines:
 
-All compiled to wasip1 where practical. When upstream projects ship optimized WASM artifacts (OPA has `opa build -t wasm`), we use theirs; otherwise we compile from source in our CI and ship the artifact with akua.
+| engine | implementation | status |
+|---|---|---|
+| KCL | Rust runtime linked into the render worker | shipped |
+| Helm | Go engine compiled to `wasip1` and hosted by Wasmtime | shipped |
+| Kustomize | Go engine compiled to `wasip1` and hosted by Wasmtime | shipped |
 
-Binary size impact per engine: KCL ~8 MB, Helm (stripped fork) ~20 MB, OPA (with Regal) ~15 MB, Kyverno converter ~18 MB, CEL ~5 MB, Kustomize ~12 MB, kro instantiator ~6 MB. Total overhead versus a bare akua: ~85 MB. We consider this acceptable for "everything just works" — same order of magnitude as Bun (~45 MB) or Deno (~110 MB).
+Akuapkg does not fall back to shelling out when an engine is unavailable.
 
 ---
 
-## Per-verb engine routing
+## Command routing
 
-Each verb that invokes engines documents which ones. From [cli.md](cli.md):
+Current package commands use the embedded runtime as follows:
 
-| verb | engines used |
+| command | runtime used |
 |---|---|
-| `akuapkg init` | KCL (scaffold) |
-| `akuapkg add` | (fetch/convert) Kyverno-to-Rego converter, KCL schema generator |
-| `akuapkg render` | KCL + Helm + kro offline instantiator + Kustomize + output emitters |
-| `akuapkg lint` | KCL + Regal |
-| `akuapkg fmt` | KCL + opa fmt |
-| `akuapkg check` | KCL + OPA (parse-only) |
-| `akuapkg test` | KCL + OPA |
-| `akua trace` | OPA (`--explain`) |
-| `akua bench` | OPA partial evaluation, KCL interpreter timing |
-| `akua policy check` | OPA + CEL (via Rego runtime) |
-| `akuapkg repl` | KCL + OPA |
-| `akua eval` | KCL or OPA per `--lang` |
-| `akua attest` | (no engines; just signing + SLSA predicate generation) |
-| `akuapkg diff` | KCL + OPA (for policy compat diff) |
+| `akuapkg render` | KCL, plus Helm or Kustomize when the package calls those plugins |
+| `akuapkg check` | KCL package checks |
+| `akuapkg lint` | KCL parsing and import checks |
+| `akuapkg fmt` | KCL formatter |
+| `akuapkg test` | KCL test programs |
+| `akuapkg repl` | KCL evaluator |
+
+Run `akuapkg --help` for the current standalone command list.
 
 ---
 
 ## Determinism guarantees
 
-- Embedded engines are version-pinned to the akua release. Two runs of `akuapkg render` at the same akuapkg version produce byte-identical output (the [CLI contract §1.3](cli-contract.md#13-determinism)).
-- An `akua bundle lock` manifest (forthcoming) will record the exact embedded engine versions for the workspace; `akua bundle verify` confirms a CI runner has the same akuapkg version as the last known-good.
+Embedded engines are pinned to the Akuapkg build. Two `akuapkg render` runs with the same package source, inputs, lockfile, and Akuapkg version produce byte-identical output. See [the CLI determinism contract](cli-contract.md#13-determinism).
 
 ---
 
 ## Security posture
 
-Every embedded engine runs inside the wasmtime WASI sandbox:
+The render worker and embedded engine modules run inside Wasmtime stores with explicit resource and capability limits:
 
-- No filesystem access beyond what akua-core explicitly mounts.
-- No network access.
-- No environment variable read-through.
-- No syscall access.
+- Package code can access only explicitly preopened paths.
+- Package code cannot make network requests.
+- Package code cannot read host environment variables.
+- Package code cannot start subprocesses.
 
-This is stronger than shell-out — which would let binaries inherit the invoking shell's full privileges — and is why the shell-out fallback some other toolchains keep for convenience doesn't exist here. Agents operating akua in a sandbox can rely on the fact that no engine can escape to touch the rest of the system.
-
-System integrations are a separate category from engines. `akua deploy` calls `kubectl` (or similar) because it genuinely does need cluster access; those verbs live outside the render pipeline, and the binaries they invoke are external tools the user already trusts on their path. The render pipeline itself — everything that transforms inputs into deploy-ready artifacts — never shells out.
-
----
-
-## What's NOT embedded
-
-- **`kubectl`** — used only by `akua deploy --to=kubectl`. Too specific to a user's cluster context; we rely on the system version.
-- **`git`** — used for `akuapkg publish` and workspace operations. Extremely stable and universally available.
-- **`cosign`** — used for signing. We embed the verification path (cryptographic primitives are in akua-core) but use `cosign` CLI for signing operations that need hardware keys.
-- **`docker` / `podman`** — used only if a user opts into a Dockerfile-based build. Rare for akua workflows.
-
----
-
-## Performance notes
-
-- Cold-start overhead for a wasmtime-hosted engine: ~5-30 ms per engine, once per `akua` invocation. With precompile cache: ~2-5 ms.
-- `akuapkg dev` keeps engines warm for the session. Subsequent renders skip cold-start entirely.
-- Benchmarks at [docs/bench/](bench/) (forthcoming) show akua's embedded OPA within 5% of native `opa eval` for realistic policy workloads.
+Akuapkg does not include a shell-out fallback for the render pipeline. Package paths also pass through `akua-core` guards before an engine receives them.
 
 ---
 
 ## For agents
 
-Agents get the full engine toolkit from one install with zero PATH management. When writing skills that invoke `akuapkg test`, `akuapkg fmt`, `akua bench`, they never need to check `which opa`. Skills remain portable across fresh sandboxes, CI runners, and developer laptops without setup instructions beyond `curl -fsSL https://cli.akua.dev/install | sh`.
+An agent can use `akuapkg render`, `akuapkg test`, and `akuapkg fmt` without checking for separate KCL, Helm, or Kustomize executables. The command's structured output and exit codes remain the agent-facing interface.
 
 ---
 
 ## Relationship to other docs
 
-- **[cli.md](cli.md)** — the verbs that use these engines
-- **[package-format.md](package-format.md)** — KCL (the primary host)
-- **[policy-format.md](policy-format.md)** — OPA / Rego / Kyverno / CEL (the policy host + pluggable guests)
-- **[cli-contract.md §1.3 determinism](cli-contract.md#13-determinism)** — why embedding matters for reproducibility
+- [CLI reference](cli.md) lists the standalone package commands.
+- [Package format](package-format.md) explains KCL package source.
+- [Security model](security-model.md) defines the sandbox boundary.
+- [CLI determinism contract](cli-contract.md#13-determinism) defines reproducibility.

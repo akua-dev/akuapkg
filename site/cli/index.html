@@ -292,8 +292,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <div class="layout">
 <aside class="sidebar">
 <p class="sidebar-title"><a href="/cli/">CLI reference</a></p>
-<h3>Shipped</h3><ul><li><a href="/cli/init">init</a></li><li><a href="/cli/add">add</a></li><li><a href="/cli/vendor">vendor</a></li><li><a href="/cli/lint">lint</a></li><li><a href="/cli/render">render</a></li><li><a href="/cli/diff">diff</a></li><li><a href="/cli/inspect">inspect</a></li><li><a href="/cli/export">export</a></li><li><a href="/cli/api">api</a></li><li><a href="/cli/dev">dev</a></li><li><a href="/cli/whoami">whoami</a></li><li><a href="/cli/fmt">fmt</a></li><li><a href="/cli/check">check</a></li><li><a href="/cli/repl">repl</a></li><li><a href="/cli/version">version</a></li><li><a href="/cli/lint-cli">lint-cli</a></li></ul>
-<h3>Planned</h3><ul><li><a href="/cli/attest">attest</a></li><li><a href="/cli/publish">publish</a></li><li><a href="/cli/pull">pull</a></li><li><a href="/cli/deploy">deploy</a></li><li><a href="/cli/rollout">rollout</a></li><li><a href="/cli/secret">secret</a></li><li><a href="/cli/policy">policy</a></li><li><a href="/cli/audit">audit</a></li><li><a href="/cli/query">query</a></li><li><a href="/cli/infra">infra</a></li><li><a href="/cli/login">login</a></li><li><a href="/cli/logout">logout</a></li><li><a href="/cli/test">test</a></li><li><a href="/cli/bench">bench</a></li><li><a href="/cli/trace">trace</a></li><li><a href="/cli/cov">cov</a></li><li><a href="/cli/eval">eval</a></li><li><a href="/cli/help">help</a></li><li><a href="/cli/telemetry">telemetry</a></li></ul>
+<h3>Shipped</h3><ul><li><a href="/cli/init">init</a></li><li><a href="/cli/add">add</a></li><li><a href="/cli/vendor">vendor</a></li><li><a href="/cli/lint">lint</a></li><li><a href="/cli/render">render</a></li><li><a href="/cli/diff">diff</a></li><li><a href="/cli/publish">publish</a></li><li><a href="/cli/pull">pull</a></li><li><a href="/cli/inspect">inspect</a></li><li><a href="/cli/export">export</a></li><li><a href="/cli/api">api</a></li><li><a href="/cli/dev">dev</a></li><li><a href="/cli/whoami">whoami</a></li><li><a href="/cli/test">test</a></li><li><a href="/cli/fmt">fmt</a></li><li><a href="/cli/check">check</a></li><li><a href="/cli/repl">repl</a></li><li><a href="/cli/help">help</a></li><li><a href="/cli/version">version</a></li></ul>
 </aside>
 <main>
 
@@ -302,50 +301,30 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
   <h1>CLI reference</h1>
   <p class="tagline">Every <code>akua</code> verb. Shipped verbs are wired and tested; planned verbs have a stable surface but no backing implementation yet.</p>
 </header>
-<h1 id="akua-cli-reference">akua CLI reference</h1>
-<p>Complete reference for the <code>akua</code> binary. Every verb, every subcommand, every flag.</p>
+<h1 id="akuapkg-cli-reference">Akuapkg CLI reference</h1>
+<p>Reference for the standalone <code>akuapkg</code> binary. Akuapkg authors, renders, tests, and publishes cloud-native packages. It is distinct from the Akua platform CLI, whose binary is <code>akua</code>.</p>
+<p>The platform CLI embeds Akuapkg under <code>akua pkg</code>. For example, these invocations run the same package command:</p>
+<pre><code class="lang-sh">akuapkg render --inputs inputs.yaml
+akua pkg render --inputs inputs.yaml</code></pre>
+<p>Use <code>akuapkg &lt;command&gt; --help</code> for the authoritative flags in the checked-out source. When Akuapkg is embedded, help and usage use the outer invocation, such as <code>akua pkg render --help</code>.</p>
 <p>For the universal contract every verb honors (JSON output, exit codes, idempotency, plan mode, timeouts), see <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/cli-contract.md">cli-contract.md</a>.</p>
-<blockquote><strong>Status marker.</strong> Sections marked ✅ describe verbs available in the shipping binary. Sections marked 🚧 describe verbs from the target surface that aren't wired yet. If a verb isn't marked, assume 🚧.  <strong>Shipped today (28 verbs):</strong> <code>init</code> · <code>whoami</code> · <code>version</code> · <code>verify</code> · <code>render</code> · <code>add</code> · <code>vendor</code> · <code>dev</code> · <code>test</code> · <code>tree</code> · <code>pull</code> · <code>publish</code> · <code>sign</code> · <code>update</code> · <code>lock</code> · <code>push</code> · <code>repl</code> · <code>pack</code> · <code>remove</code> · <code>diff</code> · <code>check</code> · <code>inspect</code> · <code>lint</code> · <code>fmt</code> · <code>cache</code> · <code>auth</code> · <code>export</code> · <code>api</code>  Run <code>akua --help</code> at the command line for the authoritative live list.</blockquote>
+<blockquote>This reference includes commands implemented by the current source. Run <code>akuapkg --help</code> against your installed version for its authoritative command list.  <strong>Shipped today (28 verbs):</strong> <code>init</code> · <code>whoami</code> · <code>version</code> · <code>verify</code> · <code>render</code> · <code>add</code> · <code>vendor</code> · <code>dev</code> · <code>test</code> · <code>tree</code> · <code>pull</code> · <code>publish</code> · <code>sign</code> · <code>update</code> · <code>lock</code> · <code>push</code> · <code>repl</code> · <code>pack</code> · <code>remove</code> · <code>diff</code> · <code>check</code> · <code>inspect</code> · <code>lint</code> · <code>fmt</code> · <code>cache</code> · <code>auth</code> · <code>export</code> · <code>api</code>  Run <code>akuapkg --help</code> at the command line for the authoritative live list.</blockquote>
 <hr />
 <h2 id="top-level-flags">Top-level flags</h2>
 <p>These flags are accepted by every verb:</p>
 <table><thead><tr><th>flag</th><th>description</th></tr></thead><tbody><tr><td><code>--json</code></td><td>emit structured JSON to stdout</td></tr><tr><td><code>--plan</code></td><td>compute what the command would do; do not write</td></tr><tr><td><code>--timeout=&lt;duration&gt;</code></td><td>max time before exit 6 (e.g. <code>30s</code>, <code>5m</code>)</td></tr><tr><td><code>--idempotency-key=&lt;uuid&gt;</code></td><td>safe-retry key for write operations</td></tr><tr><td>`--log=&lt;text\</td><td>json&gt;`</td><td>stderr log format (default: text)</td></tr><tr><td>`--log-level=&lt;debug\</td><td>info\</td><td>warn\</td><td>error&gt;`</td><td>filter logs</td></tr><tr><td><code>--verbose</code> / <code>-v</code></td><td>more detail in logs</td></tr><tr><td><code>--help</code> / <code>-h</code></td><td>help for this verb</td></tr><tr><td><code>--describe --json</code></td><td>machine-readable spec of this verb</td></tr><tr><td><code>--no-color</code></td><td>disable terminal colors (implicit under <code>--json</code>)</td></tr><tr><td><code>--no-interactive</code></td><td>never block on stdin; fail with exit 1 if input is missing (implicit in agent context)</td></tr><tr><td><code>--no-agent-mode</code></td><td>disable agent-context auto-detection for this invocation</td></tr></tbody></table>
 <h3 id="agent-context-auto-detection">Agent-context auto-detection</h3>
-<p>When <code>akua</code> is run inside an AI-agent session, it detects this from env vars and auto-enables <code>--json</code>, <code>--log=json</code>, <code>--no-color</code>, <code>--no-progress</code>, and <code>--no-interactive</code>. Detection is keyed off <code>AGENT=&lt;name&gt;</code> (standard), <code>CLAUDECODE</code>, <code>GEMINI_CLI</code>, <code>CURSOR_CLI</code>, or <code>AKUA_AGENT</code>. Explicit flags always override detection.</p>
+<p>When <code>akuapkg</code> runs inside an AI-agent session, it detects this from environment variables and auto-enables <code>--json</code>, <code>--log=json</code>, <code>--no-color</code>, <code>--no-progress</code>, and <code>--no-interactive</code>. Detection is keyed off <code>AGENT=&lt;name&gt;</code> (standard), <code>CLAUDECODE</code>, <code>GEMINI_CLI</code>, <code>CURSOR_CLI</code>, or <code>AKUA_AGENT</code>. Explicit flags always override detection.</p>
 <pre><code class="lang-sh"># Human shell — text output
-$ akuapkg render
+akuapkg render
 [pretty text output]
 
 # Agent context — auto-JSON, no flag needed
-$ CLAUDECODE=1 akuapkg render
+CLAUDECODE=1 akuapkg render
 {&quot;format&quot;:&quot;raw-manifests&quot;,&quot;target&quot;:&quot;./deploy&quot;,&quot;manifests&quot;:3,&quot;hash&quot;:&quot;sha256:…&quot;}</code></pre>
 <p>See <a href="https://github.com/akua-dev/akuapkg/blob/main/docs/cli-contract.md#15-agent-context-auto-detection">cli-contract.md §1.5</a> for the full detection rules, override semantics, and env-var reference.</p>
 <hr />
-<h2 id="verb-index">Verb index</h2>
-<pre><code>AUTHOR              PUBLISH             DEPLOY              OPERATE
-------              -------             ------              -------
-akuapkg init           akua attest         akua deploy         akua secret
-akuapkg add            akuapkg publish        akua rollout        akua policy
-akuapkg vendor         akuapkg pull           akuapkg dev            akua audit
-akuapkg render         akuapkg inspect                            akua query
-akuapkg diff           akuapkg export                              akua infra
-
-DEVELOP             SESSION             META
--------             -------             ----
-akuapkg test           akua login          akua help
-akuapkg fmt            akua logout         akuapkg version
-akuapkg lint           akuapkg whoami         akua telemetry
-akuapkg check                              akuapkg api
-                                        akuapkg lint-cli
-akua bench
-akua trace
-akua cov
-akuapkg repl
-akua eval</code></pre>
-<p>Thirty-five verbs. Grouped by purpose. Each covered below.</p>
-<blockquote><strong>Quick disambiguation — <code>render</code> vs <code>export</code> vs <code>inspect</code> vs <code>diff</code>:</strong>  | verb | takes | produces | invokes engines? | |---|---|---|---| | <code>render</code> | Package + inputs | deploy-ready manifests | yes | | <code>export</code> | any canonical artifact | format view (JSON Schema, YAML, OpenAPI, Rego bundle) | no | | <code>inspect</code> | local <code>package.k</code> or package tarball | package metadata and input surface | no | | <code>diff</code> | two package refs | structural diff between them | no |  When in doubt: <code>render</code> = &quot;run the program&quot;; <code>export</code> = &quot;convert the format&quot;; <code>inspect</code> = &quot;audit what's there&quot;; <code>diff</code> = &quot;compare two versions.&quot;</blockquote>
-<hr />
-<section class="section-group"><h2>Shipped (16)</h2><ul class="code-list"><li>
+<section class="section-group"><h2>Shipped (19)</h2><ul class="code-list"><li>
 				<a class="name" href="/cli/init">akuapkg init</a>
   <div class="summary">Scaffold a new package or workspace.</div>
 </li>
@@ -370,6 +349,14 @@ akua eval</code></pre>
   <div class="summary">Structural diff between two package versions, or between a local package and a published version.</div>
 </li>
 <li>
+				<a class="name" href="/cli/publish">akuapkg publish</a>
+  <div class="summary">Push a signed package to an OCI registry.</div>
+</li>
+<li>
+				<a class="name" href="/cli/pull">akuapkg pull</a>
+  <div class="summary">Fetch a package from an OCI registry into the local cache.</div>
+</li>
+<li>
 				<a class="name" href="/cli/inspect">akuapkg inspect</a>
   <div class="summary">Report a `package.k`'s input surface — every `option()` call-site with its name, declared type, required flag, default, and help text. Parse-only: the program is not executed.</div>
 </li>
@@ -390,6 +377,10 @@ akua eval</code></pre>
   <div class="summary">Display current identity, logged-in registries, and scopes.</div>
 </li>
 <li>
+				<a class="name" href="/cli/test">akuapkg test</a>
+  <div class="summary">Run unit tests for packages, policies, or both. Unified test runner across engines — detects target types by file extension.</div>
+</li>
+<li>
 				<a class="name" href="/cli/fmt">akuapkg fmt</a>
   <div class="summary">Format KCL and Rego sources in place.</div>
 </li>
@@ -402,89 +393,14 @@ akua eval</code></pre>
   <div class="summary">Interactive REPL for exploring policies and packages.</div>
 </li>
 <li>
+				<a class="name" href="/cli/help">akuapkg help</a>
+  <div class="summary">Print the top-level help or help for one command:</div>
+</li>
+<li>
 				<a class="name" href="/cli/version">akuapkg version</a>
   <div class="summary">``` akuapkg version # print version + git SHA akuapkg version --json ```</div>
-</li>
-<li>
-				<a class="name" href="/cli/lint-cli">akuapkg lint-cli</a>
-  <div class="summary">Validate that the current binary honors the CLI contract.</div>
 </li></ul></section>
-<section class="section-group"><h2>Planned (19)</h2><ul class="code-list"><li>
-				<a class="name" href="/cli/attest">akuapkg attest</a>
-  <div class="summary">Emit a SLSA v1 provenance predicate for the current package or a built artifact.</div>
-</li>
-<li>
-				<a class="name" href="/cli/publish">akuapkg publish</a>
-  <div class="summary">Push a signed package to an OCI registry.</div>
-</li>
-<li>
-				<a class="name" href="/cli/pull">akuapkg pull</a>
-  <div class="summary">Fetch a package from an OCI registry into the local cache.</div>
-</li>
-<li>
-				<a class="name" href="/cli/deploy">akuapkg deploy</a>
-  <div class="summary">Deploy rendered output to a reconciler target.</div>
-</li>
-<li>
-				<a class="name" href="/cli/rollout">akuapkg rollout</a>
-  <div class="summary">Cross-repo / cross-service staged rollout orchestration.</div>
-</li>
-<li>
-				<a class="name" href="/cli/secret">akuapkg secret</a>
-  <div class="summary">Typed secret operations. Secrets move as refs, never raw bytes.</div>
-</li>
-<li>
-				<a class="name" href="/cli/policy">akuapkg policy</a>
-  <div class="summary">Policy tier operations.</div>
-</li>
-<li>
-				<a class="name" href="/cli/audit">akuapkg audit</a>
-  <div class="summary">Causality spine. Trace changes, explain incidents, query the audit trail.</div>
-</li>
-<li>
-				<a class="name" href="/cli/query">akuapkg query</a>
-  <div class="summary">Structured queries against observability stores.</div>
-</li>
-<li>
-				<a class="name" href="/cli/infra">akuapkg infra</a>
-  <div class="summary">Cluster, network, DNS, cert primitives. Wraps Crossplane or Terraform under the hood.</div>
-</li>
-<li>
-				<a class="name" href="/cli/login">akuapkg login</a>
-  <div class="summary">Authenticate to OCI registries and signing providers.</div>
-</li>
-<li>
-				<a class="name" href="/cli/logout">akuapkg logout</a>
-  <div class="summary">Remove stored credentials.</div>
-</li>
-<li>
-				<a class="name" href="/cli/test">akuapkg test</a>
-  <div class="summary">Run unit tests for packages, policies, or both. Unified test runner across engines — detects target types by file extension.</div>
-</li>
-<li>
-				<a class="name" href="/cli/bench">akuapkg bench</a>
-  <div class="summary">Benchmark policy evaluation and package render latency.</div>
-</li>
-<li>
-				<a class="name" href="/cli/trace">akuapkg trace</a>
-  <div class="summary">Explain the evaluation path of a policy query. Useful for debugging &quot;why did this rule deny?&quot; or &quot;why didn't this rule fire?&quot;</div>
-</li>
-<li>
-				<a class="name" href="/cli/cov">akuapkg cov</a>
-  <div class="summary">Generate a test coverage report across rules (Rego) and schemas (KCL).</div>
-</li>
-<li>
-				<a class="name" href="/cli/eval">akuapkg eval</a>
-  <div class="summary">One-shot evaluator — cheap, scriptable. For Rego queries and KCL expressions without entering the REPL.</div>
-</li>
-<li>
-				<a class="name" href="/cli/help">akuapkg help</a>
-  <div class="summary">``` akua help # list all verbs akua help # detailed help for one verb akua help --json # machine-readable command tree ```</div>
-</li>
-<li>
-				<a class="name" href="/cli/telemetry">akuapkg telemetry</a>
-  <div class="summary">Opt-in, anonymized usage data.</div>
-</li></ul></section>
+
 
 <footer>
   <a href="/">akua.dev</a> ·

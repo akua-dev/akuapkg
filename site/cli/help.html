@@ -4,12 +4,12 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>akuapkg help — akua</title>
-<meta name="description" content="``` akua help # list all verbs akua help # detailed help for one verb akua help --json # machine-readable command tree ```" />
+<meta name="description" content="Print the top-level help or help for one command:" />
 <meta name="color-scheme" content="dark" />
 <link rel="icon" type="image/png" href="/assets/logo.png" />
 <link rel="apple-touch-icon" href="/assets/logo.png" />
 <meta property="og:title" content="akuapkg help — akua" />
-<meta property="og:description" content="``` akua help # list all verbs akua help # detailed help for one verb akua help --json # machine-readable command tree ```" />
+<meta property="og:description" content="Print the top-level help or help for one command:" />
 <meta property="og:url" content="https://cli.akua.dev/cli/help" />
 <meta property="og:image" content="https://akua.dev/assets/logo.png" />
 <meta name="twitter:card" content="summary" />
@@ -292,8 +292,7 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
 <div class="layout">
 <aside class="sidebar">
 <p class="sidebar-title"><a href="/cli/">CLI reference</a></p>
-<h3>Shipped</h3><ul><li><a href="/cli/init">init</a></li><li><a href="/cli/add">add</a></li><li><a href="/cli/vendor">vendor</a></li><li><a href="/cli/lint">lint</a></li><li><a href="/cli/render">render</a></li><li><a href="/cli/diff">diff</a></li><li><a href="/cli/inspect">inspect</a></li><li><a href="/cli/export">export</a></li><li><a href="/cli/api">api</a></li><li><a href="/cli/dev">dev</a></li><li><a href="/cli/whoami">whoami</a></li><li><a href="/cli/fmt">fmt</a></li><li><a href="/cli/check">check</a></li><li><a href="/cli/repl">repl</a></li><li><a href="/cli/version">version</a></li><li><a href="/cli/lint-cli">lint-cli</a></li></ul>
-<h3>Planned</h3><ul><li><a href="/cli/attest">attest</a></li><li><a href="/cli/publish">publish</a></li><li><a href="/cli/pull">pull</a></li><li><a href="/cli/deploy">deploy</a></li><li><a href="/cli/rollout">rollout</a></li><li><a href="/cli/secret">secret</a></li><li><a href="/cli/policy">policy</a></li><li><a href="/cli/audit">audit</a></li><li><a href="/cli/query">query</a></li><li><a href="/cli/infra">infra</a></li><li><a href="/cli/login">login</a></li><li><a href="/cli/logout">logout</a></li><li><a href="/cli/test">test</a></li><li><a href="/cli/bench">bench</a></li><li><a href="/cli/trace">trace</a></li><li><a href="/cli/cov">cov</a></li><li><a href="/cli/eval">eval</a></li><li><a href="/cli/help" class="active">help</a></li><li><a href="/cli/telemetry">telemetry</a></li></ul>
+<h3>Shipped</h3><ul><li><a href="/cli/init">init</a></li><li><a href="/cli/add">add</a></li><li><a href="/cli/vendor">vendor</a></li><li><a href="/cli/lint">lint</a></li><li><a href="/cli/render">render</a></li><li><a href="/cli/diff">diff</a></li><li><a href="/cli/publish">publish</a></li><li><a href="/cli/pull">pull</a></li><li><a href="/cli/inspect">inspect</a></li><li><a href="/cli/export">export</a></li><li><a href="/cli/api">api</a></li><li><a href="/cli/dev">dev</a></li><li><a href="/cli/whoami">whoami</a></li><li><a href="/cli/test">test</a></li><li><a href="/cli/fmt">fmt</a></li><li><a href="/cli/check">check</a></li><li><a href="/cli/repl">repl</a></li><li><a href="/cli/help" class="active">help</a></li><li><a href="/cli/version">version</a></li></ul>
 </aside>
 <main>
 
@@ -301,11 +300,10 @@ footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--line);
   <p class="crumbs"><a href="/">akuapkg</a> / <a href="/cli/">cli</a> / help</p>
   <h1>akuapkg help</h1>
 </header>
-<p class="section-tag">Planned</p>
-<pre><code>akua help                    # list all verbs
-akua help &lt;verb&gt;             # detailed help for one verb
-akua help --json             # machine-readable command tree</code></pre>
-<p>The <code>--json</code> form is the agent-discovery surface.</p>
+<p class="section-tag">Shipped</p>
+<p>Print the top-level help or help for one command:</p>
+<pre><code class="lang-sh">akuapkg help
+akuapkg help render</code></pre>
 
 <footer>
   <a href="/">akua.dev</a> ·

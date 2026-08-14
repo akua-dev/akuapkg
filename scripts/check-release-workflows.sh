@@ -216,6 +216,38 @@ for file in README.md packages/sdk/README.md docs/sdk-runtime-compat.md; do
 	assert_file_excludes_pattern "$file" 'brew[[:space:]]+install[^[:cntrl:]]*akua|homebrew[^[:cntrl:]]*(formula|tap|install|update|publish|release)|(^|[^[:alnum:]_])(formula|tap)([^[:alnum:]_]|$)[^[:cntrl:]]*akua'
 done
 
+# Public package-tool docs must follow the executable command surface. Keep
+# platform-only and planned verbs out of the standalone Akuapkg reference, and
+# keep engine documentation on the package-tool binary name.
+docs_contract_failed=0
+for verb in attest deploy rollout secret policy audit query infra login logout bench trace cov eval telemetry lint-cli; do
+	if grep -Fq -- "akuapkg $verb" docs/cli.md; then
+		echo "ERROR: docs/cli.md documents nonexistent standalone verb 'akuapkg $verb'" >&2
+		docs_contract_failed=1
+	fi
+	if [[ -e "site/cli/$verb.html" ]]; then
+		echo "ERROR: site/cli/$verb.html publishes nonexistent standalone verb 'akuapkg $verb'" >&2
+		docs_contract_failed=1
+	fi
+done
+if ! grep -Fq -- "Akuapkg embeds" docs/embedded-engines.md || \
+	grep -Fq -- 'the `akua` binary' docs/embedded-engines.md; then
+	echo "ERROR: docs/embedded-engines.md conflates Akuapkg with the platform akua binary" >&2
+	docs_contract_failed=1
+fi
+if grep -Fq -- "## Performance notes" docs/embedded-engines.md || \
+	grep -Fq -- "[docs/bench/](bench/)" docs/embedded-engines.md; then
+	echo "ERROR: docs/embedded-engines.md contains unsupported or unlinked benchmark claims" >&2
+	docs_contract_failed=1
+fi
+if grep -Fq -- 'akuapkg bench' docs/embedded-engines.md; then
+	echo "ERROR: docs/embedded-engines.md recommends nonexistent 'akuapkg bench'" >&2
+	docs_contract_failed=1
+fi
+if (( docs_contract_failed != 0 )); then
+	exit 1
+fi
+
 # A manual recovery runs workflow code from a green branch, but every source
 # checkout must resolve to the requested immutable tag. The workflow verifies
 # and propagates that commit; it must never create or move a tag.
