@@ -39,6 +39,14 @@ const published = await akua.inspectOciPackage({
 });
 ```
 
+Embedding only the command dispatcher does not require the full validation client:
+
+```ts
+import { execute } from '@akua-dev/sdk/execute';
+
+const exitCode = execute(['render', '--help'], { binName: 'akua pkg' });
+```
+
 Object-returning methods use typed results, and most validate their result against JSON Schema generated from the same Rust `serde` types the CLI emits. Methods without schema validation still keep explicit contracts: `renderSource()` returns raw rendered YAML as a string, and `add()` returns the native add result.
 
 `inspectOciPackage()` is the SDK-first path for inspecting a published Akua Package artifact. It returns verified OCI digests, package metadata, and the Package `Input` schema without extracting the artifact to disk, spawning the CLI, or reading ambient Docker/Akua credential files.

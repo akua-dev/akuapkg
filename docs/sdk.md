@@ -60,6 +60,8 @@ Akua method -> @akua-dev/native (NAPI) -> akua core / render worker / engine mod
 
 The package currently exports the `Akua` class, SDK error classes, validation helpers, and generated TypeScript types. Higher-level namespace clients for deploy, policy, audit, hosted documents, or Akua Cloud REST APIs are not part of `@akua-dev/sdk`.
 
+Embedders that only need the package command dispatcher can import the synchronous `execute` function from `@akua-dev/sdk/execute`. That entry point omits the full schema-validation client and accepts `binName` so nested help can render an invocation such as `akua pkg`.
+
 | Method | Returns | Notes |
 |---|---|---|
 | `execute(args, options?)` | `number` | Runs any package CLI command in-process. Set `options.binName` to the parent command path, such as `akua pkg`, so help and usage text match the embedding CLI. |
