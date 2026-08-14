@@ -1,6 +1,15 @@
-# akua CLI reference
+# Akuapkg CLI reference
 
-Complete reference for the `akua` binary. Every verb, every subcommand, every flag.
+Reference for the standalone `akuapkg` binary. Akuapkg authors, renders, tests, and publishes cloud-native packages. It is distinct from the Akua platform CLI, whose binary is `akua`.
+
+The platform CLI embeds Akuapkg under `akua pkg`. For example, these invocations run the same package command:
+
+```sh
+akuapkg render --inputs inputs.yaml
+akua pkg render --inputs inputs.yaml
+```
+
+Use `akuapkg <command> --help` for the authoritative flags in the checked-out source. When Akuapkg is embedded, help and usage use the outer invocation, such as `akua pkg render --help`.
 
 For the universal contract every verb honors (JSON output, exit codes, idempotency, plan mode, timeouts), see [cli-contract.md](cli-contract.md).
 
@@ -9,7 +18,7 @@ For the universal contract every verb honors (JSON output, exit codes, idempoten
 > **Shipped today (28 verbs):**
 > `init` · `whoami` · `version` · `verify` · `render` · `add` · `vendor` · `dev` · `test` · `tree` · `pull` · `publish` · `sign` · `update` · `lock` · `push` · `repl` · `pack` · `remove` · `diff` · `check` · `inspect` · `lint` · `fmt` · `cache` · `auth` · `export` · `api`
 >
-> Run `akua --help` at the command line for the authoritative live list.
+> Run `akuapkg --help` at the command line for the authoritative live list.
 
 ---
 
@@ -34,15 +43,15 @@ These flags are accepted by every verb:
 
 ### Agent-context auto-detection
 
-When `akua` is run inside an AI-agent session, it detects this from env vars and auto-enables `--json`, `--log=json`, `--no-color`, `--no-progress`, and `--no-interactive`. Detection is keyed off `AGENT=<name>` (standard), `CLAUDECODE`, `GEMINI_CLI`, `CURSOR_CLI`, or `AKUA_AGENT`. Explicit flags always override detection.
+When `akuapkg` runs inside an AI-agent session, it detects this from environment variables and auto-enables `--json`, `--log=json`, `--no-color`, `--no-progress`, and `--no-interactive`. Detection is keyed off `AGENT=<name>` (standard), `CLAUDECODE`, `GEMINI_CLI`, `CURSOR_CLI`, or `AKUA_AGENT`. Explicit flags always override detection.
 
 ```sh
 # Human shell — text output
-$ akuapkg render
+akuapkg render
 [pretty text output]
 
 # Agent context — auto-JSON, no flag needed
-$ CLAUDECODE=1 akuapkg render
+CLAUDECODE=1 akuapkg render
 {"format":"raw-manifests","target":"./deploy","manifests":3,"hash":"sha256:…"}
 ```
 
@@ -55,24 +64,25 @@ See [cli-contract.md §1.5](cli-contract.md#15-agent-context-auto-detection) for
 ```
 AUTHOR              PUBLISH             DEPLOY              OPERATE
 ------              -------             ------              -------
-akuapkg init           akua attest         akua deploy         akua secret
-akuapkg add            akuapkg publish        akua rollout        akua policy
-akuapkg vendor         akuapkg pull           akuapkg dev            akua audit
-akuapkg render         akuapkg inspect                            akua query
-akuapkg diff           akuapkg export                              akua infra
+akuapkg init         akuapkg attest       akuapkg deploy       akuapkg secret
+akuapkg add          akuapkg publish      akuapkg rollout      akuapkg policy
+akuapkg vendor       akuapkg pull         akuapkg dev          akuapkg audit
+akuapkg render       akuapkg inspect                           akuapkg query
+akuapkg diff         akuapkg export                            akuapkg infra
 
 DEVELOP             SESSION             META
 -------             -------             ----
-akuapkg test           akua login          akua help
-akuapkg fmt            akua logout         akuapkg version
-akuapkg lint           akuapkg whoami         akua telemetry
-akuapkg check                              akuapkg api
-                                        akuapkg lint-cli
-akua bench
-akua trace
-akua cov
+akuapkg test         akuapkg login        akuapkg help
+akuapkg fmt          akuapkg logout       akuapkg version
+akuapkg lint                              akuapkg whoami
+akuapkg check                             akuapkg api
+                                         akuapkg telemetry
+                                         akuapkg lint-cli
+akuapkg bench
+akuapkg trace
+akuapkg cov
 akuapkg repl
-akua eval
+akuapkg eval
 ```
 
 Thirty-five verbs. Grouped by purpose. Each covered below.

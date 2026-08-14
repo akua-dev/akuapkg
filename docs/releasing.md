@@ -1,4 +1,15 @@
-# Releasing akua
+# Releasing Akuapkg
+
+Akuapkg publishes the standalone `akuapkg` binary from `akua-dev/akuapkg`. The Akua platform CLI is a separate artifact named `akua`; do not publish or document a platform CLI release from this repository.
+
+The canonical distribution coordinates are:
+
+- Repository: `https://github.com/akua-dev/akuapkg`
+- GitHub releases: `https://github.com/akua-dev/akuapkg/releases`
+- Homebrew formula: `akua-dev/tap/akuapkg`
+- Container: `ghcr.io/akua-dev/akuapkg`
+
+As of August 14, 2026, `v0.9.3` is a source tag without a GitHub Release. Do not describe that version as published or installable from release assets until the release workflow succeeds.
 
 The build and publish lanes are intentionally separate. `.github/workflows/release.yml`
 builds the immutable tag, creates Release assets only for a new tag push, pushes the
@@ -8,9 +19,7 @@ publishes npm packages in dependency order. A recovery verifies the existing Rel
 but never uploads, replaces, or otherwise changes its assets. Neither lane creates or
 moves a tag during recovery.
 
-Homebrew is explicitly outside this recovery. Formula ownership belongs to
-`akua-dev/cli` and the dedicated `akua-dev/homebrew-tap` lane; Akua core does not
-write, dispatch, or claim ownership of that formula.
+Homebrew is explicitly outside this recovery. Formula ownership belongs to `akua-dev/cli` and the dedicated `akua-dev/homebrew-tap` lane; Akuapkg does not write, dispatch, or claim ownership of that formula.
 
 ## Normal releases
 
