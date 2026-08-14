@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, resolve as resolvePath, join as joinPath } from 'node:path';
 
 import { callNapi, loadNapi } from './napi.ts';
+import { execute as executePackageCommand, type ExecuteOptions } from './execute.ts';
 
 import type { CheckOutput } from './types/CheckOutput.ts';
 import type { CheckResult } from './types/CheckResult.ts';
@@ -39,6 +40,8 @@ import { type SchemaName, validateAs } from './validate.ts';
 
 export * from './errors.ts';
 export { configureNapi } from './napi.ts';
+export { execute } from './execute.ts';
+export type { ExecuteOptions } from './execute.ts';
 export type { NapiAddon } from './napi.ts';
 export { AkuaContractError, standardSchemaFor, validateAs } from './validate.ts';
 export type { SchemaName } from './validate.ts';
@@ -348,11 +351,15 @@ export class Akua {
 	 * Pass command arguments only, for example
 	 * `['render', '--package', 'package.k']`. Output is streamed
 	 * directly by the native command, exactly as when invoking `akuapkg` in a
-	 * terminal; the resolved value is its documented numeric exit code.
+	 * terminal; the resolved value is its documented numeric exit code. Set
+	 * `options.binName` when embedding it under another command path, such as
+	 * `akua pkg`, so generated help and usage text name that invocation.
 	 */
-	async execute(args: readonly string[]): Promise<number> {
-		const napi = loadNapi();
-		return callNapi<number>(() => napi.execute([...args]));
+	async execute(
+		args: readonly string[],
+		options: ExecuteOptions = {},
+	): Promise<number> {
+		return executePackageCommand(args, options);
 	}
 
 	async whoami(): Promise<WhoamiOutput> {

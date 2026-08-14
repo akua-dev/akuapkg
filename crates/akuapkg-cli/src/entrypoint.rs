@@ -7,7 +7,7 @@ use std::ffi::OsString;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use clap::{ArgAction, ArgGroup, Args, Parser, Subcommand};
+use clap::{ArgAction, ArgGroup, Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 
 use crate::contract::{emit_error, Context, UniversalArgs};
 #[cfg(feature = "dev-watch")]
@@ -27,7 +27,7 @@ use akua_core::cli_contract::{AgentContext, ExitCode, StructuredError};
 
 #[derive(Parser)]
 #[command(name = "akuapkg")]
-#[command(about = "Cloud-native package build and transform toolkit", long_about = None)]
+#[command(about = "Build, test, and publish cloud-native application packages", long_about = None)]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
@@ -59,7 +59,7 @@ enum Commands {
         args: UniversalArgs,
     },
 
-    /// Print `akuapkg` binary version.
+    /// Print the package toolchain version.
     Version {
         #[command(flatten)]
         args: UniversalArgs,
@@ -309,7 +309,7 @@ enum Commands {
     /// Produce a cosign signature for a packed tarball.
     ///
     /// Writes an `.akuasig` sidecar next to the tarball for a later
-    /// `akuapkg push --sig` to upload — does not touch a registry.
+    /// `push --sig` to upload — does not touch a registry.
     /// Unlocks the air-gap flow: pack + sign here, transfer, push +
     /// upload-sig there.
     #[cfg(feature = "cosign-verify")]
@@ -348,7 +348,7 @@ enum Commands {
 
     /// Bump `akua.lock` to whatever upstream now serves.
     ///
-    /// Distinct from `akuapkg lock`: where `lock` rejects OCI digest
+    /// Distinct from `lock`: where that command rejects OCI digest
     /// drift (security), `update` accepts it and records the new
     /// digest. `--dep <name>` scopes the refresh to one entry.
     /// Cargo analogue: `cargo update`.
@@ -384,7 +384,7 @@ enum Commands {
 
     /// Upload a pre-packed `.tar.gz` to OCI.
     ///
-    /// The push half of `akuapkg publish`, decomposed so air-gap flows
+    /// The push half of `publish`, decomposed so air-gap flows
     /// work: pack on one host, transfer the tarball, push from
     /// another.
     Push {
@@ -420,7 +420,7 @@ enum Commands {
     /// re-evaluates on each entry, prints the top-level bindings.
     /// Meta commands start with `.` (`.load <path>`, `.reset`,
     /// `.show`, `.help`, `.exit`). No engine callables
-    /// (`helm.template`, `pkg.render`, etc.) — use `akuapkg render`
+    /// (`helm.template`, `pkg.render`, etc.) — use `render`
     /// against a workspace for those.
     Repl {
         #[command(flatten)]
@@ -429,7 +429,7 @@ enum Commands {
 
     /// Pack the workspace into a local `.tar.gz`.
     ///
-    /// Same shape as the tarball `akuapkg publish` uploads, but written
+    /// Same shape as the tarball `publish` uploads, but written
     /// to disk instead of pushed. Use for air-gap transfers, offline
     /// signing, or archival diff.
     Pack {
@@ -510,7 +510,7 @@ enum Commands {
         #[arg(long, default_value = "./package.k")]
         package: PathBuf,
 
-        /// Path to a packed `.tar.gz` (from `akuapkg pack` / `akuapkg pull`).
+        /// Path to a packed `.tar.gz` (from `pack` / `pull`).
         /// When set, overrides `--package`.
         #[arg(long)]
         tarball: Option<PathBuf>,
@@ -898,7 +898,7 @@ struct RenderCliArgs {
     /// Forbid network access during resolve.
     ///
     /// OCI deps must be fully satisfied from the local cache
-    /// (populated by a prior `akuapkg add`). Path + replace deps are
+    /// (populated by a prior `add`). Path + replace deps are
     /// unaffected.
     #[arg(long)]
     offline: bool,
@@ -931,7 +931,7 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    run_from_with_observability(args, true)
+    run_from_with_observability(args, true, "akuapkg")
 }
 
 /// Run the package command surface inside another host process.
@@ -943,15 +943,29 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    run_from_with_observability(args, false)
+    run_from_with_observability(args, false, "akuapkg")
 }
 
-fn run_from_with_observability<I, T>(args: I, initialize_observability: bool) -> ExitCode
+/// Run the package command surface with the invocation shown by help, usage,
+/// and parser errors supplied by the embedding host.
+pub fn run_embedded_from_with_bin_name<I, T>(args: I, bin_name: &str) -> ExitCode
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    let cli = match Cli::try_parse_from(args) {
+    run_from_with_observability(args, false, bin_name)
+}
+
+fn run_from_with_observability<I, T>(
+    args: I,
+    initialize_observability: bool,
+    bin_name: &str,
+) -> ExitCode
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    let cli = match try_parse_from_with_bin_name(args, bin_name) {
         Ok(cli) => cli,
         Err(error) => {
             let success = matches!(
@@ -971,6 +985,17 @@ where
     let _observability =
         initialize_observability.then(|| crate::observability::init_subscriber(args, &ctx));
     dispatch(cli.command)
+}
+
+fn try_parse_from_with_bin_name<I, T>(args: I, bin_name: &str) -> Result<Cli, clap::Error>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    let matches = Cli::command()
+        .bin_name(bin_name)
+        .try_get_matches_from(args)?;
+    Cli::from_arg_matches(&matches)
 }
 
 /// Extract the `UniversalArgs` block from whichever subcommand variant
@@ -1971,6 +1996,29 @@ fn emit_io_error(ctx: &Context, err: &io::Error) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn embedded_invocation_name_drives_root_and_nested_usage() {
+        let root = match try_parse_from_with_bin_name(["embedded", "--help"], "akua pkg") {
+            Ok(_) => panic!("help should exit through clap"),
+            Err(error) => error,
+        };
+        let root_help = root.to_string();
+        assert!(root_help.contains("Build, test, and publish cloud-native application packages"));
+        assert!(root_help.contains("Usage: akua pkg <COMMAND>"));
+        assert!(root_help.contains("version  Print the package toolchain version"));
+
+        let nested = match try_parse_from_with_bin_name(
+            ["embedded", "render", "--not-a-real-flag"],
+            "akua pkg",
+        ) {
+            Ok(_) => panic!("invalid nested flag should fail"),
+            Err(error) => error,
+        };
+        assert!(nested
+            .to_string()
+            .contains("Usage: akua pkg render [OPTIONS]"));
+    }
 
     #[test]
     fn embedded_runner_preserves_clap_user_error_exit_code() {

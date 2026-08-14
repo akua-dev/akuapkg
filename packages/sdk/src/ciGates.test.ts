@@ -74,12 +74,14 @@ function napiInterfaceFunctionNames(): string[] {
 }
 
 function sdkNapiCallNames(): string[] {
-	const mod = readRepo('packages/sdk/src/mod.ts');
 	const names = new Set<string>();
-	for (const match of mod.matchAll(/\bnapi\.([a-zA-Z0-9_]+)\(/g)) {
-		const name = match[1];
-		if (name !== undefined) {
-			names.add(name);
+	for (const sourcePath of ['packages/sdk/src/mod.ts', 'packages/sdk/src/execute.ts']) {
+		const source = readRepo(sourcePath);
+		for (const match of source.matchAll(/\bnapi\.([a-zA-Z0-9_]+)\(/g)) {
+			const name = match[1];
+			if (name !== undefined) {
+				names.add(name);
+			}
 		}
 	}
 	return [...names].sort();

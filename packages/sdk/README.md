@@ -21,6 +21,9 @@ import { Akua, AkuaUserError, AkuaRateLimitedError } from '@akua-dev/sdk';
 
 const akua = new Akua();
 
+// Embedders can make package help use their own command path.
+await akua.execute(['render', '--help'], { binName: 'akua pkg' });
+
 const yaml = await akua.renderSource({
   packageFilename: 'package.k',
   source: PACKAGE_K_SOURCE,
@@ -34,6 +37,14 @@ const published = await akua.inspectOciPackage({
   tag: '1.2.3',
   auth: { 'ghcr.io': { token: process.env.GHCR_TOKEN! } },
 });
+```
+
+Embedding only the command dispatcher does not require the full validation client:
+
+```ts
+import { execute } from '@akua-dev/sdk/execute';
+
+const exitCode = execute(['render', '--help'], { binName: 'akua pkg' });
 ```
 
 Object-returning methods use typed results, and most validate their result against JSON Schema generated from the same Rust `serde` types the CLI emits. Methods without schema validation still keep explicit contracts: `renderSource()` returns raw rendered YAML as a string, and `add()` returns the native add result.

@@ -355,7 +355,7 @@ tasks:
 
   native:build:
     desc: Build the napi addon for the host platform (release)
-    deps: [native:install, native-engines:stage]
+    deps: [native:install, native-engines:stage, build:render-worker]
     dir: crates/akua-napi
     cmds:
       - bunx napi build --platform --release

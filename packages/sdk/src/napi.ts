@@ -26,7 +26,7 @@ import { type NapiStructuredError, parseNapiError } from './napi-error.ts';
  */
 export interface NapiAddon {
 	/** Runs the complete package CLI parser/dispatcher in-process. */
-	execute(args: string[]): number;
+	execute(args: string[], options?: { binName?: string }): number;
 	version(): unknown;
 	render(args: {
 		package: string;

@@ -15,6 +15,10 @@ minor bump in the SDK.
 
 ## [Unreleased]
 
+### Added
+
+- Added the lightweight `@akua-dev/sdk/execute` entry point for embedding the package command dispatcher without loading the full schema-validation client.
+
 ### Fixed
 
 - Git HTTPS dependency fetches now preserve configured custom CA bundles while forcing certificate verification on. `GIT_SSL_CAINFO` and `http.sslCAInfo` work for initial clones and cached-repository refreshes, including `vendor add` and publish-time vendoring; `GIT_SSL_NO_VERIFY` and `http.sslVerify=false` cannot disable verification, and unrelated ambient Git HTTP options are not forwarded.

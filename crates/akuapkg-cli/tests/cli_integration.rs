@@ -8,6 +8,8 @@
 use std::path::Path;
 use std::process::{Command, Output};
 
+use akua_core::cli_contract::ExitCode;
+
 /// Path to the compiled `akuapkg` binary, injected by Cargo at build time
 /// for integration tests in `tests/`.
 const AKUAPKG_BIN: &str = env!("CARGO_BIN_EXE_akuapkg");
@@ -915,9 +917,9 @@ fn help_lists_all_expected_verbs() {
 }
 
 #[test]
-fn unknown_verb_exits_clap_error_code() {
+fn unknown_verb_exits_with_the_package_user_error_code() {
     let dir = tempdir();
     let out = run(dir.path(), &["no-such-verb"]);
-    // clap emits exit code 2 for usage errors.
-    assert_eq!(out.status.code(), Some(2));
+    // Parser failures are invalid caller input in the package CLI contract.
+    assert_eq!(out.status.code(), Some(ExitCode::UserError.code()));
 }
