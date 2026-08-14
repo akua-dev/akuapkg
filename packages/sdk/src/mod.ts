@@ -78,6 +78,11 @@ export interface AkuaOptions {
 	 */
 }
 
+export interface ExecuteOptions {
+	/** Invocation rendered by command help, usage, and parser errors. */
+	binName?: string;
+}
+
 export interface InspectOptions {
 	/** Path to the `package.k` file. Default: `./package.k`. Mutually exclusive with `tarball`. */
 	package?: string;
@@ -348,11 +353,13 @@ export class Akua {
 	 * Pass command arguments only, for example
 	 * `['render', '--package', 'package.k']`. Output is streamed
 	 * directly by the native command, exactly as when invoking `akuapkg` in a
-	 * terminal; the resolved value is its documented numeric exit code.
+	 * terminal; the resolved value is its documented numeric exit code. Set
+	 * `options.binName` when embedding it under another command path, such as
+	 * `akua pkg`, so generated help and usage text name that invocation.
 	 */
-	async execute(args: readonly string[]): Promise<number> {
+	async execute(args: readonly string[], options: ExecuteOptions = {}): Promise<number> {
 		const napi = loadNapi();
-		return callNapi<number>(() => napi.execute([...args]));
+		return callNapi<number>(() => napi.execute([...args], options));
 	}
 
 	async whoami(): Promise<WhoamiOutput> {

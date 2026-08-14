@@ -16,7 +16,9 @@ test('uses an explicitly configured native addon before resolving packages', asy
 
 	expect(exitCode).toBe(0);
 	expect(stderr).toBe('');
-	expect(stdout.trim()).toBe('embedded\n0');
+	expect(stdout.trim()).toBe(
+		'embedded\n0\n[{"args":["version"],"options":{"binName":"akua pkg"}}]',
+	);
 });
 
 test('runs the complete package command dispatcher through the built native addon', async () => {
@@ -34,5 +36,7 @@ test('runs the complete package command dispatcher through the built native addo
 	expect(exitCode).toBe(0);
 	expect(stderr).toBe('');
 	expect(stdout).toContain('"version"');
+	expect(stdout).toContain('Usage: akua pkg render [OPTIONS]');
+	expect(stdout).not.toContain('Usage: akuapkg render');
 	expect(stdout.trimEnd()).toEndWith('0');
 });

@@ -14,7 +14,7 @@ export declare function diff(args: NapiDiffArgs): any
  * its documented JSON/text streams. The numeric result is the package
  * contract's stable exit code, not a Node or shell-process exit status.
  */
-export declare function execute(args: Array<string>): number
+export declare function execute(args: Array<string>, options?: NapiExecuteOptions | undefined | null): number
 
 export declare function export(args: NapiExportArgs): any
 
@@ -68,6 +68,11 @@ export interface NapiCheckArgs {
 export interface NapiDiffArgs {
   before: string
   after: string
+}
+
+export interface NapiExecuteOptions {
+  /** Invocation rendered by help, usage, and parser errors. */
+  binName?: string
 }
 
 export interface NapiExportArgs {

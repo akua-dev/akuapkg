@@ -21,6 +21,9 @@ import { Akua, AkuaUserError, AkuaRateLimitedError } from '@akua-dev/sdk';
 
 const akua = new Akua();
 
+// Embedders can make package help use their own command path.
+await akua.execute(['render', '--help'], { binName: 'akua pkg' });
+
 const yaml = await akua.renderSource({
   packageFilename: 'package.k',
   source: PACKAGE_K_SOURCE,

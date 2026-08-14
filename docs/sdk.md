@@ -62,6 +62,7 @@ The package currently exports the `Akua` class, SDK error classes, validation he
 
 | Method | Returns | Notes |
 |---|---|---|
+| `execute(args, options?)` | `number` | Runs any package CLI command in-process. Set `options.binName` to the parent command path, such as `akua pkg`, so help and usage text match the embedding CLI. |
 | `version()` | `VersionOutput` | SDK and native version information. |
 | `whoami()` | `WhoamiOutput` | Mirrors `akuapkg whoami`. |
 | `render(opts)` | `RenderSummary` | Executes an on-disk Package and writes rendered YAML files to `out`. |

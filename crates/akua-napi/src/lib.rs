@@ -33,6 +33,12 @@ pub fn version() -> Result<serde_json::Value> {
     invoke_verb(|ctx, stdout| verbs::version::run(ctx, stdout).map_err(into_napi_io))
 }
 
+#[napi(object)]
+pub struct NapiExecuteOptions {
+    /// Invocation rendered by help, usage, and parser errors.
+    pub bin_name: Option<String>,
+}
+
 /// Execute any supported package command through the same parser and
 /// dispatcher as the standalone `akuapkg` binary.
 ///
@@ -40,9 +46,19 @@ pub fn version() -> Result<serde_json::Value> {
 /// its documented JSON/text streams. The numeric result is the package
 /// contract's stable exit code, not a Node or shell-process exit status.
 #[napi]
-pub fn execute(args: Vec<String>) -> Result<i32> {
-    Ok(akuapkg_cli::entrypoint::run_embedded_from(
-        std::iter::once("akuapkg".to_string()).chain(args),
+pub fn execute(args: Vec<String>, options: Option<NapiExecuteOptions>) -> Result<i32> {
+    let bin_name = options
+        .and_then(|value| value.bin_name)
+        .unwrap_or_else(|| "akuapkg".to_string());
+    if bin_name.trim().is_empty() {
+        return Err(Error::new(
+            Status::InvalidArg,
+            "execute binName must not be empty",
+        ));
+    }
+    Ok(akuapkg_cli::entrypoint::run_embedded_from_with_bin_name(
+        std::iter::once("embedded".to_string()).chain(args),
+        &bin_name,
     )
     .code())
 }
@@ -714,7 +730,7 @@ edition = "akua.dev/v1alpha1"
     #[test]
     fn execute_returns_the_package_contract_exit_code() {
         assert_eq!(
-            execute(vec!["not-a-command".to_string()]).unwrap(),
+            execute(vec!["not-a-command".to_string()], None).unwrap(),
             ExitCode::UserError.code()
         );
     }
