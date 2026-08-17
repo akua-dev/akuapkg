@@ -108,6 +108,16 @@ jobs:
       - name: task ci
         run: mise exec -- task ci
 
+      # `task ci`'s clippy (--all-targets) + `cargo test --workspace` passes
+      # already filled target/debug with this VM's disk budget (target/ is
+      # never cache-restored and CARGO_INCREMENTAL=0, so nothing here was
+      # reusable anyway). `sdk:check` recompiles akuapkg-cli under different
+      # feature flags (schema-export,ts-export) next — reclaim akuapkg-cli's
+      # own prior artifacts first so that rebuild doesn't add its own
+      # multi-GB footprint on top of the still-resident workspace build.
+      - name: Reclaim akuapkg-cli build artifacts before the feature-flagged SDK rebuild
+        run: mise exec -- cargo clean -p akuapkg-cli
+
       # Type + schema drift guard. `sdk:check` runs the Rust `ts-rs` +
       # `schemars` emitters and diffs the result against committed
       # packages/sdk/src/types + schemas. Rust is already set up here, so
