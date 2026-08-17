@@ -21,6 +21,7 @@ minor bump in the SDK.
 
 ### Fixed
 
+- `@akua-dev/sdk`'s published npm package now includes `dist/execute.js`. `v0.9.3` shipped without it: the CI build task only bundled `src/mod.ts`, so `exports["./execute"]` pointed at a file that didn't exist and `import '@akua-dev/sdk/execute'` failed with `Cannot find module`. The build is unified onto a single script (`packages/sdk/package.json`'s `build`, invoked by both `task sdk:build` and `npm run prepublishOnly`) so the two build paths can't drift again, and every build/pack now verifies the packed files actually satisfy package.json's `exports` map before publishing. `v0.9.3` is unpublishable-over on npm; use `v0.9.4` or later.
 - Git HTTPS dependency fetches now preserve configured custom CA bundles while forcing certificate verification on. `GIT_SSL_CAINFO` and `http.sslCAInfo` work for initial clones and cached-repository refreshes, including `vendor add` and publish-time vendoring; `GIT_SSL_NO_VERIFY` and `http.sslVerify=false` cannot disable verification, and unrelated ambient Git HTTP options are not forwarded.
 
 ## [0.8.23] — 2026-06-23

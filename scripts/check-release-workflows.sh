@@ -162,7 +162,7 @@ assert_before ".github/workflows/release.yml" \
 assert_before ".github/workflows/release.yml" \
 	"sdk-build" \
 	"Bump package.json version + native dep pin from the tag" \
-	"Pack dry-run (manifest sanity)"
+	"Pack dry-run (manifest sanity + exports completeness)"
 
 # Release-owned coordinates moved with the repository. Keep the image and
 # release identities on the current GitHub organization.

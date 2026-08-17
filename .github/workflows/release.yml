@@ -461,9 +461,23 @@ jobs:
             packages/sdk/package.json > packages/sdk/package.json.tmp
           mv packages/sdk/package.json.tmp packages/sdk/package.json
 
-      - name: Pack dry-run (manifest sanity)
+      - name: Pack dry-run (manifest sanity + exports completeness)
         working-directory: packages/sdk
-        run: npm pack --dry-run
+        # `npm pack --dry-run` alone only reports what ended up in the
+        # tarball, not what package.json's exports map promises should be
+        # there — that gap is how v0.9.3 published without dist/execute.js.
+        # Feed the JSON file listing back through the same checker that
+        # gates `task sdk:build` so this publish lane fails loudly instead
+        # of shipping an incomplete tarball again. Writes outside dist/ —
+        # dist/ is fully included by package.json's `files` array, and this
+        # directory is uploaded as the sdk-staged artifact right after, so
+        # a leftover file dropped in dist/ would ship inside the real
+        # published tarball.
+        run: |
+          pack_json="$(mktemp)"
+          npm pack --dry-run --json > "$pack_json"
+          bun run scripts/verify-package-exports.ts --tarball "$pack_json"
+          rm -f "$pack_json"
 
       # Stage the prepared SDK tree (with bumped package.json + dist/)
       # for the publish job — same approach native uses to keep build

@@ -108,6 +108,16 @@ jobs:
       - name: task ci
         run: mise exec -- task ci
 
+      # `task ci`'s clippy (--all-targets) + `cargo test --workspace` passes
+      # already filled target/debug with this VM's disk budget (target/ is
+      # never cache-restored and CARGO_INCREMENTAL=0, so nothing here was
+      # reusable anyway). `sdk:check` recompiles akuapkg-cli under different
+      # feature flags (schema-export,ts-export) next — reclaim akuapkg-cli's
+      # own prior artifacts first so that rebuild doesn't add its own
+      # multi-GB footprint on top of the still-resident workspace build.
+      - name: Reclaim akuapkg-cli build artifacts before the feature-flagged SDK rebuild
+        run: mise exec -- cargo clean -p akuapkg-cli
+
       # Type + schema drift guard. `sdk:check` runs the Rust `ts-rs` +
       # `schemars` emitters and diffs the result against committed
       # packages/sdk/src/types + schemas. Rust is already set up here, so
@@ -174,3 +184,11 @@ jobs:
 
       - name: SDK tests
         run: mise exec -- task sdk:test
+
+      # Builds the publishable dist/ bundle and verifies every
+      # package.json exports entrypoint (`.`, `./execute`, ...) was
+      # actually produced. Runs on every PR, not just at release time —
+      # v0.9.3 shipped a broken `./execute` subpath because this build +
+      # verification only ran inside the release workflow.
+      - name: Build SDK for npm (verifies exports map matches dist output)
+        run: mise exec -- task sdk:build
