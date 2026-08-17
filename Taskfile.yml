@@ -287,18 +287,22 @@ tasks:
       - bun install --frozen-lockfile
 
   sdk:build:
-    desc: Build @akua-dev/sdk for npm — bundle JS via bun, emit .d.ts via tsc
+    desc: Build @akua-dev/sdk for npm — delegates to packages/sdk's own `build` script
+    # `package.json`'s "build" script (also `prepublishOnly`) is the single
+    # source of truth for the bundler entrypoints + flags. It used to be a
+    # second, independently-maintained copy of this command that only
+    # bundled `src/mod.ts` — `src/execute.ts` silently fell out of the
+    # entrypoint list, so `dist/execute.js` was never produced even though
+    # `tsc --emitDeclarationOnly` still emitted `dist/execute.d.ts` for
+    # every source file. `exports["./execute"]` pointed at a `.js` that
+    # didn't exist, and nothing checked that until a real install broke
+    # (shipped as the dead v0.9.3 npm release). Delegating here instead of
+    # duplicating the command keeps CI (`task sdk:build`) and local/
+    # `prepublishOnly` builds byte-identical by construction.
     deps: [sdk:install]
     dir: packages/sdk
     cmds:
-      - rm -rf dist
-      # Single ESM bundle for `dist/mod.js`. node target keeps `node:*`
-      # external; --packages=external keeps every npm dep external so
-      # @akua-dev/native, ajv, yaml etc. remain runtime deps.
-      - bun build src/mod.ts --target node --format esm --outdir dist --sourcemap=linked --packages=external
-      # Per-source `.d.ts` tree alongside the bundle; tsc resolves
-      # cross-file declaration imports without needing the per-file JS.
-      - bunx tsc --emitDeclarationOnly
+      - bun run build
 
   sdk:test:
     desc: Run @akua-dev/sdk TS unit tests (bun + Node — engine-bridge tests gate on Node WASI)
@@ -335,8 +339,20 @@ tasks:
     cmds:
       # `npm pack --dry-run` reports the tarball contents + size without
       # writing or publishing. Catches missing files, wrong main/types
-      # paths, accidental dist/ omission.
-      - npm pack --dry-run
+      # paths, accidental dist/ omission. On its own it only reports what
+      # IS in the tarball — it doesn't know execute.js was ever supposed
+      # to be there, which is exactly how v0.9.3 shipped a tarball that
+      # "packed successfully" without dist/execute.js. The verify step
+      # below cross-checks the packed file list against package.json's
+      # exports map, so a missing entrypoint fails here instead of on a
+      # customer's `npm install`. Writes outside dist/ — dist/ is fully
+      # included by package.json's `files` array, so a leftover file
+      # dropped in there would ship inside the real published tarball.
+      - |
+        pack_json="$(mktemp)"
+        npm pack --dry-run --json > "$pack_json"
+        bun run scripts/verify-package-exports.ts --tarball "$pack_json"
+        rm -f "$pack_json"
 
   native:install:
     desc: Install @akua-dev/native deps (bun)

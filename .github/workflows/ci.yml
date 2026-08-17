@@ -174,3 +174,11 @@ jobs:
 
       - name: SDK tests
         run: mise exec -- task sdk:test
+
+      # Builds the publishable dist/ bundle and verifies every
+      # package.json exports entrypoint (`.`, `./execute`, ...) was
+      # actually produced. Runs on every PR, not just at release time —
+      # v0.9.3 shipped a broken `./execute` subpath because this build +
+      # verification only ran inside the release workflow.
+      - name: Build SDK for npm (verifies exports map matches dist output)
+        run: mise exec -- task sdk:build
