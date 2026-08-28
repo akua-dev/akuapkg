@@ -12,12 +12,13 @@ The canonical distribution coordinates are:
 As of August 14, 2026, `v0.9.3` is a source tag without a GitHub Release. Do not describe that version as published or installable from release assets until the release workflow succeeds.
 
 The build and publish lanes are intentionally separate. `.github/workflows/release.yml`
-builds the immutable tag, creates Release assets only for a new tag push, pushes the
+builds the immutable tag, creates Release assets for a new tag, pushes the
 container, and dispatches `.github/workflows/release-publish.yml` with the source-run
 artifact identity. The publish workflow downloads those Actions artifacts and
 publishes npm packages in dependency order. A recovery verifies the existing Release
-but never uploads, replaces, or otherwise changes its assets. Neither lane creates or
-moves a tag during recovery.
+and never replaces or otherwise changes its assets. If the original run failed before
+creating a Release, the recovery lane can create it only with the explicit
+`create-missing-release` opt-in. Neither lane creates or moves a tag during recovery.
 
 Homebrew is explicitly outside this recovery. Formula ownership belongs to `akua-dev/cli` and the dedicated `akua-dev/homebrew-tap` lane; Akuapkg does not write, dispatch, or claim ownership of that formula.
 
@@ -33,6 +34,32 @@ prerelease, and do not update the container's `latest` tag.
 
 Do not delete and re-push a release tag. If a tagged run fails, use the SHA-bound
 recovery path below after correcting and reviewing the workflow on `main`.
+
+## Recovering a failure before GitHub Release creation
+
+If a tag run fails before `github-release`, first correct and review the workflow on
+`main`. Do not move the tag, upload assets by hand, or rerun the outdated tagged
+workflow. Dispatch the corrected workflow from its exact reviewed commit. Bind the
+run to both the immutable tag commit and the reviewed workflow commit, and explicitly
+authorize creation of the still-missing Release:
+
+```sh
+reviewed_workflow_commit=$(gh api repos/akua-dev/akuapkg/commits/main --jq '.sha')
+
+gh workflow run release.yml \
+  --repo akua-dev/akuapkg \
+  --ref main \
+  -f tag=v0.9.5 \
+  -f expected-source-commit=be62c125e9816aa1a440de9afecb4b6fc9a8d487 \
+  -f expected-workflow-commit="$reviewed_workflow_commit" \
+  -f create-missing-release=true \
+  -f dry-run=false
+```
+
+The dispatch rebuilds every artifact from the tag. It creates the Release only if it
+is still absent; if a Release already exists, it verifies it and never uploads or
+replaces assets. Keep `create-missing-release` false for ordinary recovery of an
+existing immutable Release.
 
 The `@akua-dev/native` meta-package must publish with lifecycle scripts enabled. Its
 `prepublishOnly` hook runs `napi prepublish -t npm --no-gh-release`: `napi prepublish`

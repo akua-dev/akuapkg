@@ -61,6 +61,11 @@ on:
         description: 'Reviewed commit containing this workflow — required for manual runs'
         required: true
         type: string
+      create-missing-release:
+        description: 'Create the immutable GitHub Release if the tag failed before release creation'
+        type: boolean
+        default: false
+        required: true
 
 permissions:
   contents: write   # github-release: create Releases
@@ -542,6 +547,12 @@ jobs:
           cache-on-failure: true
           cache-all-crates: true
 
+      - name: Install Linux arm64 cross compiler
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes gcc-aarch64-linux-gnu
+
       - name: Cross-compile for linux/arm64
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
@@ -639,8 +650,10 @@ jobs:
             dist/*.zip*
 
   # ---------------------------------------------------------------------------
-  # github-release — creates per-target Release assets on a new tag push;
-  # manual recovery only verifies that the immutable Release exists.
+  # github-release — creates per-target Release assets on a new tag push.
+  # Manual recovery verifies an existing immutable Release by default. An
+  # explicit opt-in may create a Release that the original tag run never
+  # reached; neither path replaces assets on an existing Release.
   # Prerelease tags surface the "Pre-release" badge so
   # `gh release view --latest` skips them.
   # ---------------------------------------------------------------------------
@@ -674,13 +687,20 @@ jobs:
           VERSION: ${{ needs.detect-version.outputs.version }}
           SOURCE_COMMIT: ${{ needs.detect-version.outputs.source_commit }}
           IS_PRERELEASE: ${{ needs.detect-version.outputs.is_prerelease }}
+          CREATE_MISSING_RELEASE: ${{ inputs['create-missing-release'] }}
         run: |
           set -eu
           notes="See [CHANGELOG.md](https://github.com/akua-dev/akuapkg/blob/main/CHANGELOG.md) for details."
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            gh release view "${TAG}" --repo "${GH_REPO}" > /dev/null
-            echo "Verified existing immutable Release ${TAG}; recovery does not upload or replace assets."
-            exit 0
+            if gh release view "${TAG}" --repo "${GH_REPO}" > /dev/null 2>&1; then
+              echo "Verified existing immutable Release ${TAG}; recovery does not upload or replace assets."
+              exit 0
+            fi
+            if [[ "$CREATE_MISSING_RELEASE" != "true" ]]; then
+              echo "::error::Release ${TAG} does not exist; set create-missing-release=true only for a reviewed pre-Release failure recovery"
+              exit 1
+            fi
+            echo "Release ${TAG} is missing; explicit SHA-bound recovery authorized its creation."
           fi
           flags=()
           if [ "${IS_PRERELEASE}" = "true" ]; then
