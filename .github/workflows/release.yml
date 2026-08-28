@@ -286,7 +286,7 @@ jobs:
         with:
           ref: ${{ needs.detect-version.outputs.source_commit }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
 
@@ -428,7 +428,7 @@ jobs:
           install: true
           cache: true
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
 

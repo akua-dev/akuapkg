@@ -166,7 +166,7 @@ jobs:
         with:
           ref: ${{ needs.detect-version.outputs.source_commit }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         # Node 24 ships npm 11.x — required for OIDC trusted publishing.
         # No `registry-url:` here on purpose; setup-node would write a
         # `_authToken=${NODE_AUTH_TOKEN}` line in `.npmrc` that intercepts
@@ -299,7 +299,7 @@ jobs:
     needs: [detect-version, native-publish]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
 
