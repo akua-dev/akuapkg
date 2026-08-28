@@ -98,6 +98,27 @@ assert_job_runs_on() {
 	' "$file" "$job" "$expected"
 }
 
+assert_workflow_excludes_runner() {
+	local file="$1"
+	local forbidden="$2"
+
+	ruby -ryaml -e '
+		file, forbidden = ARGV
+		workflow = YAML.safe_load(File.read(file), aliases: true)
+		contains = lambda do |value|
+			case value
+			when Hash then value.any? { |key, child| contains.call(key) || contains.call(child) }
+			when Array then value.any? { |child| contains.call(child) }
+			else value == forbidden
+			end
+		end
+		exit unless contains.call(workflow.fetch("jobs"))
+
+		warn "ERROR: #{file} still routes release work to retired runner #{forbidden.inspect}"
+		exit 1
+	' "$file" "$forbidden"
+}
+
 assert_file_contains() {
 	local file="$1"
 	local pattern="$2"
@@ -148,6 +169,16 @@ assert_dispatch_input_required() {
 # routing contract.
 assert_job_runs_on ".github/workflows/ci.yml" "rust" "ubuntu-latest"
 assert_job_runs_on ".github/workflows/ci.yml" "sdk" "ubuntu-latest"
+
+# A release tag must never queue on the retired AgentOS ARC pool. Every Linux
+# release job uses GitHub-hosted runners; macOS and Windows matrix entries keep
+# their platform-specific hosted runners.
+for retired_runner in akua-x64-ci-v2 akua-heavy-ci-v2 akua-docker-ci-v2; do
+	assert_workflow_excludes_runner ".github/workflows/release.yml" "$retired_runner"
+done
+for job in detect-version wasm-bundle trigger-publish sdk-build github-release docker; do
+	assert_job_runs_on ".github/workflows/release.yml" "$job" "ubuntu-latest"
+done
 
 # Release builds must install from the committed lockfile before mutating
 # package manifests to the tag version. Mutating first invalidates
