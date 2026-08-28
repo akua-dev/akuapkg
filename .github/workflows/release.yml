@@ -87,7 +87,7 @@ jobs:
       npm_dist_tag: ${{ steps.parse.outputs.npm_dist_tag }}
       source_commit: ${{ steps.parse.outputs.source_commit }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref_name }}
           fetch-depth: 0
@@ -182,7 +182,7 @@ jobs:
     runs-on: akua-heavy-ci-v2
     needs: detect-version
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.detect-version.outputs.source_commit }}
 
@@ -282,7 +282,7 @@ jobs:
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.host }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.detect-version.outputs.source_commit }}
 
@@ -419,7 +419,7 @@ jobs:
     needs: detect-version
     runs-on: akua-heavy-ci-v2
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.detect-version.outputs.source_commit }}
 
@@ -516,7 +516,7 @@ jobs:
             archive: zip
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.detect-version.outputs.source_commit }}
 
@@ -649,7 +649,7 @@ jobs:
     runs-on: akua-x64-ci-v2
     if: github.event_name == 'push' || inputs.dry-run == false
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.detect-version.outputs.source_commit }}
       - uses: actions/download-artifact@v8
@@ -705,7 +705,7 @@ jobs:
     runs-on: akua-docker-ci-v2
     if: github.event_name == 'push' || inputs.dry-run == false
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.detect-version.outputs.source_commit }}
       - uses: actions/download-artifact@v8

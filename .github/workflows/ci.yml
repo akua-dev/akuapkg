@@ -47,7 +47,7 @@ jobs:
     name: Rust (fmt + clippy + test)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: jdx/mise-action@v4
         with:
@@ -132,7 +132,7 @@ jobs:
     # depends on `build:render-worker` + `build:engines`, so we need
     # the same Rust + wasm32-wasip1 setup as the rust job.
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: jdx/mise-action@v4
         with:
