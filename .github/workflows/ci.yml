@@ -45,7 +45,7 @@ env:
 jobs:
   rust:
     name: Rust (fmt + clippy + test)
-    runs-on: akua-heavy-ci-v2
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
@@ -127,7 +127,7 @@ jobs:
 
   sdk:
     name: SDK (bun + node WASI)
-    runs-on: akua-heavy-ci-v2
+    runs-on: ubuntu-latest
     # Exercises the @akua-dev/sdk surface end-to-end. `task sdk:test`
     # depends on `build:render-worker` + `build:engines`, so we need
     # the same Rust + wasm32-wasip1 setup as the rust job.
