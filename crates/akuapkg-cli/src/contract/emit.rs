@@ -30,13 +30,16 @@ where
     F: FnOnce(&mut W) -> std::io::Result<()>,
 {
     match ctx.output {
-        OutputMode::Json => {
-            serde_json::to_writer(&mut *writer, value).map_err(std::io::Error::other)?;
-            writeln!(writer)?;
-        }
+        OutputMode::Json => emit_json(writer, value)?,
         OutputMode::Text => text(writer)?,
     }
     Ok(())
+}
+
+/// Write the canonical compact JSON representation used by CLI output.
+pub fn emit_json<W: Write, T: Serialize>(writer: &mut W, value: &T) -> std::io::Result<()> {
+    serde_json::to_writer(&mut *writer, value).map_err(std::io::Error::other)?;
+    writeln!(writer)
 }
 
 /// Write a structured error to the given stderr writer. Code appears

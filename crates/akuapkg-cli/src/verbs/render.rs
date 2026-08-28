@@ -2,10 +2,11 @@
 //!
 //! Spec: [`docs/cli.md`](../../../../docs/cli.md) `akuapkg render` section.
 
+use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::contract::{emit_output, Context};
+use crate::contract::{emit_json, emit_output, Context};
 use akua_core::cli_contract::{codes, ExitCode, StructuredError};
 use akua_core::lock_file::{AkuaLock, LockLoadError, LockedPackage};
 use akua_core::mod_file::ManifestLoadError;
@@ -117,6 +118,10 @@ pub struct RenderArgs<'a> {
     /// Root directory for the rendered YAML files (`--out`).
     pub out_dir: &'a Path,
 
+    /// `--summary-out=<FILE>`: write the canonical [`RenderSummary`]
+    /// JSON to a declared file without changing stdout.
+    pub summary_out: Option<&'a Path>,
+
     /// `--dry-run`: compute the summary without writing files.
     pub dry_run: bool,
 
@@ -192,6 +197,13 @@ pub enum RenderError {
 
     #[error("reading cosign public key at {path}: {source}")]
     CosignKeyIo {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("failed to write render summary {path}: {source}")]
+    SummaryWrite {
         path: PathBuf,
         #[source]
         source: std::io::Error,
@@ -306,6 +318,11 @@ impl RenderError {
                     )
                     .with_default_docs()
             }
+            RenderError::SummaryWrite { path, source } => {
+                StructuredError::new(codes::E_IO, source.to_string())
+                    .with_path(path.display().to_string())
+                    .with_default_docs()
+            }
             RenderError::StdoutWrite(e) => {
                 StructuredError::new(codes::E_IO, e.to_string()).with_default_docs()
             }
@@ -328,6 +345,7 @@ impl RenderError {
                 ExitCode::SystemError
             }
             RenderError::Render(PackageRenderError::Io { .. }) => ExitCode::SystemError,
+            RenderError::SummaryWrite { .. } => ExitCode::SystemError,
             RenderError::ManifestParse { source, .. } if source.is_system() => {
                 ExitCode::SystemError
             }
@@ -369,6 +387,10 @@ pub fn run<W: Write>(
 
     let summary = render(&rendered, args.out_dir, args.dry_run)?;
 
+    if let Some(path) = args.summary_out {
+        write_summary(path, &summary)?;
+    }
+
     if args.debug {
         // Emit summary + the post-eval resources list as a wrapper
         // envelope. Text mode falls through to the normal rendering
@@ -399,6 +421,27 @@ struct DebugEnvelope<'a> {
     summary: &'a RenderSummary,
     #[serde(rename = "evalResult")]
     eval_result: &'a [serde_yaml::Value],
+}
+
+fn write_summary(path: &Path, summary: &RenderSummary) -> Result<(), RenderError> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|source| RenderError::SummaryWrite {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    }
+
+    let mut file = fs::File::create(path).map_err(|source| RenderError::SummaryWrite {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    emit_json(&mut file, summary).map_err(|source| RenderError::SummaryWrite {
+        path: path.to_path_buf(),
+        source,
+    })
 }
 
 /// Thin adapter around `akua_core::package_k::resolve_inputs_path`
@@ -840,6 +883,7 @@ resources = [{
             package_path: pkg,
             inputs_path: None,
             out_dir: out,
+            summary_out: None,
             dry_run: false,
             stdout_mode: false,
             strict: false,
@@ -865,6 +909,75 @@ resources = [{
         assert_eq!(parsed["manifests"], 1);
         assert_eq!(parsed["format"], "raw-manifests");
         assert!(parsed["hash"].as_str().unwrap().starts_with("sha256:"));
+    }
+
+    #[test]
+    fn summary_out_writes_the_canonical_summary_without_changing_json_stdout() {
+        let tmp = TempDir::new().unwrap();
+        let pkg = write_package(&tmp, MINIMAL_PACKAGE);
+        let out = tmp.path().join("deploy");
+
+        let mut original_stdout = Vec::new();
+        run(&ctx_json(), &args(&pkg, &out), &mut original_stdout).expect("baseline render");
+
+        let summary_path = tmp.path().join("metadata/render-summary.json");
+        let with_summary = RenderArgs {
+            summary_out: Some(&summary_path),
+            ..args(&pkg, &out)
+        };
+        let mut stdout = Vec::new();
+        run(&ctx_json(), &with_summary, &mut stdout).expect("render with summary file");
+
+        assert_eq!(stdout, original_stdout);
+        assert_eq!(fs::read(&summary_path).unwrap(), stdout);
+    }
+
+    #[test]
+    fn summary_out_stays_canonical_when_debug_wraps_stdout() {
+        let tmp = TempDir::new().unwrap();
+        let pkg = write_package(&tmp, MINIMAL_PACKAGE);
+        let out = tmp.path().join("deploy");
+        let summary_path = tmp.path().join("render-summary.json");
+        let a = RenderArgs {
+            summary_out: Some(&summary_path),
+            debug: true,
+            ..args(&pkg, &out)
+        };
+        let mut stdout = Vec::new();
+        run(&ctx_json(), &a, &mut stdout).expect("debug render with summary file");
+
+        let stdout_json: serde_json::Value = serde_json::from_slice(&stdout).unwrap();
+        let summary_json: serde_json::Value =
+            serde_json::from_slice(&fs::read(summary_path).unwrap()).unwrap();
+        assert!(stdout_json.get("evalResult").is_some());
+        assert_eq!(summary_json, stdout_json["summary"]);
+        assert!(summary_json.get("evalResult").is_none());
+    }
+
+    #[test]
+    fn summary_out_write_failure_is_a_path_aware_system_error() {
+        let tmp = TempDir::new().unwrap();
+        let pkg = write_package(&tmp, MINIMAL_PACKAGE);
+        let out = tmp.path().join("deploy");
+        let summary_path = tmp.path().join("existing-directory");
+        fs::create_dir(&summary_path).unwrap();
+        let a = RenderArgs {
+            summary_out: Some(&summary_path),
+            ..args(&pkg, &out)
+        };
+
+        let error = run(&ctx_json(), &a, &mut Vec::new()).unwrap_err();
+        assert!(matches!(
+            &error,
+            RenderError::SummaryWrite { path, .. } if path == &summary_path
+        ));
+        let structured = error.to_structured();
+        assert_eq!(structured.code, codes::E_IO);
+        assert_eq!(
+            structured.path.as_deref(),
+            Some(summary_path.to_str().unwrap())
+        );
+        assert_eq!(error.exit_code(), ExitCode::SystemError);
     }
 
     #[test]

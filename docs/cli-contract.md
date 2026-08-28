@@ -173,6 +173,8 @@ Every verb that blocks on network or reconciliation accepts `--timeout=<duration
 
 `akuapkg render` additionally honors `--max-depth=<N>` to cap the `pkg.render` composition chain (default 16). Hitting the cap fails with `E_RENDER_BUDGET_DEPTH`. Pair with `--timeout` for hardened CI / agent runs.
 
+`akuapkg render --summary-out=<file>` writes the canonical compact `RenderSummary` JSON plus a trailing newline to a declared file for build-system consumption. It does not redirect or change stdout, and the file remains the bare summary under `--debug`. It conflicts with `--dry-run` and `--stdout`, which intentionally do not produce the normal per-file render result summarized by this contract.
+
 Async operations (`deploy`, `rollout`, long-running renders) return an opaque handle immediately; use `akua … wait --handle=<h>` to block.
 
 ---

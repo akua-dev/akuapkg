@@ -108,6 +108,7 @@ pub fn render(args: NapiRenderArgs) -> Result<serde_json::Value> {
         package_path,
         inputs_path,
         out_dir,
+        summary_out: None,
         dry_run: args.dry_run.unwrap_or(false),
         stdout_mode: false,
         strict: args.strict.unwrap_or(false),
@@ -144,6 +145,7 @@ pub fn render_to_yaml(args: NapiRenderArgs) -> Result<String> {
         package_path,
         inputs_path,
         out_dir,
+        summary_out: None,
         dry_run: args.dry_run.unwrap_or(false),
         // Critical: stdout_mode short-circuits the file-writing path
         // and emits raw multi-doc YAML to stdout. Same path

@@ -877,6 +877,17 @@ struct RenderCliArgs {
     #[arg(long, default_value = "./deploy")]
     out: PathBuf,
 
+    /// Write the canonical RenderSummary JSON to a file.
+    ///
+    /// This is a declared machine-readable output for build systems;
+    /// normal stdout output remains unchanged.
+    #[arg(
+        long,
+        value_name = "FILE",
+        conflicts_with_all = ["dry_run", "stdout"]
+    )]
+    summary_out: Option<PathBuf>,
+
     /// Render but don't write files.
     #[arg(long)]
     dry_run: bool,
@@ -1963,6 +1974,7 @@ fn run_render(args: &UniversalArgs, render_args: &RenderCliArgs) -> ExitCode {
         package_path: &render_args.package,
         inputs_path: render_args.inputs.as_deref(),
         out_dir: &render_args.out,
+        summary_out: render_args.summary_out.as_deref(),
         dry_run: render_args.dry_run,
         stdout_mode: render_args.stdout,
         strict: render_args.strict,
@@ -2091,17 +2103,36 @@ mod tests {
             "in.yaml",
             "--out",
             "./dist",
-            "--dry-run",
+            "--summary-out",
+            "./dist/render-summary.json",
         ]);
         match cli.command {
             Commands::Render { render_args, .. } => {
                 assert_eq!(render_args.package, PathBuf::from("my.k"));
                 assert_eq!(render_args.inputs, Some(PathBuf::from("in.yaml")));
                 assert_eq!(render_args.out, PathBuf::from("./dist"));
-                assert!(render_args.dry_run);
+                assert_eq!(
+                    render_args.summary_out,
+                    Some(PathBuf::from("./dist/render-summary.json"))
+                );
+                assert!(!render_args.dry_run);
                 assert!(!render_args.stdout);
             }
             _ => panic!("expected render"),
+        }
+    }
+
+    #[test]
+    fn render_summary_out_rejects_modes_without_a_summary_file() {
+        for incompatible_flag in ["--dry-run", "--stdout"] {
+            let parsed = Cli::try_parse_from([
+                "akua",
+                "render",
+                "--summary-out",
+                "render-summary.json",
+                incompatible_flag,
+            ]);
+            assert!(parsed.is_err(), "{incompatible_flag} must conflict");
         }
     }
 
