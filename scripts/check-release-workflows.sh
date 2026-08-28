@@ -82,6 +82,22 @@ assert_job_excludes() {
 	fi
 }
 
+assert_job_runs_on() {
+	local file="$1"
+	local job="$2"
+	local expected="$3"
+
+	ruby -ryaml -e '
+		file, job, expected = ARGV
+		workflow = YAML.safe_load(File.read(file), aliases: true)
+		actual = workflow.fetch("jobs").fetch(job).fetch("runs-on")
+		exit if actual == expected
+
+		warn "ERROR: #{file} job #{job.inspect} runs on #{actual.inspect}, expected #{expected.inspect}"
+		exit 1
+	' "$file" "$job" "$expected"
+}
+
 assert_file_contains() {
 	local file="$1"
 	local pattern="$2"
@@ -126,6 +142,12 @@ assert_dispatch_input_required() {
 		exit 1
 	fi
 }
+
+# PR CI must stay runnable without the retired AgentOS ARC pool. Parse the
+# workflow instead of matching YAML text so formatting cannot weaken this
+# routing contract.
+assert_job_runs_on ".github/workflows/ci.yml" "rust" "ubuntu-latest"
+assert_job_runs_on ".github/workflows/ci.yml" "sdk" "ubuntu-latest"
 
 # Release builds must install from the committed lockfile before mutating
 # package manifests to the tag version. Mutating first invalidates
