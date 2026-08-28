@@ -180,6 +180,33 @@ for job in detect-version wasm-bundle trigger-publish sdk-build github-release d
 	assert_job_runs_on ".github/workflows/release.yml" "$job" "ubuntu-latest"
 done
 
+# Hosted Linux runners do not preinstall the GNU arm64 cross linker used by
+# the CLI matrix. Validate the parsed step ordering and target guard so the
+# immutable tag is not stranded after the release starts.
+ruby -ryaml -e '
+	workflow = YAML.safe_load(File.read(".github/workflows/release.yml"), aliases: true)
+	steps = workflow.fetch("jobs").fetch("cli-build").fetch("steps")
+	install_index = steps.index { |step| step["name"] == "Install Linux arm64 cross compiler" }
+	cross_index = steps.index { |step| step["name"] == "Cross-compile for linux/arm64" }
+	abort "ERROR: cli-build must install the Linux arm64 cross compiler" unless install_index
+	abort "ERROR: cli-build is missing the Linux arm64 cross-compile check" unless cross_index
+	abort "ERROR: cross compiler must be installed before it is used" unless install_index < cross_index
+	install = steps.fetch(install_index)
+	abort "ERROR: cross compiler install must be scoped to the arm64 GNU target" unless install["if"] == "matrix.target == '\''aarch64-unknown-linux-gnu'\''"
+	abort "ERROR: cross compiler install must provide gcc-aarch64-linux-gnu" unless install.fetch("run").include?("gcc-aarch64-linux-gnu")
+'
+
+# A tag can fail before its immutable GitHub Release exists. The reviewed-main
+# recovery lane must require an explicit opt-in before it is allowed to create
+# that missing release from a freshly rebuilt, SHA-verified tag.
+assert_dispatch_input_required ".github/workflows/release.yml" "create-missing-release"
+assert_job_contains ".github/workflows/release.yml" \
+	"github-release" \
+	'CREATE_MISSING_RELEASE: ${{ inputs['\''create-missing-release'\''] }}'
+assert_job_contains ".github/workflows/release.yml" \
+	"github-release" \
+	'if [[ "$CREATE_MISSING_RELEASE" != "true" ]]'
+
 # Release builds must install from the committed lockfile before mutating
 # package manifests to the tag version. Mutating first invalidates
 # --frozen-lockfile and can also force unpublished tag versions to resolve.
