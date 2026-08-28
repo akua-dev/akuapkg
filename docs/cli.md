@@ -294,6 +294,7 @@ akuapkg render [path] [flags]
 | `--package=<path>` | path to the `package.k` file (default `./package.k`) |
 | `--inputs=<file>` | inputs file (JSON or YAML). When omitted, probes `./inputs.yaml` then `./inputs.example.yaml` next to the package; falls back to schema defaults if neither exists |
 | `--out=<dir>` | write to directory (default: `./deploy/`) |
+| `--summary-out=<file>` | also write the canonical `RenderSummary` JSON to a declared file; stdout is unchanged (incompatible with `--dry-run` and `--stdout`) |
 | `--stdout` | print rendered manifests as multi-doc YAML to stdout instead of writing files |
 | `--dry-run` | render but don't write files |
 
@@ -318,6 +319,8 @@ akuapkg render [path] [flags]
 ```
 
 `format` is always `"raw-manifests"` today. `target` is the resolved output directory. `hash` is `sha256:<hex>` of the concatenated `<filename>\n<yaml>` blocks — stable across runs when inputs + lockfile + akuapkg version match.
+
+Build systems should use `--summary-out=<file>` when the summary must be a declared output instead of parsing process stdout. The file contains this exact compact JSON contract plus a trailing newline, creates missing parent directories, and remains the bare `RenderSummary` even when `--debug` wraps JSON stdout. Human, JSON, and agent-selected stdout behavior is otherwise unchanged.
 
 ---
 

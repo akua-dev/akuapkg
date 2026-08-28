@@ -17,6 +17,7 @@ minor bump in the SDK.
 
 ### Added
 
+- Added `akuapkg render --summary-out=<file>` so Bazel and other build systems can consume the canonical deterministic `RenderSummary` as a declared file output without parsing or changing stdout.
 - Added the lightweight `@akua-dev/sdk/execute` entry point for embedding the package command dispatcher without loading the full schema-validation client.
 
 ### Fixed

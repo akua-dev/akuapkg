@@ -18,4 +18,4 @@ pub mod emit;
 
 pub use args::UniversalArgs;
 pub use context::{Context, OutputMode};
-pub use emit::{emit_error, emit_output};
+pub use emit::{emit_error, emit_json, emit_output};
